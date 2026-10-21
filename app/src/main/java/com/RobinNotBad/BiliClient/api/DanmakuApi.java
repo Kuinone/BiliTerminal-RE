@@ -173,16 +173,18 @@ public class DanmakuApi {
             }
         }
 
-        // 记录缺口：某一段拿不到时，那 6 分钟是没有弹幕的（用户表现为"看到这里弹幕突然没了"）。
-        // 旧实现在这里完全静默，事后只能怀疑是播放器的问题；至少把缺口区间打出来。
+        // **「拉取失败」和「成功但为空」是两件事**，不能混在一起报：
+        // 分段数按兜底时长（`duration` 未就绪时 3600 秒）算，短 P 的 2~10 段本来就没有弹幕，
+        // 那是正常结果；只有 `segments[i] == null`（重试后仍失败）才是真缺口。
+        // 混报会让"缺口"日志天天刷，真出问题时反而没人信。
         int missingFrom = -1;
         for (int i = 0; i <= segmentCount; i++) {
-            boolean missing = i < segmentCount && (segments[i] == null || segments[i].elems.isEmpty());
-            if (missing && missingFrom < 0) {
+            boolean failed = i < segmentCount && segments[i] == null;
+            if (failed && missingFrom < 0) {
                 missingFrom = i;
-            } else if (!missing && missingFrom >= 0) {
+            } else if (!failed && missingFrom >= 0) {
                 Logu.e("新版弹幕API", "弹幕缺口: 分段 " + (missingFrom + 1) + "~" + i
-                        + "（" + (missingFrom * SEGMENT_SECONDS) + "~" + (i * SEGMENT_SECONDS) + " 秒无弹幕）");
+                        + " 拉取失败（" + (missingFrom * SEGMENT_SECONDS) + "~" + (i * SEGMENT_SECONDS) + " 秒无弹幕）");
                 missingFrom = -1;
             }
         }
@@ -191,7 +193,7 @@ public class DanmakuApi {
         for (DmSegMobileReply segment : allSegments) {
             totalDanmaku += segment.elems.size();
         }
-        Logu.d("新版弹幕API", "共获取到 " + totalDanmaku + " 条弹幕（" + allSegments.size() + "/" + segmentCount + " 段有数据）");
+        Logu.d("新版弹幕API", "共获取到 " + totalDanmaku + " 条弹幕（" + allSegments.size() + "/" + segmentCount + " 段非空）");
 
         return allSegments;
     }
