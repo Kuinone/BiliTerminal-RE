@@ -23,20 +23,39 @@ package master.flame.danmaku.controller;
 public final class MediaClockSync {
 
     /**
-     * 每帧最多把弹幕时钟朝目标值挪多少毫秒。
+     * 每帧最多把弹幕时钟朝目标值挪多少毫秒（1.0x 下的基准值）。
      *
      * 取值依据：采样间隔 250ms 内解码器抖动一般不超过几十毫秒；40ms/帧 ≈ 2.4 倍帧间隔，
      * 既能在约 6 帧（~100ms）内消化一次 250ms 的采样跳变，又不会让弹幕肉眼可见地"窜一下"。
+     *
+     * **必须按倍速放大**（见 [stepFor]）：3x 时媒体时间每秒推进 3000ms，固定 40ms/帧在
+     * 60fps 下只能追 2400ms/s，永远追不上（真机 30fps 更差）。
      */
     public static final long MAX_STEP_MS = 40L;
+
+    /**
+     * 误差超过这个值就直接吸附到理想值，不再蠕动。
+     *
+     * 蠕动是给「采样抖动」用的；偏差已经过半秒说明时间轴真的脱节了（暂停恢复、换源、
+     * 倍速切换、长时间卡顿），这时候慢慢爬过去只会让弹幕长时间错位。
+     */
+    public static final long SNAP_ERROR_MS = 500L;
 
     /**
      * 相邻两次采样之间位置差超过这个值，判定为"不是正常播放推进"（用户拖动/快进/换源/恢复进度），
      * 必须直接硬对齐，否则蠕动收敛要等几十秒。
      *
-     * 正常推进下两次采样（250ms）最多差 250ms × 2.0 倍速 = 500ms，取 1000ms 留足余量。
+     * 正常推进下两次采样（250ms）最多差 250ms × 2.0 倍速 = 500ms，取 [DISCONTINUITY_MS] 留余量。
+     * 3x 下相邻采样差 750ms，仍在阈值内，所以**不能只靠这条判据兜底**，大误差吸附由
+     * [SNAP_ERROR_MS] 负责。
      */
     public static final long DISCONTINUITY_MS = 1000L;
+
+    /** 当前倍速下每帧允许的最大步进（1.0x 为 [MAX_STEP_MS]，倍速越高按比例放大）。 */
+    public static long stepFor(float speed) {
+        if (speed <= 1.0f) return MAX_STEP_MS;
+        return (long) (MAX_STEP_MS * speed);
+    }
 
     private MediaClockSync() {
     }
@@ -68,16 +87,21 @@ public final class MediaClockSync {
     /**
      * 本帧应当把 `DanmakuTimer.currMillisecond` 设成多少。
      *
-     * 不是直接跳到 [idealMs]，而是**最多挪 [MAX_STEP_MS]**：采样点位置一更新，目标值会出现
+     * 不是直接跳到 [idealMs]，而是**最多挪 [stepFor] 步**：采样点位置一更新，目标值会出现
      * 最多一个采样间隔的跳变，直接赋值会让屏上弹幕整体前移/后退一下。
+     * 但误差超过 [SNAP_ERROR_MS] 说明时间轴真的脱节了（暂停恢复、换源、切倍速、长时间卡顿），
+     * 这时直接吸附，别让弹幕长时间错位。
      *
      * @param currentMs 弹幕时钟当前值
      * @param idealMs   理想媒体时间（见 [project]）
+     * @param speed     播放倍速；步进上限随它放大（3x 下媒体时间每秒推进 3000ms，40ms/帧追不上）
      */
-    public static long nextTimerValue(long currentMs, long idealMs) {
+    public static long nextTimerValue(long currentMs, long idealMs, float speed) {
         long err = idealMs - currentMs;
-        if (err > MAX_STEP_MS) err = MAX_STEP_MS;
-        else if (err < -MAX_STEP_MS) err = -MAX_STEP_MS;
+        if (err > SNAP_ERROR_MS || err < -SNAP_ERROR_MS) return idealMs;
+        long step = stepFor(speed);
+        if (err > step) err = step;
+        else if (err < -step) err = -step;
         return currentMs + err;
     }
 }

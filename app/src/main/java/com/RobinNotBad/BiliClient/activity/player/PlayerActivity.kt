@@ -76,6 +76,7 @@ import com.RobinNotBad.BiliClient.ui.widget.BatteryView
 import com.RobinNotBad.BiliClient.ui.widget.HighEnergyProgressBar
 import com.RobinNotBad.BiliClient.ui.widget.recycler.CustomLinearManager
 import com.RobinNotBad.BiliClient.util.CenterThreadPool
+import com.RobinNotBad.BiliClient.util.DisguiseGesture
 import com.RobinNotBad.BiliClient.util.LocalVideoProgress
 import com.RobinNotBad.BiliClient.util.Logu
 import com.RobinNotBad.BiliClient.util.MsgUtil
@@ -3471,6 +3472,9 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
             Logu.v("event", "register")
             eventBusInit = true
         }
+        // 伪装的「双击顶栏」：本页不继承 BaseActivity（那边统一安装），必须自己接一次线。
+        // 观看中是最需要一键遮屏的场景，所以播放页不能漏。
+        if (::layout_top.isInitialized) DisguiseGesture.install(this, layout_top)
     }
 
     @Subscribe(threadMode = ThreadMode.MAIN, sticky = true)
@@ -4666,17 +4670,21 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
                 SharedPreferencesUtil.getBoolean("player_from_last", true) -> progress_history
                 else -> 0L
             }
+            // 起播时把弹幕时钟锚到视频位置（0 也要锚）。
+            // DFM 的时钟是以 prepare 时刻为基准自走的（DrawHandler.PREPARE 里 mTimeBase = uptimeMillis），
+            // 起播前那段缓冲时间里它会一直跑在视频前面；而我们的容差校正只改 timer、不改 mTimeBase，
+            // 于是 syncTimer 里的 gapTime 又把它拽回去，"跑快→拽回"反复发生 —— 真机实测 2 秒内校正 84 次、
+            // 瞬时偏差最大 1803ms，肉眼就是弹幕一抖一抖。seekTo 会同时重设 mTimeBase（DrawHandler SEEK_POS）。
+            //
+            // 同时要更新 video_now（markSeekTarget）：它现在是媒体时钟的时间源（bindMediaClock），
+            // 不更新的话弹幕会先按旧位置推进一段再被吸附回来，肉眼就是起播闪一下。
+            markSeekTarget(resumeTarget)
             if (resumeTarget > 5) {
                 ijkPlayer!!.seekTo(resumeTarget)
                 Logu.d("进度跳转", resumeTarget.toString())
                 // 只有"按历史进度续播"才提示；恢复现场（系统重建）不该再提示一次
                 if (!restoredFromSaveState) runOnUiThread { MsgUtil.showMsg(UiText.of("已从上次的位置播放")) }
             }
-            // 起播时把弹幕时钟锚到视频位置（0 也要锚）。
-            // DFM 的时钟是以 prepare 时刻为基准自走的（DrawHandler.PREPARE 里 mTimeBase = uptimeMillis），
-            // 起播前那段缓冲时间里它会一直跑在视频前面；而我们的容差校正只改 timer、不改 mTimeBase，
-            // 于是 syncTimer 里的 gapTime 又把它拽回去，"跑快→拽回"反复发生 —— 真机实测 2 秒内校正 84 次、
-            // 瞬时偏差最大 1803ms，肉眼就是弹幕一抖一抖。seekTo 会同时重设 mTimeBase（DrawHandler SEEK_POS）。
             if (hasDanmaku && mDanmakuView != null) mDanmakuView!!.seekTo(resumeTarget)
         }
 

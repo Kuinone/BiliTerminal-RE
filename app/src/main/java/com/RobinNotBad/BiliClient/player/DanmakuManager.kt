@@ -231,6 +231,8 @@ class DanmakuManager(
         danmakuView.enableDanmakuDrawingCache(true)
         danmakuView.prepare(parser, danmakuContext)
         applyMediaClock()
+        // 起播位置优先用已知播放位置（续播 / 切页回来别让时间轴从 0 重走一遍）
+        start(runCatching { mediaPosition?.invoke() ?: -1L }.getOrDefault(-1L))
     }
 
     /**
@@ -282,6 +284,29 @@ class DanmakuManager(
         if (!_state.value.isPrepared) return
         try { danmakuView.resume() } catch (_: Exception) {}
     }
+
+    /**
+     * 启动 DFM 的渲染循环，从 [positionMs] 起播（<0 表示从头）。
+     *
+     * **DFM 的 `prepare()` 只准备数据，不启动更新循环**：`DrawHandler` 的 UPDATE 只由
+     * START / SEEK_POS / RESUME 三个分支拉起（`DrawHandler.java` 的 `handleMessage`），
+     * 而 RESUME 分支要求 `mReady` 为真。所以「加载完弹幕但一条都不显示」的原因是没人调过
+     * `start()` —— 旧实现靠周期性 `seekTo` 的副作用启动，那个副作用随弹幕时钟改造一起没了
+     * （见 `docs/review/fix-progress.md` §3.56）。
+     *
+     * `start()` 在未 ready 时会每 100ms 自行重试（START 落穿到 RESUME 分支），所以不必等
+     * `prepared()` 回调，[configureAndPrepare] 末尾直接调即可。
+     *
+     * @param positionMs 起始位置；续播 / 切页回来时传已知播放位置，别让时间轴从 0 重新走
+     */
+    fun start(positionMs: Long = -1L) {
+        try {
+            if (positionMs > 0) danmakuView.start(positionMs) else danmakuView.start()
+        } catch (e: Exception) {
+            Logu.e("弹幕", "启动渲染循环失败: ${e.message}")
+        }
+    }
+
     fun seekTo(ms: Long) {
         if (!_state.value.isPrepared) return
         try { danmakuView.seekTo(ms) } catch (_: Exception) {}

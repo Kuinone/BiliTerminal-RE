@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.os.Bundle
 import android.view.KeyEvent
 import android.view.MotionEvent
+import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
@@ -11,6 +12,8 @@ import com.RobinNotBad.BiliClient.R
 import com.RobinNotBad.BiliClient.util.CalculatorEngine
 import com.RobinNotBad.BiliClient.util.DisguisePrefs
 import com.RobinNotBad.BiliClient.util.Logu
+import com.RobinNotBad.BiliClient.util.SettingsKeys
+import com.RobinNotBad.BiliClient.util.SharedPreferencesUtil
 
 /**
  * 伪装成计算器（issue #22，双击顶栏触发，见 `BaseActivity.setupTopbarDoubleTapDisguise`）。
@@ -47,7 +50,28 @@ class CalculatorDisguiseActivity : AppCompatActivity() {
 
         display = findViewById(R.id.disguise_display)
         bindKeypad(findViewById(R.id.disguise_keypad))
+        applyRoundScreenPadding(findViewById(R.id.disguise_root))
         render()
+    }
+
+    /**
+     * 尊重「圆屏适配」的内边距。
+     *
+     * 本页刻意不继承 `BaseActivity`（那边会把应用主题/教程/EventBus 一并带进来），
+     * 但**圆屏留白是设备适配、不是外观**：圆屏手表上不缩进的话，最外圈的按键会被切掉。
+     * 所以这里单独读一次设置里的内边距，语义与 `BaseActivity.setRound()` 一致。
+     */
+    private fun applyRoundScreenPadding(root: View) {
+        val padH = SharedPreferencesUtil.getInt(SettingsKeys.PADDING_H, 0)
+        val padV = SharedPreferencesUtil.getInt(SettingsKeys.PADDING_V, 0)
+        if (padH <= 0 && padV <= 0) return
+        val density = resources.displayMetrics.density
+        root.setPadding(
+            (padH * density).toInt(),
+            (padV * density).toInt(),
+            (padH * density).toInt(),
+            (padV * density).toInt()
+        )
     }
 
     /**

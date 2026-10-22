@@ -49,20 +49,38 @@ class MediaClockSyncTest {
 
     @Test
     fun `误差在限幅内直接对齐`() {
-        assertEquals(5_020L, MediaClockSync.nextTimerValue(5_000L, 5_020L))
-        assertEquals(4_980L, MediaClockSync.nextTimerValue(5_000L, 4_980L))
+        assertEquals(5_020L, MediaClockSync.nextTimerValue(5_000L, 5_020L, 1.0f))
+        assertEquals(4_980L, MediaClockSync.nextTimerValue(5_000L, 4_980L, 1.0f))
     }
 
     @Test
     fun `误差超限幅只挪一步`() {
         assertEquals(
             5_000L + MediaClockSync.MAX_STEP_MS,
-            MediaClockSync.nextTimerValue(5_000L, 9_000L)
+            MediaClockSync.nextTimerValue(5_000L, 5_300L, 1.0f)
         )
         assertEquals(
             5_000L - MediaClockSync.MAX_STEP_MS,
-            MediaClockSync.nextTimerValue(5_000L, 1_000L)
+            MediaClockSync.nextTimerValue(5_000L, 4_700L, 1.0f)
         )
+    }
+
+    @Test
+    fun `步进上限随倍速放大`() {
+        // 3x 下媒体时间每秒推进 3000ms；固定 40ms/帧（60fps 只有 2400ms/s）永远追不上
+        assertEquals(MediaClockSync.MAX_STEP_MS, MediaClockSync.stepFor(1.0f))
+        assertEquals(MediaClockSync.MAX_STEP_MS, MediaClockSync.stepFor(0.5f))
+        assertEquals(120L, MediaClockSync.stepFor(3.0f))
+        // 误差 300ms 时 3x 一帧就能吞掉 120ms，而 1x 只有 40ms
+        assertEquals(5_120L, MediaClockSync.nextTimerValue(5_000L, 5_300L, 3.0f))
+    }
+
+    @Test
+    fun `误差过大直接吸附`() {
+        // 超过半秒说明时间轴真的脱节（暂停恢复/换源/切倍速），慢慢爬会让弹幕长时间错位
+        assertEquals(9_000L, MediaClockSync.nextTimerValue(5_000L, 9_000L, 1.0f))
+        assertEquals(1_000L, MediaClockSync.nextTimerValue(5_000L, 1_000L, 1.0f))
+        assertEquals(9_000L, MediaClockSync.nextTimerValue(5_000L, 9_000L, 3.0f))
     }
 
     @Test
@@ -70,7 +88,7 @@ class MediaClockSyncTest {
         // 250ms 的采样跳变应当在一个采样周期内收敛，否则弹幕会持续落后
         var cur = 10_000L
         val target = 10_300L
-        repeat(15) { cur = MediaClockSync.nextTimerValue(cur, target) }
+        repeat(15) { cur = MediaClockSync.nextTimerValue(cur, target, 1.0f) }
         assertEquals(target, cur)
     }
 

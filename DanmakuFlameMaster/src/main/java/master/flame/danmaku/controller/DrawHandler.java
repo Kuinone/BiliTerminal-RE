@@ -231,6 +231,7 @@ public class DrawHandler extends Handler {
                     if (drawTask != null)
                         drawTask.seek(position);
                     pausedPosition = position;
+                    mClockSamplePos = -1; // 位置跳变：丢掉旧采样，下一帧按新位置重新对齐
                 }
             case RESUME:
                 quitFlag = false;
@@ -239,6 +240,7 @@ public class DrawHandler extends Handler {
                     mDrawTimes.clear();
                     mTimeBase = SystemClock.uptimeMillis() - pausedPosition;
                     timer.update(pausedPosition);
+                    mClockSamplePos = -1; // 恢复时同样丢采样：别按"暂停期间流逝的墙钟"外推，否则会前冲再回落
                     removeMessages(RESUME);
                     sendEmptyMessage(UPDATE);
                     drawTask.start();
@@ -536,7 +538,7 @@ public class DrawHandler extends Handler {
         long ideal = playing
                 ? MediaClockSync.project(pos, mClockSampleAt, nowMs, mSpeed)
                 : pos;
-        timer.update(MediaClockSync.nextTimerValue(timer.currMillisecond, ideal));
+        timer.update(MediaClockSync.nextTimerValue(timer.currMillisecond, ideal, mSpeed));
         mRemainingTime = 0;
         if (mCallback != null) {
             mCallback.updateTimer(timer);

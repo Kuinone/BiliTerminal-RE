@@ -74,10 +74,23 @@ class CalculatorEngineTest {
     }
 
     @Test
+    fun `负数结果可以继续算`() {
+        // 结果态会在表达式里留下 `-3`，接着按运算符/再按 = 都不能炸（伪装页显示"错误"就露馅了）
+        assertEquals("-3", CalculatorEngine.evaluate("3-6"))
+        assertEquals("-1", CalculatorEngine.evaluate("-3+2"))
+        assertEquals("-6", CalculatorEngine.evaluate("-3×2"))
+        assertEquals("-6", CalculatorEngine.evaluate("0-3-3"))
+        assertEquals("-3", CalculatorEngine.evaluate("-3"))
+        assertEquals("-1.5", CalculatorEngine.evaluate("-3÷2"))
+    }
+
+    @Test
     fun `无法识别的内容返回错误`() {
         assertEquals(CalculatorEngine.ERROR, CalculatorEngine.evaluate("abc"))
         assertEquals(CalculatorEngine.ERROR, CalculatorEngine.evaluate("1.2.3"))
         assertEquals(CalculatorEngine.ERROR, CalculatorEngine.evaluate("+5"))
+        assertEquals(CalculatorEngine.ERROR, CalculatorEngine.evaluate("-"))
+        assertEquals(CalculatorEngine.ERROR, CalculatorEngine.evaluate("-x"))
     }
 
     @Test

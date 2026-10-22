@@ -2307,7 +2307,6 @@
     <string name="text_setting_disguise_style_bluetooth">蓝牙已断开（长按标题退出）</string>
     <string name="text_setting_disguise_code">退出暗号</string>
     <string name="desc_setting_disguise_code">计算器上输入这 %1$d~%2$d 位数字后按「=」退出伪装。「蓝牙已断开」样式改为长按标题 2 秒退出。忘了暗号只能强杀应用，请记牢。</string>
-    <string name="msg_setting_disguise_code_invalid">暗号只能是 %1$d~%2$d 位数字</string>
     <string name="msg_setting_disguise_hint">双击顶栏可随时切到伪装页，再按暗号或长按标题退出</string>
 </resources>
 

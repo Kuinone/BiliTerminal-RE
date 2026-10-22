@@ -7,6 +7,7 @@
   一眼就露馅。每个键的 `android:tag` 就是它的输入字符，`CalculatorDisguiseActivity` 据此分发。
 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/disguise_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/disguise_calc_background"

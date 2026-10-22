@@ -487,18 +487,11 @@ class SettingGroupActivity : RefreshListActivity() {
             "input_string",
             DisguisePrefs.DEFAULT_CODE
         ) { value ->
-            // 非法输入不落盘：存进去一串敲不出来的字符，用户就永远退不出伪装页
+            // 只在合法时落盘；**不弹 toast**：这个回调是逐键触发的（SettingsAdapter 的 TextWatcher），
+            // 每敲一下弹一次提示会糊满屏幕。非法输入的纠正靠说明文案 + 不回写。
             val normalized = DisguisePrefs.normalizeCode(value)
             if (normalized != null) {
                 SharedPreferencesUtil.putString(SettingsKeys.DISGUISE_CODE, normalized)
-            } else if (value.isNotEmpty()) {
-                MsgUtil.showMsg(
-                    getString(
-                        R.string.msg_setting_disguise_code_invalid,
-                        DisguisePrefs.CODE_MIN_LENGTH,
-                        DisguisePrefs.CODE_MAX_LENGTH
-                    )
-                )
             }
         }
     }

@@ -37,6 +37,7 @@ import com.RobinNotBad.BiliClient.api.ShortVideoFeedApi
 import com.RobinNotBad.BiliClient.model.ShortVideoItem
 import com.RobinNotBad.BiliClient.ui.widget.HighEnergyProgressBar
 import com.RobinNotBad.BiliClient.util.CenterThreadPool
+import com.RobinNotBad.BiliClient.util.DisguiseGesture
 import com.RobinNotBad.BiliClient.util.Logu
 import com.RobinNotBad.BiliClient.util.MsgUtil
 import com.RobinNotBad.BiliClient.util.NetWorkUtil
@@ -404,6 +405,11 @@ class ShortVideoPagerAdapter(
             mainHandler.post {
                 lastBufferingVisible = false
                 bufferingIndicator.visibility = View.GONE
+                // 出错后必须清 isPlaying：它是「保持亮屏」的判据，留着 true 会让窗口长期挂着
+                // KEEP_SCREEN_ON（画面已经不动了却一直不熄屏）
+                isPlaying = false
+                playIcon.visibility = View.VISIBLE
+                buttonVideo.setImageResource(R.drawable.btn_player_play)
             }
             MsgUtil.showMsg(UiText.of("播放错误"))
         })
@@ -437,7 +443,10 @@ class ShortVideoPagerAdapter(
          * setter 里顺带通知宿主重算「保持亮屏」：本页原先**没有任何 keep-screen-on**
          * （长视频页靠 `activity_player.xml` 根布局的 `android:keepScreenOn="true"`，
          * 短视频这套布局没有），看短视频到点就熄屏。
+         *
+         * `@Volatile`：主线程写、弹幕渲染线程（媒体时钟的 isPlaying 回调）读。
          */
+        @Volatile
         private var isPlaying = false
             set(value) {
                 field = value
@@ -580,6 +589,9 @@ class ShortVideoPagerAdapter(
                 }
                 activity.menuClick.run()
             }
+            // 双击顶栏伪装：短视频的顶栏在分页 item 里（不在 Activity 的视图树上），
+            // BaseActivity 那边找不到，必须在这里按 item 装。
+            DisguiseGesture.install(activity, top)
 
             initBottomButtons()
         }

@@ -30,7 +30,7 @@
 | 文件 | 内容 | 维护时机 |
 | --- | --- | --- |
 | [`architecture-map.md`](architecture-map.md) | 架构通读：§6 网络层、§7 改前必查的坑（7.1–7.36）、§8 UI 基建与外观、§9 API 类映射（43 个类）、§10 检查清单 | 改架构 / 基建 / 新增基类时 |
-| [`FEATURES.md`](FEATURES.md) | 用户可见功能总表（19 章） | 新增用户可见功能时 |
+| [`FEATURES.md`](FEATURES.md) | 用户可见功能总表（20 章） | 新增用户可见功能时 |
 | [`bilibili-api-notes.md`](bilibili-api-notes.md) | 接口与风控常识（来源与可信度、速查表、11 条硬约束、值得做/不做） | 核实出新接口结论时 |
 | [`review/fix-progress.md`](review/fix-progress.md) | 活台账：当前状态 + 未完成待办 + 最新快照 + §一~§四十三 索引 | 修完 bug / 关掉待办 / 每轮真机验证后 |
 | [`review/real-device-regression-checklist.md`](review/real-device-regression-checklist.md) | 发版前真机回归清单（248 条，含第十三节视觉面；条目只增不改，失效就地标注作废） | 每个发行版 |

@@ -47,8 +47,25 @@ object CalculatorEngine {
         while (index < text.length) {
             val c = text[index]
             if (isOperator(c)) {
+                if (numbers.isEmpty()) {
+                    // 表达式开头的负号 = 一元负号（结果态 `-3` 接着算时必须支持），
+                    // 其余运算符开头无意义
+                    if (c == OP_SUB) {
+                        index++
+                        val start = index
+                        var dots = 0
+                        while (index < text.length && (text[index].isDigit() || text[index] == '.')) {
+                            if (text[index] == '.') dots++
+                            index++
+                        }
+                        if (index == start || dots > 1) return ERROR
+                        val value = text.substring(start, index).toDoubleOrNull() ?: return ERROR
+                        numbers.add(-value)
+                        continue
+                    }
+                    return ERROR
+                }
                 // 末尾运算符（`12+`）直接忽略；连续运算符（`12++`）取最后一个
-                if (numbers.isEmpty()) return ERROR
                 if (operators.size == numbers.size) operators[operators.size - 1] = normalizeOp(c)
                 else operators.add(normalizeOp(c))
                 index++
@@ -112,7 +129,9 @@ object CalculatorEngine {
         if (value == Math.floor(value) && Math.abs(value) < 1e15) {
             return value.toLong().toString()
         }
-        val text = String.format("%.8f", value).trimEnd('0').trimEnd('.')
+        // 必须指定 Locale：默认 Locale 会把小数点格式化成逗号（如 de-DE 的 0,5），
+        // 那串再被回填进表达式就解析不回来了
+        val text = String.format(java.util.Locale.US, "%.8f", value).trimEnd('0').trimEnd('.')
         return if (text.isEmpty() || text == "-") ERROR else text
     }
 }

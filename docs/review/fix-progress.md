@@ -1267,6 +1267,24 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
 - **模拟器实测（MuMu Android 15 x86_64，coexist debug，用户本人操作）**：双击顶栏 → `WindowManagerShell` 日志确认 `CalculatorDisguiseActivity` 在 display 22 打开；输入暗号按 `=` → `disguise>暗号命中，退出伪装` 并回到原页面；全程 **0 条 `FATAL EXCEPTION` / `AndroidRuntime` 异常**；`BaseActivity>setupTopbarDoubleTapDisguise: 顶栏双击伪装已就绪` 在每个页面正常打印。
 - **手表端待验**：单击顶栏的 0.3 秒延迟在真机手感（尤其列表页"点顶栏返回"）是否可接受；半透明蓝牙提示页在圆屏手表上的布局。
 
+### 3.59 上游审查意见修复（26.10.23）
+
+上游对 PR 提了 1 个 P0 + 7 条 P1/P2。逐条核对后的处理：
+
+- **P0（真回归，§3.56 引入）短视频首播弹幕不显示**：`ShortVideoPlayerActivity` 在 `loadDanmaku()` **之前**调 `danmakuManager?.resume()`，而 `DanmakuManager.resume()` 有 `isPrepared` 守卫，此刻必然 false → 空操作；全页又没有任何 `start()`。DFM 的 UPDATE 循环**只由 START / SEEK_POS / RESUME 三个分支拉起，`prepare()` 本身不会启动**，旧实现是靠周期性 `seekTo` 的副作用（SEEK_POS 落穿到 RESUME）间接启动的。§3.56 删掉周期性 seekTo 时把这个副作用一起删了。
+  - 修法：`DanmakuManager` 新增 `start(positionMs = -1)`，并在 `configureAndPrepare()` 末尾自动调用（起播位置优先取媒体时钟的已知位置，续播/切页别从 0 重走）。等价于长视频页原本在 `onPrepared` 里做的 `mDanmakuView.start()`。
+  - 实测（模拟器）：进入短视频页**不做任何操作**，弹幕区出现「弹幕准备完毕」+ 多条滚动弹幕（修复前只有烧进画面的字幕）。
+- **P1-1 双击顶栏覆盖面与文案不一致**：`PlayerActivity` 不继承 `BaseActivity`（没有手势）；20 个 `asyncInflate` 页面在 `onStart` 时视图还没进来，`findViewById(R.id.top)` 为 null 直接 return（首次进入无效、退出再进才生效）；短视频的顶栏在分页 item 里也装不上。
+  - 修法：手势实现抽成 `util/DisguiseGesture.kt`（`install` / `detach` / `isInstalled`，用 `WeakHashMap` 防重复安装）；`BaseActivity` 拿不到顶栏时 `decorView.post` 重试一次；`PlayerActivity.onStart` 与短视频 `PageHolder` 各接一次线。现在「双击任意页面顶栏」与文案一致。
+- **P1-2 3× 长按媒体时钟追不上**：`MAX_STEP_MS = 40` 在 60fps 下只能追 2400ms/s，3× 需要 3000ms/s；而 `DISCONTINUITY_MS = 1000` 又大于 3× 的相邻采样差 750ms，永不触发硬对齐。
+  - 修法：新增 `stepFor(speed)`（步进上限随倍速放大）与 `SNAP_ERROR_MS = 500`（误差过半秒直接吸附）。`nextTimerValue` 增加 `speed` 参数，补单测 2 例。
+- **P1-3 计算器负数无法续算**：`3-6` 之后表达式里留下 `-3`，再按运算符或 `=` 会因为「首字符是运算符」直接 `ERROR`，伪装页显示「错误」很扎眼。
+  - 修法：`CalculatorEngine` 支持表达式开头的一元负号；补负数用例 6 条（`-3+2` / `-3×2` / `0-3-3` / `-3` / `-3÷2`。
+- **P1-6 文档一致性**：`architecture-map` 的测试清单（§3/§8 两处 76 类 806 例 → 79 类 843 例，补 `MediaClockSyncTest` / `CalculatorEngineTest` / `DisguisePrefsTest` / `SkipCancelPolicyTest`，删已不存在的 `DanmakuSyncTest`）、弹幕时钟旧口径（把「DanmakuSync + 周期性 seekTo」整段换成 §7.51 的现行做法）、`docs/README.md`「19 章」→「20 章」、`FEATURES.md` 重编号后 6 处旧引用、`readme.md` 的分支制度与已不存在的 `testDebugUnitTest`。
+- **P2 顺手修**：短视频 `onError` 未把 `isPlaying` 置 false（画面停住却一直挂着 `KEEP_SCREEN_ON`）；`isPlaying` 补 `@Volatile`（弹幕渲染线程读）；`format` 指定 `Locale.US`（默认 Locale 会把小数点写成逗号，结果再回填就解析不回来）；`DrawHandler` 的 SEEK_POS / RESUME 分支重置媒体时钟采样（避免暂停恢复后计时器前冲再回落）；长视频续播 seek 补 `markSeekTarget`；设置里的暗号不再**逐键**弹 toast（`TextWatcher` 每次击键都会触发）。
+- **未做（需单独决策）**：把 PR 拆成三份、`readme.md` 功能表补伪装条目之外的市场化描述、`excludeFromRecents`/图标（需真机确认最近任务卡片表现）、`setScreenOnWhilePlaying(true)` 对 TextureView 无效但仍保留（SurfaceView 路径可能有意义，改动收益不明确）。
+- **验证**：`:app:assembleCoexistDebug` 通过；`:app:testStandardDebugUnitTest` **79 类 / 843 例 / 0 失败**；模拟器实测 P0 与双击手势；markdownlint 31 文件 0 issue。
+
 ## 4. 历史章节索引
 
 > 完整正文在 `docs/archive/review/fix-progress-history.md`。**编号在历史上有重复**（`## 二十二` / `## 二十九` 各出现两次、`## 30.` 是阿拉伯数字写法，原为不打断既有交叉引用而保持不动），下表**以归档文件的物理行序为准**。
