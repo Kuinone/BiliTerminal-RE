@@ -242,6 +242,21 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
          */
         private const val AUDIO_RESYNC_COOLDOWN_MS = 1_200L
 
+        /**
+         * 弹幕时钟偏差超过这个值就认为"媒体时钟没接上"（体检日志的判据）。
+         *
+         * 正常值只来自「250ms 采样 + 40ms/帧蠕动」，即 ±300ms 量级，所以 500ms 已是异常。
+         */
+        private const val DANMAKU_DRIFT_ALERT_MS = 500L
+
+        /**
+         * 弹幕时钟体检日志的最小间隔（毫秒）。
+         *
+         * 只在偏差超标时打，且限到这个频率：日志要拼字符串 + 写文件，健康状态下不该白烧；
+         * 而不限频时，媒体时钟真没接上会变成每 250ms（一个采样周期）一条。
+         */
+        private const val DANMAKU_DRIFT_LOG_INTERVAL_MS = 5_000L
+
         /** 恢复后位置又前进了这么多毫秒，才算"真的播起来了"，恢复计数清零 */
         private const val STALL_RECOVERED_MS = 5_000
 
@@ -1659,9 +1674,15 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
                     //
                     // 体检：媒体时钟生效时偏差只应来自「250ms 采样 + 40ms/帧蠕动」，即 ±300ms 量级；
                     // 持续超过 500ms 就说明媒体时钟没接上（比如位置一直是负数走了墙钟回退分支）。
+                    //
+                    // 只在**异常**时打，且每 [DANMAKU_DRIFT_LOG_INTERVAL_MS] 最多一条：
+                    // 健康状态下每条日志都要拼字符串、写文件，纯属白烧；而"一超标就立刻打"
+                    // 在媒体时钟真没接上时会变成每 250ms 一条（一个采样周期一条），比不打更糟。
                     if (hasDanmaku && mDanmakuView != null) {
                         val drift = video_now - mDanmakuView!!.currentTime
-                        if (Math.abs(drift) > 500 || nowElapsed - danmakuDriftLogMs >= 3000) {
+                        if (Math.abs(drift) > DANMAKU_DRIFT_ALERT_MS &&
+                            nowElapsed - danmakuDriftLogMs >= DANMAKU_DRIFT_LOG_INTERVAL_MS
+                        ) {
                             danmakuDriftLogMs = nowElapsed
                             Logu.d("弹幕时钟", "视频=$video_now 弹幕=${mDanmakuView!!.currentTime} 偏差=$drift")
                         }

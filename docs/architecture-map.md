@@ -1271,7 +1271,7 @@ CenterThreadPool.supplyAsyncWithLiveData { fetch...().getOrThrow() }
   - `MediaClock` 的方法跑在 **DFM 渲染线程**，只能读主线程采样好的 `@Volatile` 内存值（`PlayerActivity.video_now` / `ShortVideoPlayerActivity.videoNow`）。**绝不能**在里调 `IjkMediaPlayer.currentPosition`——取 native 锁，与主线程 seek/release 并发有卡死风险，也是 26.09.10 那版「渲染线程读位置导致弹幕全没」的老坑（`DanmakuManager.updateTimer` 的长注释记着全过程）。
   - 用户拖动/快进后必须更新 `video_now`（走 `seekToVideo()` / `markSeekTarget()`），否则媒体时钟会继续按旧位置推进。
 - **不需要额外放大单条弹幕的滚动速度**：`DanmakuFactory` 的 `scrollSpeedFactor` 以媒体时间为单位，倍速下时钟走 2x，弹幕自然也是 2x 划过并保持与画面同步。
-- **体检日志**：`PlayerActivity.progressChange` 每 3 秒（或偏差超 500ms 时立刻）打一条 `弹幕时钟>视频=… 弹幕=… 偏差=…`。健康值来自「250ms 采样 + 40ms/帧蠕动」，即 **±300ms 以内**且不随时间增长；持续超 500ms 说明媒体时钟没接上（走了墙钟回退分支）。
+- **体检日志**：`PlayerActivity.progressChange` 里只在**偏差超 500ms**（`DANMAKU_DRIFT_ALERT_MS`）时打一条 `弹幕时钟>视频=… 弹幕=… 偏差=…`，且间隔不小于 **5 秒**（`DANMAKU_DRIFT_LOG_INTERVAL_MS`）。健康值来自「250ms 采样 + 40ms/帧蠕动」，即 **±300ms 以内**且不随时间增长；持续超 500ms 说明媒体时钟没接上（走了墙钟回退分支）。**别改回「每 N 秒无条件打一条」或「一超标就立刻打」**：前者健康状态下白烧磁盘，后者在媒体时钟真坏掉时会变成每 250ms（一个采样周期）一条。
 
 ### 7.52 播放页必须自己保持亮屏，且用窗口标志而不是 View 级 `keepScreenOn`（26.10.22）
 
