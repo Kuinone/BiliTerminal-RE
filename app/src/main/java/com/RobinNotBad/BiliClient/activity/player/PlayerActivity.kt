@@ -21,6 +21,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.util.DisplayMetrics
+import android.util.TypedValue
 import android.view.GestureDetector
 import android.view.Gravity
 import android.view.KeyEvent
@@ -75,6 +76,7 @@ import com.RobinNotBad.BiliClient.ui.widget.BatteryView
 import com.RobinNotBad.BiliClient.ui.widget.HighEnergyProgressBar
 import com.RobinNotBad.BiliClient.ui.widget.recycler.CustomLinearManager
 import com.RobinNotBad.BiliClient.util.CenterThreadPool
+import com.RobinNotBad.BiliClient.util.LocalVideoProgress
 import com.RobinNotBad.BiliClient.util.Logu
 import com.RobinNotBad.BiliClient.util.MsgUtil
 import com.RobinNotBad.BiliClient.util.NetWorkUtil
@@ -83,6 +85,7 @@ import com.RobinNotBad.BiliClient.util.SettingsKeys
 import com.RobinNotBad.BiliClient.util.SharedPreferencesUtil
 import com.RobinNotBad.BiliClient.util.StringUtil
 import com.RobinNotBad.BiliClient.util.ToolsUtil
+import com.RobinNotBad.BiliClient.util.VideoMetaManager
 import com.RobinNotBad.BiliClient.util.view.EditorEnterKeyGuard
 import com.google.android.material.snackbar.Snackbar
 import master.flame.danmaku.controller.IDanmakuView
@@ -242,6 +245,14 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
 
         /** 恢复后位置又前进了这么多毫秒，才算"真的播起来了"，恢复计数清零 */
         private const val STALL_RECOVERED_MS = 5_000
+
+        /**
+         * 本地视频续播位置的周期落盘间隔（毫秒）。
+         *
+         * 只靠退出钩子会丢位置：被系统直接杀进程时 onPause/onStop 里写的已经是最后一次，
+         * 之后播放的那一截就没了。15 秒与投稿视频的在线心跳同频，最大丢失量可接受。
+         */
+        private const val LOCAL_PROGRESS_SAVE_INTERVAL_MS = 15_000L
     }
 
     @Volatile // 被 PlaybackService 定时线程读（serviceDurationMs）
@@ -265,6 +276,19 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
      * 重建后必须回到原位，且不该再提示"已从上次的位置播放"。
      */
     private var restoredFromSaveState: Boolean = false
+
+    /**
+     * 本地/缓存视频所在的目录（`.video_meta.json` 就在其中）；在线视频（含直播）为 null。
+     *
+     * 单文件、DASH（video.mp4 + audio.m4a）、多P 的某个分P、虚拟合集里的某个条目，
+     * 传进来的 `video_url` 都指向各自的目录，所以这里靠 url 反推目录，入口侧一行都不用改。
+     * 播放器内切P 时由 [doSwitchPage] 重新计算。
+     */
+    private var localMediaDir: File? = null
+    /** 上次落盘的本地续播位置（毫秒）；-1 表示本次会话还没写过，用于跨路径去重。 */
+    private var lastSavedLocalProgressMs: Long = -1L
+    /** 上次落盘的墙钟时刻，用于周期落盘的 15 秒节流。 */
+    private var lastLocalProgressSaveAt: Long = 0L
 
     private var screen_width: Int = 0
     private var screen_height: Int = 0
@@ -548,6 +572,20 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
         isOnlineVideo = video_url!!.contains("http")
         hasDanmaku = danmaku_url.isNotEmpty()
 
+        // 本地/缓存视频没有服务端历史可读，续播位置就存在视频目录的 `.video_meta.json` 里
+        // （见 util/VideoMetaManager.readResumeMs）。Intent 里没带 progress 时用它补上，
+        // 后面的续播逻辑（onPrepared 里那段）与在线视频完全共用。
+        if (!isOnlineVideo) {
+            localMediaDir = File(video_url!!).absoluteFile.parentFile
+            if (progress_history <= 0) {
+                val savedMs = localMediaDir?.let { VideoMetaManager.readResumeMs(it) } ?: 0L
+                if (savedMs > 0) {
+                    progress_history = savedMs
+                    Logu.d("本地续播", savedMs.toString())
+                }
+            }
+        }
+
         if (intent.hasExtra("pagenames")) {
             pagenames = intent.getStringArrayListExtra("pagenames")
             if (intent.hasExtra("cids")) {
@@ -589,13 +627,18 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
         val theme = SharedPreferencesUtil.getString(ColorScheme.PREF_KEY_THEME, ColorScheme.THEME_DEFAULT)
         // 主题映射统一在 ColorScheme.themeResId（此前这里复制了一份与 BaseActivity 相同的 when）
         //
-        // 「左右滑动控制进度」开启时必须同时关掉系统右滑返回（windowSwipeToDismiss）：
-        // 手表自带的右滑返回是在窗口层直接 finish 的，不走 onBackPressed，只靠 onBackPressed 拦不住，
-        // 会把手势抢走、表现为「滑动调进度变成退出播放器」（issue #1）。
-        // 「禁用返回键」开关同理（那正是它对手表右滑返回失效的原因）。
+        // 播放页**无条件**关掉系统窗口层的右滑返回（android:windowSwipeToDismiss）：
+        // 手表自带的右滑返回在窗口层直接 finish()，不走 onBackPressed，应用根本收不到，
+        // 表现为「看视频时手指一划就退出播放器」，且会顺手把「左右滑动控制进度」的手势抢走（issue #1）。
+        // 此前只在「左右滑动控制进度」或全局「禁用返回键」开启时才换 noSwipe 主题，
+        // 于是两个开关都关着时右滑返回照常生效——26.10.22 起改为无条件。
+        //
+        // 这里只换窗口属性（*.NoSwipe.AppCompat 相对主主题只多 windowSwipeToDismiss=false，
+        // 配色/圆角/字体完全一致），**不碰任何触摸分发**：滑动调进度、双击、长按倍速、
+        // 捏合缩放与拖动画面仍由本类自己的手势逻辑处理，语义不变。
+        // 退出播放页仍有顶栏返回按钮与返回键（onBackPressed），右滑只是不再生效。
         swipeSeekEnabled = SharedPreferencesUtil.getBoolean(SettingsKeys.PLAYER_SWIPE_SEEK, false)
-        val noSwipe = swipeSeekEnabled || SharedPreferencesUtil.getBoolean(SettingsKeys.BACK_DISABLE, false)
-        setTheme(ColorScheme.themeResId(theme, noSwipe))
+        setTheme(ColorScheme.themeResId(theme, noSwipe = true))
         super.onCreate(savedInstanceState)
 
         // 「播放默认值 → 屏幕方向」：横屏/竖屏立即生效；「按视频分辨率选择」要先拿到视频宽高
@@ -808,6 +851,9 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
         text_audio_subtitle = findViewById(R.id.audio_subtitle)
 
         btn_video_info = findViewById(R.id.video_info_btn)
+
+        // 字幕字号来自设置页，这里先按存档刷一次；之后每次 onResume 再刷（改完设置返回即生效）
+        applySubtitleTextSize()
     }
 
     @SuppressLint("ClickableViewAccessibility")
@@ -1355,6 +1401,9 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
             // 看完立刻上报 -1（"已看完"）：退出路径补报的是当前位置，服务端只会记成
             // "看到最后几秒"，续播就停在本集末尾而不是接着看下一集。番剧（epid）才有这个语义
             if (epid != 0L) reportProgressNow(true, "看完上报")
+            // 本地视频没有服务端，直接落盘"看完"：下次进来从头播（loop/自动连播不受影响，
+            // 重新播起来后周期落盘会再把真实位置写回去）
+            if (!isOnlineVideo) saveLocalProgressNow("看完清零")
 
             if (interactionData != null && interactionData!!.edges != null &&
                 interactionData!!.edges!!.questions != null && !questionShown) {
@@ -1369,6 +1418,9 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
             }
 
             if (loop_enabled) {
+                // 单曲循环＝又从头播起来了，不再是"看完了"：不清这个标志的话，
+                // 本地视频的周期落盘会一直按"看完"写 0，第二轮看了半天也续不上
+                finishWatching = false
                 ijkPlayer!!.seekTo(0)
                 if (hasDanmaku && mDanmakuView != null) mDanmakuView!!.seekTo(0L)
                 ijkPlayer!!.start()
@@ -1654,6 +1706,8 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
                         // 复用这个已有的 250ms 主线程定时器做周期上报，不再另起 Timer/Handler：
                         // 位置没变化时进不来（暂停/缓冲/播完都停在上一个位置），天然不会空转上报
                         maybeReportProgress()
+                        // 本地视频没有服务端心跳，靠这条周期落盘（15 秒节流）防止被系统杀进程后丢位置
+                        maybeSaveLocalProgress()
                     }
                 }
                 // 停滞判定放在 if 之外：暂停/seek/未准备好时也需要复位计数器
@@ -1767,6 +1821,51 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
         lastReportedProgressMs = video_now.toLong()
         lastReportedProgressSec = progressSec
         sendProgressReport(progressSec, UiText.of("周期上报"))
+    }
+
+    /**
+     * 周期落盘本地续播位置。
+     *
+     * 由 [progressChange] 的 250ms 定时器驱动，按墙钟 15 秒节流（不按位置差值：暂停时位置不动，
+     * 但"最后停在哪"本身就是要保住的信息）。写完的结果会被 [lastSavedLocalProgressMs] 记住，
+     * 退出钩子再走到同一个位置时不会重复写盘。
+     */
+    private fun maybeSaveLocalProgress() {
+        if (isOnlineVideo || isLiveMode || destroyed || !isPrepared) return
+        val now = System.currentTimeMillis()
+        if (now - lastLocalProgressSaveAt < LOCAL_PROGRESS_SAVE_INTERVAL_MS) return
+        lastLocalProgressSaveAt = now
+        saveLocalProgressNow("周期落盘")
+    }
+
+    /**
+     * 把本地视频当前播放位置写进它所在目录的 `.video_meta.json`。
+     *
+     * 本地视频没有服务端历史可上报（[maybeReportProgress] 的第一行就把它们挡掉了），
+     * 所以续播位置只能自己存。由退出路径（onPause / onStop / onDestroy / finish）、
+     * [onCompletion][IjkMediaPlayer.setOnCompletionListener] 与 [maybeSaveLocalProgress] 调用。
+     *
+     * 刻意在主线程同步写：文件不到 1KB，而如果改成后台线程，"退出时的补写"可能被
+     * 已在队列里的周期写反过来覆盖，最后存下的是更早的位置。跨线程的并发保护由
+     * [VideoMetaManager.saveProgress] 的 `@Synchronized` 负责。
+     *
+     * @param reason 只用于日志，便于区分是哪条路径写的
+     */
+    private fun saveLocalProgressNow(reason: String) {
+        if (isOnlineVideo || isLiveMode) return
+        // 还没 prepare 完就退出时 video_now 还是 0，写下去会把已有的续播位置清掉
+        if (destroyed || !isPrepared) return
+        val dir = localMediaDir ?: return
+        // 同理：刚进页面还没播就退出（位置 0）不该覆盖上次看到的位置
+        if (!finishWatching && video_now <= 0) return
+        val durationMs = video_all.toLong()
+        // 播完 = 下次从头。durationMs 未知时 positionMs 取 0，progressToSave 同样返回 0
+        val positionMs = if (finishWatching) durationMs else video_now.toLong()
+        val target = LocalVideoProgress.progressToSave(positionMs, durationMs)
+        if (lastSavedLocalProgressMs >= 0 && target == lastSavedLocalProgressMs) return
+        lastSavedLocalProgressMs = target
+        VideoMetaManager.saveProgress(dir, positionMs, durationMs)
+        Logu.d("本地进度", "$reason → ${target}ms（总长 ${durationMs}ms）")
     }
 
     /**
@@ -1945,6 +2044,23 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
             subtitle_shown_index = -1
             text_subtitle.visibility = View.GONE
         }
+    }
+
+    /**
+     * 按设置刷新字幕字号。
+     *
+     * 钳制放在读取侧：设置页的 `input_int` 只校验「能解析成整数」，0、负数、999 都会原样落盘，
+     * 直接交给 `setTextSize` 会让字幕消失或把布局撑爆。未设置时读 [SettingsKeys.PLAYER_SUBTITLE_SIZE_DEFAULT]，
+     * 与 `activity_player.xml` 里的 11sp 一致。
+     */
+    private fun applySubtitleTextSize() {
+        val size = PlayerDefaults.clampSubtitleSize(
+            SharedPreferencesUtil.getInt(
+                SettingsKeys.PLAYER_SUBTITLE_SIZE,
+                SettingsKeys.PLAYER_SUBTITLE_SIZE_DEFAULT
+            )
+        )
+        text_subtitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, size.toFloat())
     }
 
     /**
@@ -2393,6 +2509,8 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
         Logu.v("onPause")
         // 退到后台/被别的页面盖住时补报一次：正常退出走 finish() 已经报过同一秒，这里会被去重拦掉
         reportProgressNow(false, UiText.of("切后台"))
+        // 本地视频的续播位置只存在磁盘上，切后台是"可能回不来"的第一个时点，先落一次
+        saveLocalProgressNow("切后台")
         if (!SharedPreferencesUtil.getBoolean("player_background", false)) {
             playerPause()
         } else if (!isFinishing && isPrepared && !finishWatching && isPlaying) {
@@ -2410,6 +2528,9 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
         Logu.v("onResume")
         // 回到前台后通知栏遥控没有存在意义，服务持有的弱引用也不再需要
         PlaybackService.stop(this)
+        // 设置页里改完「字幕字号大小」返回播放页立即生效。
+        // findview() 在异步 inflate 回调里才跑，onResume 可能先到，必须判初始化。
+        if (::text_subtitle.isInitialized) applySubtitleTextSize()
     }
 
     override fun onStop() {
@@ -2417,6 +2538,7 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
         Logu.v("onStop")
         // onPause 之后位置不会再走，这里基本都会被去重拦掉；留一路是防 onPause 那条路径没走成
         reportProgressNow(false, "onStop")
+        saveLocalProgressNow("onStop")
     }
 
     override fun onDestroy() {
@@ -2436,6 +2558,7 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
         // 销毁前的兜底上报：必须在 destroyed = true 与 release 播放器之前做，
         // 且只依赖内存里的 video_now（不碰 ijkPlayer 的 JNI 调用）。正常退出时会被去重拦掉。
         reportProgressNow(true, UiText.of("销毁兜底"))
+        saveLocalProgressNow("销毁兜底")
         destroyed = true
         // 锁定按钮自动隐去的延时任务要撤掉，别在 Activity 销毁后再去动 View
         mainHandler?.removeCallbacks(hideLockIcon)
@@ -3658,6 +3781,10 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
 
         video_url = newVideoUrl
         danmaku_url = newDanmakuUrl
+        // 切P 后本地视频的目录与落盘去重都要跟着换：每个分P 各有自己的 `.video_meta.json`，
+        // 沿用上一P 的目录会把这一P 的位置写进别人的文件
+        localMediaDir = if (newVideoUrl.contains("http")) null else File(newVideoUrl).absoluteFile.parentFile
+        lastSavedLocalProgressMs = -1L
         text_title!!.text = newTitle
         videoTitle = newTitle
 
@@ -4525,6 +4652,8 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
         // 退出前把最后进度报一次。返回 true 说明请求确实发出去了，就用 progressReported 标记告诉
         // 调用页（JumpToPlayerActivity）别再报一遍——否则同一进度会被写两次
         val progressReported = reportProgressNow(true, UiText.of("退出前"))
+        // 本地视频没有服务端历史：在这里落一次盘，等价于在线视频的"退出前上报"
+        saveLocalProgressNow("退出前")
         if (ijkPlayer != null) {
             val result = Intent()
             result.putExtra("progress", ijkPlayer!!.currentPosition.toInt())

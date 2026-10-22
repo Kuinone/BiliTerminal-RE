@@ -761,9 +761,10 @@ class VideoInfoFragment : BaseFragment() {
 
     private fun downloadClick() {
         // 判据是「目标目录真的能不能写」，不是「有没有 MANAGE_EXTERNAL_STORAGE」：
-        // 默认下载目录是应用专属的 Android/media/<包名>/，Android 10+ 无需任何权限；
-        // 而手表 ROM 往往没有「所有文件访问」设置页（issue #42），按授权判会把下载永久挡死。
-        if (!FileUtil.ensureDirectoryWritable(requireActivity(), FileUtil.getVideoDownloadPath())) return
+        // 默认下载目录按 API 分档、都免权限；写不进去时 resolve 会降级到应用专属目录，
+        // 只有连降级目录都写不了（存储满/只读）才返回 null 挡下这次下载。
+        // 手表 ROM 往往没有「所有文件访问」设置页（issue #42），按授权判会把下载永久挡死。
+        if (FileUtil.resolveVideoDownloadDir(requireActivity()) == null) return
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             requireContext().checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
             != android.content.pm.PackageManager.PERMISSION_GRANTED) {

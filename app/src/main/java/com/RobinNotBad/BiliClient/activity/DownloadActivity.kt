@@ -80,14 +80,14 @@ class DownloadActivity : BaseActivity() {
 
         scrHeight = window_height
 
-        // 申请权限前先试写**真正的目标目录**：默认视频目录是应用专属的 Android/media/<包名>/，
-        // Android 10+ 无需权限；只有下载图片到公共 Pictures/（type 0，path 由调用方传入）、
-        // 或用户把保存路径改到公共目录时才真的写到需要权限的地方（见 FileUtil.canWriteDirectory）
-        val permissionTarget =
-            if (type == 0) File(intent.getStringExtra("path") ?: "") else FileUtil.getVideoDownloadPath()
-        if (!FileUtil.ensureDirectoryWritable(this, permissionTarget)) {
-            // false 说明目标目录眼下写不进去：ensureDirectoryWritable 已经拉起授权页或弹过提示，
-            // 这里必须停下（以前丢弃返回值，会带着不可写的目录一路下到失败才报错，用户还可能以为在下）
+        // 判据是「真正的目标目录眼下能不能写」：默认视频目录按 API 分档、都免权限；
+        // 用户把路径改到公共目录、或图片要写公共 Pictures/ 时，写不进去会自动降级到
+        // 应用专属目录（手表 ROM 没有「所有文件访问」设置页，跳授权是死路，issue #42），
+        // 只有连降级目录都写不了（存储满/只读）才返回 null 并结束页面。
+        val targetRoot: File? =
+            if (type == 0) FileUtil.resolvePictureDownloadDir(this, File(intent.getStringExtra("path") ?: ""))
+            else FileUtil.resolveVideoDownloadDir(this)
+        if (targetRoot == null) {
             finish()
             return
         }
@@ -95,14 +95,14 @@ class DownloadActivity : BaseActivity() {
         timer.schedule(showText, 100, 100)
         CenterThreadPool.run {
             if (type == 0) {
-                rootPath = File(intent.getStringExtra("path")!!)
+                rootPath = targetRoot
                 if (!rootPath!!.exists()) rootPath!!.mkdirs()
                 downFile = File(rootPath, FileUtil.getFileNameFromLink(link!!))
                 download(link!!, downFile!!, getString(R.string.text_downloading_file), true)
             } else {
                 val title = FileUtil.stringToFile(intent.getStringExtra("title")!!)
 
-                rootPath = FileUtil.getVideoDownloadPath()
+                rootPath = targetRoot
 
                 if (type == 1) {
                     downPath = File(rootPath, title)
@@ -229,11 +229,19 @@ class DownloadActivity : BaseActivity() {
             // 这里是裸 File 写公共 Pictures/ 目录，Android 10+ 不会自动索引，而相册/图库和
             // 文件管理器的「图片」分类都只查 MediaStore —— 不登记就是「下载完成」却哪儿都找不到
             // （26.10.21 在手表模拟器上复现并确证，细节见 util/PictureMediaStore.kt 的注释）。
-            PictureMediaStore.scan(this, downloadedFile)
+            // 降级目录是应用专属的，不在系统相册扫描范围内，登记媒体库没有意义，提示也要换：
+            // 那种目录相册看不到，得用文件管理器。
+            val fallback = FileUtil.isPictureFallbackActive()
+            if (!fallback) PictureMediaStore.scan(this, downloadedFile)
+            val shownPath = if (fallback) downloadedFile.parent ?: downloadedFile.absolutePath
+            else PictureMediaStore.displayFolder(downloadedFile)
             // 提示里带上实际保存目录：以前只有一句「下载完成」，用户即使知道去相册翻，
             // 也不知道文件落在哪个文件夹
             runOnUiThread {
-                MsgUtil.showMsg(getString(R.string.msg_picture_saved, PictureMediaStore.displayFolder(downloadedFile)))
+                MsgUtil.showMsg(getString(
+                    if (fallback) R.string.msg_picture_saved_fallback else R.string.msg_picture_saved,
+                    shownPath
+                ))
             }
         } else {
             runOnUiThread { MsgUtil.showMsg(getString(R.string.text_update_download_complete)) }

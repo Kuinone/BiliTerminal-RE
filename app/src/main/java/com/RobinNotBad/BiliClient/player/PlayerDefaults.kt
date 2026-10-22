@@ -55,6 +55,21 @@ object PlayerDefaults {
         else -> false
     }
 
+    /** 字幕字号允许的最小值（sp），与设置页说明文案保持一致。 */
+    const val SUBTITLE_SIZE_MIN = 6
+
+    /** 字幕字号允许的最大值（sp），与设置页说明文案保持一致。 */
+    const val SUBTITLE_SIZE_MAX = 40
+
+    /**
+     * 把字幕字号钳到 [SUBTITLE_SIZE_MIN]..[SUBTITLE_SIZE_MAX]。
+     *
+     * 设置页的 `input_int` 只校验「能解析成整数」，0、负数、999 都会原样落盘
+     * （旧版本存档也可能被人手动改脏），所以钳制必须放在读取侧：
+     * 直接把越界值交给 `setTextSize` 轻则字幕消失，重则布局被撑爆。
+     */
+    fun clampSubtitleSize(size: Int): Int = size.coerceIn(SUBTITLE_SIZE_MIN, SUBTITLE_SIZE_MAX)
+
     /**
      * 语言标签是否为中文。
      *

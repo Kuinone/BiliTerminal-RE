@@ -29,6 +29,11 @@ object VideoQuickCache {
      * 其余值按整数清晰度直接缓存。
      */
     fun handle(context: Context, videoCard: VideoCard) {
+        // 列表长按快速缓存不经过任何 Activity，以前只判「已缓存」不判目录可写，目录写不进去时
+        // 下载只会在后台失败。这里先解析出真正可写的根目录（必要时降级到应用专属目录并提示），
+        // 结果留在进程级标记里，随后 DownloadService 落盘时看到的是同一个根目录。
+        // 返回 null 说明连应用专属目录都写不了（存储满/只读），resolve 已经弹过提示。
+        if (FileUtil.resolveVideoDownloadDir(context) == null) return
         // 番剧/影视卡片走的是"快速缓存视频"这条投稿链路，但它的 aid 字段装的是 media_id（季ID），
         // 拿去做 VideoInfoApi.getVideoInfo 必然失败。这里统一拦住，避免三个适配器各自漏判。
         if (videoCard.type == "media_bangumi") {

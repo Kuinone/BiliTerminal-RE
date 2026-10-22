@@ -133,11 +133,14 @@ internal object DownloadRepository {
     }
 
     /**
-     * 保存视频元数据到缓存文件夹
+     * 保存视频元数据到缓存文件夹。
+     *
+     * 必须"先读旧 meta 再合并"，不能 new 一份整份覆盖：`.video_meta.json` 里还存着
+     * 本地续播位置（progressMs/durationMs）与画质列表，重下载/换清晰度时整份覆盖会把这些冲掉。
      */
     fun saveVideoMeta(folder: File, title: String, aid: Long, cid: Long, qn: Int, downloadType: String) {
         try {
-            val meta = VideoMeta()
+            val meta = VideoMetaManager.readMeta(folder)
             meta.title = title
             meta.aid = aid
             meta.cid = cid

@@ -66,6 +66,9 @@ class LocalListActivity : InstanceActivity() {
 
     private var started: Boolean = false
 
+    /** 进页面时用的目录是否处于降级状态；onResume 据此判断「用户刚授完权回来，要换回正式目录」。 */
+    private var fallbackAtLoad: Boolean = false
+
     @SuppressLint("MissingInflatedId")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -86,19 +89,32 @@ class LocalListActivity : InstanceActivity() {
             }
         }
 
-        // 默认缓存目录是应用专属的 Android/media/<包名>/，Android 10+ 写这里无需权限，
-        // 所以先试写、写不进去才要权限（手表 ROM 没有该设置页，见 FileUtil.canWriteDirectory）。
-        // 这里只是"顺手要一下权限"，不因失败中断列表加载：列表本身只读磁盘，真正写入的
-        // 代码路径（下载/更新弹幕/删除）各自会判返回值或自己报错。
-        if (!FileUtil.ensureDirectoryWritable(this, FileUtil.getVideoDownloadPath())) {
+        // 判据是「真正写入时目录能不能写」，不是「有没有 MANAGE_EXTERNAL_STORAGE」：
+        // 默认目录按 API 分档（高版本 Android/media/<包名>/、低版本 getExternalFilesDir），都免权限；
+        // 用户把路径改到公共目录后写不进去时自动降级到应用专属目录，不再跳系统设置页
+        //（手表 ROM 没有「所有文件访问」设置页，跳过去只会把下载挡死，issue #42）。
+        if (FileUtil.resolveVideoDownloadDir(this) == null) {
             MsgUtil.showMsg(UiText.of("存储目录当前不可写，下载会失败"))
         }
+        fallbackAtLoad = FileUtil.isVideoFallbackActive()
 
         CenterThreadPool.run {
             runOnUiThread { swipeRefreshLayout.setRefreshing(true) }
             loadData()
             setupAdapter()
             started = true
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (!started) return
+        // 用户可能刚从系统设置里授权回来：重新判一次可写性，降级状态变了就重扫（根目录换了）。
+        FileUtil.resolveVideoDownloadDir(this)
+        val fallback = FileUtil.isVideoFallbackActive()
+        if (fallback != fallbackAtLoad) {
+            fallbackAtLoad = fallback
+            refresh()
         }
     }
 

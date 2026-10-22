@@ -52,10 +52,50 @@ object VideoMetaManager {
      * 保存视频元数据
      */
     @JvmStatic
+    @Synchronized
     fun saveMeta(videoFolder: File, meta: VideoMeta) {
         try {
             val metaFile = getMetaFile(videoFolder)
             metaFile.writeText(meta.toJson().toString())
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    /**
+     * 读取本地视频的续播位置（毫秒，已按 [LocalVideoProgress] 归一化）。0 表示从头播。
+     *
+     * 本地视频没有服务端历史可读，进度就存在每视频目录的 `.video_meta.json` 里，
+     * 所以文件夹重命名/移动时进度会跟着走（见 `FolderManager`）。
+     */
+    @JvmStatic
+    fun readResumeMs(videoFolder: File): Long {
+        return try {
+            val meta = readMeta(videoFolder)
+            LocalVideoProgress.resumeTargetMs(meta.progressMs, meta.durationMs)
+        } catch (e: Exception) {
+            0L
+        }
+    }
+
+    /**
+     * 落盘本地视频的播放位置。
+     *
+     * 与 [saveMeta] 一样是整份重写，但**必须先读旧 meta 再合并**：直接 new 一份会把
+     * 画质列表、folderName、aid/cid 全冲掉。进度写 0 表示"从头/已看完"，
+     * 同时把 durationMs 归零（没有可续播位置时留一个旧时长只会误导下次的判断）。
+     */
+    @JvmStatic
+    @Synchronized
+    fun saveProgress(videoFolder: File, positionMs: Long, durationMs: Long) {
+        try {
+            val target = LocalVideoProgress.progressToSave(positionMs, durationMs)
+            val meta = readMeta(videoFolder)
+            // 位置与时长都没变就不重复写盘（周期落盘会一直调到这里）
+            if (meta.progressMs == target && (target == 0L || meta.durationMs == durationMs)) return
+            meta.progressMs = target
+            meta.durationMs = if (target > 0L) durationMs else 0L
+            saveMeta(videoFolder, meta)
         } catch (e: Exception) {
             e.printStackTrace()
         }

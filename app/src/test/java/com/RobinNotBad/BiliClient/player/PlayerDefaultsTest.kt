@@ -80,6 +80,24 @@ class PlayerDefaultsTest {
         assertFalse(PlayerDefaults.resolveLandscape(auto, 1920, 0))
     }
 
+    // ==================== 字幕字号 ====================
+
+    @Test
+    fun subtitleSize_inRange_keptAsIs() {
+        assertEquals(PlayerDefaults.SUBTITLE_SIZE_MIN, PlayerDefaults.clampSubtitleSize(PlayerDefaults.SUBTITLE_SIZE_MIN))
+        assertEquals(11, PlayerDefaults.clampSubtitleSize(11))
+        assertEquals(PlayerDefaults.SUBTITLE_SIZE_MAX, PlayerDefaults.clampSubtitleSize(PlayerDefaults.SUBTITLE_SIZE_MAX))
+    }
+
+    @Test
+    fun subtitleSize_outOfRange_clamped() {
+        // 0 会让字幕直接看不见，负数/超大值会让布局被撑爆，读取侧必须钳死。
+        assertEquals(PlayerDefaults.SUBTITLE_SIZE_MIN, PlayerDefaults.clampSubtitleSize(0))
+        assertEquals(PlayerDefaults.SUBTITLE_SIZE_MIN, PlayerDefaults.clampSubtitleSize(-5))
+        assertEquals(PlayerDefaults.SUBTITLE_SIZE_MAX, PlayerDefaults.clampSubtitleSize(999))
+        assertEquals(PlayerDefaults.SUBTITLE_SIZE_MAX, PlayerDefaults.clampSubtitleSize(Int.MAX_VALUE))
+    }
+
     // ==================== 中文识别 ====================
 
     @Test

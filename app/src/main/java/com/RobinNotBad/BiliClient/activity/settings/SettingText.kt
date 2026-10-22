@@ -382,6 +382,7 @@ object SettingText {
         "自动连播" to R.string.settingtext_settingsindex_053,
         "自行选择" to R.string.settingtext_settingterminalplayeractivity_013,
         "字幕" to R.string.settingtext_settingsindex_055,
+        "字幕字号大小" to R.string.settingtext_settingsindex_081,
         "字幕校准" to R.string.settingtext_settingsindex_075,
         "最大同时下载数" to R.string.settingtext_settingsindex_023,
         "最近更新的UP主" to R.string.settingtext_settingprefactivity_011,

@@ -162,6 +162,8 @@ class SettingTerminalPlayerActivity : RefreshListActivity() {
 
             add(SettingSection("input_float", "字幕校准", SettingsKeys.PLAYER_SUBTITLE_DELTA,
                 "将字幕提前/退后一段时间，从而与视频对齐", "0.3"))
+            add(SettingSection("input_int", "字幕字号大小", SettingsKeys.PLAYER_SUBTITLE_SIZE,
+                getString(R.string.desc_player_subtitle_size), SettingsKeys.PLAYER_SUBTITLE_SIZE_DEFAULT.toString()))
 
             add(SettingSection("divider", "", "", "", ""))
 

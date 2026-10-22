@@ -468,8 +468,17 @@ class SettingGroupActivity : RefreshListActivity() {
         switch("强制高分辨率选项", getString(R.string.desc_force_high_quality), SettingsKeys.FORCE_HIGH_QUALITY, true)
 
         title("存储路径")
-        input("缓存路径", getString(R.string.setting_lab_path_video), SettingsKeys.SAVE_PATH_VIDEO, "input_string", FileUtil.getVideoDownloadPath().toString())
+        // 这里显示「用户配置/按 API 分档的默认目录」，不是运行时降级目录：降级时设置页
+        // 不该预填一个临时的应用专属路径，否则用户会以为自己配置的路径被覆盖了。
+        input("缓存路径", getString(R.string.setting_lab_path_video), SettingsKeys.SAVE_PATH_VIDEO, "input_string", FileUtil.getConfiguredVideoDownloadPath().toString())
         input("图片下载路径", getString(R.string.setting_lab_path_pictures), SettingsKeys.SAVE_PATH_PICTURES, "input_string", FileUtil.getPicturePath().toString())
+        // 公共目录在 Android 11+ 需要「所有文件访问」权限；手机一般能直达授权页，
+        // 手表 ROM 往往没有该页面（issue #42），打不开时会提示，而下载链路已能自动降级。
+        nav(
+            R.drawable.icon_folder,
+            getString(R.string.setting_btn_storage_permission),
+            getString(R.string.setting_desc_storage_permission)
+        ) { FileUtil.requestStoragePermission(this) }
     }
 
     private fun buildLabGroup() {

@@ -147,6 +147,15 @@ object SettingsKeys {
     const val PLAYER_SUBTITLE_AUTOSHOW = "player_subtitle_autoshow"
     const val PLAYER_SUBTITLE_AI_ALLOWED = "player_subtitle_ai_allowed"
     const val PLAYER_SUBTITLE_DELTA = "player_subtitle_delta"
+    const val PLAYER_SUBTITLE_SIZE = "player_subtitle_size"
+    /**
+     * 「字幕字号大小」的默认值（sp）。
+     *
+     * 与 `res/layout/activity_player.xml` 的 `android:textSize="11sp"` 是同一个数，
+     * 也必须是同一个数：设置页只负责覆盖，未设置时播放器直接用布局里的字号。
+     * 改这里就顺手改布局（XML 里读不到 Kotlin 常量，只能两处一起看）。
+     */
+    const val PLAYER_SUBTITLE_SIZE_DEFAULT = 11
     const val PLAYER_UI_SHOW_ROTATE_BTN = "player_ui_showRotateBtn"
     const val PLAYER_UI_SHOW_DANMAKU_BTN = "player_ui_showDanmakuBtn"
     const val PLAYER_UI_SHOW_QUALITY_BTN = "player_ui_showQualityBtn"

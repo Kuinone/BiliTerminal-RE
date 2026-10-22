@@ -14,11 +14,14 @@ import android.util.Log;
 import androidx.core.app.ActivityCompat;
 
 import com.RobinNotBad.BiliClient.BiliTerminal;
+import com.RobinNotBad.BiliClient.R;
 import com.RobinNotBad.BiliClient.service.download.DownloadPathSpec;
 
 import java.io.ByteArrayOutputStream;
+import java.io.Closeable;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.util.Objects;
@@ -30,6 +33,18 @@ public class FileUtil {
 
     /** 成品备份后缀，与 DownloadService.safeReplaceTemp 里拼接的 ".bak" 必须一致 */
     private static final String BAK_SUFFIX = ".bak";
+
+    /**
+     * 进程级降级标记：正式目录写不进去时，真正写入落到应用专属目录（见 [resolveVideoDownloadDir]）。
+     *
+     * 为什么必须是进程级而不是每次现算：下载服务、缓存列表、元数据读写都各自调
+     * [getVideoDownloadPath]，它们必须看到同一个根目录，否则文件会一半在正式目录、
+     * 一半在降级目录，列表与删除逻辑全部对不上。
+     */
+    private static volatile boolean videoFallbackActive = false;
+
+    /** 图片下载（公共 Pictures/）的同类标记。 */
+    private static volatile boolean pictureFallbackActive = false;
 
     public static void clearCache(Context context) {
         File cacheDir = context.getCacheDir();
@@ -227,23 +242,16 @@ public class FileUtil {
         }
     }
 
+    /**
+     * 当前进程**实际写入**的视频缓存根目录。
+     *
+     * 正常情况下等于用户配置/按 API 分档的默认目录（见 [getConfiguredVideoDownloadPath]）；
+     * 一旦 [resolveVideoDownloadDir] 判定正式目录不可写并降级，这里返回应用专属降级目录。
+     * 读列表、读写元数据、下载落盘全部走这个方法，所以降级后所有链路看到的是同一个根目录。
+     */
     public static File getVideoDownloadPath() {
-        String defaultPath;
-        if (BiliTerminal.context != null) {
-            defaultPath = Environment.getExternalStorageDirectory() + "/Android/media/" + BiliTerminal.context.getPackageName() + "/";
-        } else {
-            defaultPath = Environment.getExternalStorageDirectory() + "/Android/media/com.RobinNotBad.BiliClient/";
-        }
-        
-        File path = new File(SharedPreferencesUtil.getString("save_path_video", defaultPath));
-
-        try {
-            File nomedia = new File(path, ".nomedia");
-            if (SharedPreferencesUtil.getBoolean("save_ban_gallery", true) && !nomedia.exists())
-                nomedia.createNewFile();
-            else if (nomedia.exists()) nomedia.delete();
-        } catch (Exception ignored) {
-        }
+        File path = videoFallbackActive ? getFallbackVideoDownloadPath() : getConfiguredVideoDownloadPath();
+        applyNoMedia(path);
         return path;
     }
 
@@ -253,8 +261,296 @@ public class FileUtil {
         return new File(parentFolder, stringToFile(child));
     }
 
+    /**
+     * 用户配置的视频缓存目录（没配置过就是按 API 分档的默认目录），**不含运行时降级**。
+     *
+     * 设置页展示、以及 [resolveVideoDownloadDir] 做「正式目录可不可写」判断时用它；
+     * 具体写入请用 [getVideoDownloadPath]。
+     */
+    public static File getConfiguredVideoDownloadPath() {
+        String mediaDir = legacyMediaDir();
+        String defaultPath = StoragePathPolicy.defaultVideoDir(
+                Build.VERSION.SDK_INT, mediaDir, appExternalPath("video"), internalPath("video"));
+        String configured = SharedPreferencesUtil.getString(SettingsKeys.SAVE_PATH_VIDEO, "");
+        boolean legacyHasContent = StoragePathPolicy.hasRealContent(listNames(new File(mediaDir)));
+        return new File(StoragePathPolicy.chooseVideoDir(configured, mediaDir, legacyHasContent, defaultPath));
+    }
+
+    /**
+     * 视频缓存的降级目录：应用专属外部目录（任何版本、任何设备都免权限），
+     * 取不到外部存储时退到内部 `filesDir/video`。
+     */
+    public static File getFallbackVideoDownloadPath() {
+        if (BiliTerminal.context == null) return new File(legacyMediaDir());
+        File external = BiliTerminal.context.getExternalFilesDir("video");
+        if (external != null) return external;
+        return new File(BiliTerminal.context.getFilesDir(), "video");
+    }
+
+    /** 当前是否正在使用降级目录（缓存列表用它决定「目录切换后要不要重新加载」）。 */
+    public static boolean isVideoFallbackActive() {
+        return videoFallbackActive;
+    }
+
+    /**
+     * 决定本次该往哪个视频目录写：正式目录能写就用它；写不进去就降级到应用专属目录，**不再挡死下载**。
+     *
+     * 这是 issue #42 / Wear OS 的核心修正：以前「目录不可写」就直接跳系统设置页并返回 false，
+     * 而手表 ROM 根本没有「所有文件访问」设置页，用户永远授不到权限 → 下载永久失败。
+     * 现在：
+     * - 默认目录本身免权限（API 21+ 的 Android/media/&lt;包名&gt;、低版本的 getExternalFilesDir）；
+     * - 用户把路径改到公共目录、或下载图片到公共 Pictures/ 时，写不进去只降级不阻塞；
+     * - 正式目录恢复可写（例如用户去手机设置里授了权）后下一次调用会自动切回，并把降级期间
+     *   写下的缓存搬回正式目录，避免「缓存突然消失」。
+     *
+     * @return 实际可写的目录；连应用专属目录都写不进去（存储满/只读）时返回 null
+     */
+    public static File resolveVideoDownloadDir(Context context) {
+        File configured = getConfiguredVideoDownloadPath();
+        File fallback = getFallbackVideoDownloadPath();
+        boolean wasFallback = videoFallbackActive;
+
+        if (canWriteDirectory(configured)) {
+            if (wasFallback) {
+                videoFallbackActive = false;
+                int moved = mergeMoveDirectoryContents(fallback, configured);
+                Logu.d("storage-perm", "正式目录恢复可写，搬回 " + moved + " 项缓存 -> " + configured);
+            }
+            return configured;
+        }
+
+        if (canWriteDirectory(fallback)) {
+            videoFallbackActive = true;
+            if (!wasFallback) showStorageMsg(context, R.string.msg_storage_fallback, fallback.getAbsolutePath());
+            return fallback;
+        }
+
+        videoFallbackActive = false;
+        showStorageMsg(context, R.string.msg_storage_unavailable);
+        return null;
+    }
+
+    /** 用户配置的图片下载目录（设置页、图片查看器把目标传给下载页时用）。 */
     public static File getPicturePath() {
-        return new File(SharedPreferencesUtil.getString("save_path_pictures", Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES) + "/哔哩终端/"));
+        return new File(SharedPreferencesUtil.getString(SettingsKeys.SAVE_PATH_PICTURES,
+                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES) + "/哔哩终端/"));
+    }
+
+    /** 图片下载的降级目录（应用专属，免权限）。 */
+    public static File getFallbackPictureDownloadPath() {
+        if (BiliTerminal.context == null) {
+            return new File(Environment.getExternalStorageDirectory(), "Android/media/com.RobinNotBad.BiliClient/Pictures");
+        }
+        File external = BiliTerminal.context.getExternalFilesDir("Pictures");
+        if (external != null) return external;
+        return new File(BiliTerminal.context.getFilesDir(), "Pictures");
+    }
+
+    /** 当前图片是否写进了降级目录（下载完成提示据它换文案：降级目录不在系统相册里）。 */
+    public static boolean isPictureFallbackActive() {
+        return pictureFallbackActive;
+    }
+
+    /**
+     * 图片下载目标目录的降级判断，语义与 [resolveVideoDownloadDir] 一致。
+     *
+     * @param configured 调用方原本要写的目录（一般是 [getPicturePath]）
+     * @return 实际可写的目录；都写不进去时返回 null
+     */
+    public static File resolvePictureDownloadDir(Context context, File configured) {
+        File fallback = getFallbackPictureDownloadPath();
+        boolean wasFallback = pictureFallbackActive;
+
+        if (canWriteDirectory(configured)) {
+            if (wasFallback) {
+                pictureFallbackActive = false;
+                int moved = mergeMoveDirectoryContents(fallback, configured);
+                Logu.d("storage-perm", "图片正式目录恢复可写，搬回 " + moved + " 项 -> " + configured);
+            }
+            return configured;
+        }
+
+        if (canWriteDirectory(fallback)) {
+            pictureFallbackActive = true;
+            if (!wasFallback) showStorageMsg(context, R.string.msg_picture_fallback, fallback.getAbsolutePath());
+            return fallback;
+        }
+
+        pictureFallbackActive = false;
+        showStorageMsg(context, R.string.msg_storage_unavailable);
+        return null;
+    }
+
+    /** 老默认目录：`<外部存储>/Android/media/<包名>/`（API 21+ 免权限，也是历史默认值）。 */
+    private static String legacyMediaDir() {
+        String packageName = BiliTerminal.context != null
+                ? BiliTerminal.context.getPackageName()
+                : "com.RobinNotBad.BiliClient";
+        return Environment.getExternalStorageDirectory() + "/Android/media/" + packageName + "/";
+    }
+
+    private static String appExternalPath(String child) {
+        if (BiliTerminal.context == null) return null;
+        File dir = BiliTerminal.context.getExternalFilesDir(child);
+        return dir != null ? dir.getAbsolutePath() : null;
+    }
+
+    private static String internalPath(String child) {
+        if (BiliTerminal.context == null) return null;
+        return new File(BiliTerminal.context.getFilesDir(), child).getAbsolutePath();
+    }
+
+    private static java.util.List<String> listNames(File dir) {
+        try {
+            String[] names = dir.isDirectory() ? dir.list() : null;
+            return names != null ? java.util.Arrays.asList(names) : null;
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    /**
+     * 与相册隔离用的 `.nomedia` 维护。
+     *
+     * 注意旧实现是 `if (ban && !exists) create; else if (exists) delete;` —— ban 开着且文件已存在时
+     * 会把它删掉，等于每次调用都在「建/删」之间来回切。这里按语义写成两个独立分支。
+     */
+    private static void applyNoMedia(File path) {
+        try {
+            boolean banGallery = SharedPreferencesUtil.getBoolean(SettingsKeys.SAVE_BAN_GALLERY, true);
+            File nomedia = new File(path, ".nomedia");
+            if (banGallery && !nomedia.exists()) nomedia.createNewFile();
+            else if (!banGallery && nomedia.exists()) nomedia.delete();
+        } catch (Exception ignored) {
+        }
+    }
+
+    private static void showStorageMsg(Context context, int resId, Object... args) {
+        if (context == null) return;
+        try {
+            MsgUtil.showMsgLong(context.getString(resId, args));
+        } catch (Throwable t) {
+            Log.w("storage-perm", "提示文案获取失败：" + t);
+        }
+    }
+
+    /**
+     * 把 `from` 目录里的内容**合并搬进** `to`，绝不覆盖 `to` 里已有文件。
+     *
+     * 只用于「降级目录 → 正式目录」这一个恢复动作：降级期间写下的缓存不能因为目录切回正式目录
+     * 就从列表里消失。同名冲突时给来源改名成 `name (1).ext`；搬不动（跨文件系统且复制失败）
+     * 就留在原处，不删除任何已有数据。
+     *
+     * @return 实际搬动的条目数
+     */
+    public static int mergeMoveDirectoryContents(File from, File to) {
+        if (from == null || to == null || from.equals(to)) return 0;
+        File[] children;
+        try {
+            children = from.listFiles();
+        } catch (Throwable t) {
+            return 0;
+        }
+        if (children == null || children.length == 0) return 0;
+        if (!to.exists() && !to.mkdirs()) return 0;
+
+        int moved = 0;
+        for (File child : children) {
+            if (".nomedia".equals(child.getName())) continue;
+            File target = new File(to, child.getName());
+            if (!target.exists()) {
+                if (moveFileOrDirectory(child, target)) moved++;
+            } else if (child.isDirectory() && target.isDirectory()) {
+                moved += mergeMoveDirectoryContents(child, target);
+            } else {
+                File alt = new File(to, uniqueName(to, child.getName()));
+                if (moveFileOrDirectory(child, alt)) moved++;
+            }
+        }
+        return moved;
+    }
+
+    /** 先试改名（同卷），失败再退回复制+删除。 */
+    private static boolean moveFileOrDirectory(File from, File to) {
+        try {
+            if (from.renameTo(to)) return true;
+        } catch (Throwable ignored) {
+        }
+        if (from.isDirectory()) {
+            if (!copyDirectory(from, to)) return false;
+            deleteFolder(from);
+            return true;
+        }
+        if (!copyFile(from, to)) return false;
+        //noinspection ResultOfMethodCallIgnored
+        from.delete();
+        return true;
+    }
+
+    private static boolean copyFile(File from, File to) {
+        FileInputStream in = null;
+        FileOutputStream out = null;
+        try {
+            File parent = to.getParentFile();
+            if (parent != null && !parent.exists() && !parent.mkdirs()) return false;
+            in = new FileInputStream(from);
+            out = new FileOutputStream(to);
+            byte[] buffer = new byte[8192];
+            int len;
+            while ((len = in.read(buffer)) != -1) out.write(buffer, 0, len);
+            return true;
+        } catch (Throwable t) {
+            Logu.w("storage-perm", "搬运文件失败：" + from + " -> " + to + "：" + t);
+            //noinspection ResultOfMethodCallIgnored
+            to.delete();
+            return false;
+        } finally {
+            closeQuietly(in);
+            closeQuietly(out);
+        }
+    }
+
+    private static boolean copyDirectory(File from, File to) {
+        if (!to.exists() && !to.mkdirs()) return false;
+        File[] children;
+        try {
+            children = from.listFiles();
+        } catch (Throwable t) {
+            return false;
+        }
+        if (children == null) return true;
+        for (File child : children) {
+            File target = new File(to, child.getName());
+            if (child.isDirectory()) {
+                if (!copyDirectory(child, target)) return false;
+            } else if (!copyFile(child, target)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static void closeQuietly(Closeable closeable) {
+        if (closeable == null) return;
+        try {
+            closeable.close();
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private static String uniqueName(File dir, String name) {
+        String base = name;
+        String ext = "";
+        int dot = name.lastIndexOf('.');
+        if (dot > 0) {
+            base = name.substring(0, dot);
+            ext = name.substring(dot);
+        }
+        for (int i = 1; i < 1000; i++) {
+            String candidate = base + " (" + i + ")" + ext;
+            if (!new File(dir, candidate).exists()) return candidate;
+        }
+        return name + "." + System.currentTimeMillis();
     }
 
     public static File getDownloadPath() {

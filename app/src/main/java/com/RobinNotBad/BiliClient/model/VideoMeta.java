@@ -19,6 +19,16 @@ public class VideoMeta {
     public String[] qnStrList;      // 可选画质标签列表，如 ["4K", "1080P", "720P"]
     public int[] qnValueList;       // 可选画质值列表，如 [120, 80, 64]
     public String downloadType;     // 下载类型："video" 或 "audio_only"
+    /**
+     * 上次播放到的位置（毫秒）。0 表示"从头播/已看完"。
+     * 与 aid/cid 不同，这个值只给本地播放器用（本地视频没有服务端历史可读）。
+     */
+    public long progressMs;
+    /**
+     * 上次播放时读到的视频总时长（毫秒）。0 表示未知。
+     * 存它是为了下次进入时能判断"上次停在距结尾几秒"——只看位置无法知道是看到一半还是快看完了。
+     */
+    public long durationMs;
 
     public VideoMeta() {
         this.folderName = "";
@@ -29,6 +39,8 @@ public class VideoMeta {
         this.qnStrList = null;
         this.qnValueList = null;
         this.downloadType = "video";
+        this.progressMs = 0;
+        this.durationMs = 0;
     }
 
     public JSONObject toJson() {
@@ -40,6 +52,8 @@ public class VideoMeta {
             json.put("qn", qn);
             json.put("title", title != null ? title : "");
             json.put("downloadType", downloadType != null ? downloadType : "video");
+            json.put("progressMs", progressMs);
+            json.put("durationMs", durationMs);
 
             // 保存画质列表
             if (qnStrList != null) {
@@ -65,6 +79,8 @@ public class VideoMeta {
             meta.qn = json.optInt("qn", 0);
             meta.title = json.optString("title", "");
             meta.downloadType = json.optString("downloadType", "video");
+            meta.progressMs = json.optLong("progressMs", 0);
+            meta.durationMs = json.optLong("durationMs", 0);
 
             // 读取画质列表
             if (json.has("qnStrList")) {

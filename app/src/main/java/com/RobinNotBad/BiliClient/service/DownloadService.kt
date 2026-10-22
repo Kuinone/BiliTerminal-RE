@@ -193,6 +193,9 @@ class DownloadService : Service() {
                 var database: SQLiteDatabase? = null
                 var cursor: Cursor? = null
                 try {
+                    // 目录写不进去的下载注定失败：先解析根目录（必要时降级到应用专属目录并提示），
+                    // 连降级目录都不可写就直接放弃，不往数据库里塞一条永远下不完的任务。
+                    if (FileUtil.resolveVideoDownloadDir(BiliTerminal.context) == null) return@run
                     val helper = DownloadSqlHelper(BiliTerminal.context)
                     database = helper.writableDatabase
 
@@ -244,6 +247,8 @@ class DownloadService : Service() {
                 var database: SQLiteDatabase? = null
                 var cursor: Cursor? = null
                 try {
+                    // 同 startSingle：先解析可写的根目录，再决定要不要入队。
+                    if (FileUtil.resolveVideoDownloadDir(BiliTerminal.context) == null) return@run
                     val helper = DownloadSqlHelper(BiliTerminal.context)
                     database = helper.writableDatabase
 
@@ -390,6 +395,10 @@ class DownloadService : Service() {
 
         CenterThreadPool.run {
             try {
+                // 服务可能不与入口 Activity 同批被拉起（START_STICKY 恢复、下载页"继续"、批量重试），
+                // 而「降级到应用专属目录」是进程级标记：新进程里它是空的。这里先解析一次根目录，
+                // 保证恢复的任务与新任务看到同一个可写目录（写不进去时 resolve 会降级并提示）。
+                FileUtil.resolveVideoDownloadDir(BiliTerminal.context)
                 // 恢复上次崩溃/中断遗留的"下载中"记录，避免卡死
                 recoverStuckSections()
                 // 开始新批次，重置统计

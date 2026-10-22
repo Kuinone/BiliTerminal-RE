@@ -34,8 +34,10 @@
 
     <string name="setting_lab_ui_landscape">！此功能将不再继续进行改进，除非开发者有时间！\n开启选项后，软件将会变为横屏，部分列表会变为三列，更适合平板等默认横屏的设备\n*注意：部分页面仍为单列式，可能有一些页面适配不佳，电视请移步官方电视版本或使用其他第三方软件。</string>
     <string name="setting_lab_ui_rotatory">默认情况下此选项无需开启，系统会自动为可滚动列表应用表冠操作，如果表冠未生效或需要自定义灵敏度，可尝试开启此选项。\n开启后可能会丢失表冠震动。\n下面的两项为灵敏度倍数，1.0 即系统原始滚动量，默认 1.0;填 0 等于该类页面不响应表冠。\n改完立即生效，无需重进页面。</string>
-    <string name="setting_lab_path_video">缓存的视频将会保存到这个位置，若文件夹不存在会自动创建。之前缓存的视频请用文件管理器手动移动到新文件夹内。\n不保证会不会出现奇怪的问题。</string>
-    <string name="setting_lab_path_pictures">下载的图片将会保存到这个位置，若文件夹不存在会自动创建。之前下载的图片请用文件管理器手动移动到新文件夹内。\n不保证会不会出现奇怪的问题。</string>
+    <string name="setting_lab_path_video">缓存的视频将会保存到这个位置，若文件夹不存在会自动创建。之前缓存的视频请用文件管理器手动移动到新文件夹内。\n不保证会不会出现奇怪的问题。\n\n注意：从 Android 10 起，公共目录需要「所有文件访问」权限才能写入；手表等系统不提供该授权入口的设备，写不进去时会自动改存到应用专属目录（Android/data 或 Android/media 下），下载仍可正常完成。</string>
+    <string name="setting_lab_path_pictures">下载的图片将会保存到这个位置，若文件夹不存在会自动创建。之前下载的图片请用文件管理器手动移动到新文件夹内。\n不保证会不会出现奇怪的问题。\n\n注意：写到公共相册目录需要「所有文件访问」权限；授权不到时图片会存到应用专属目录，此时系统相册看不到，需要用文件管理器查看。</string>
+    <string name="setting_btn_storage_permission">去系统设置授予「所有文件访问」</string>
+    <string name="setting_desc_storage_permission">仅 Android 11 及以上、且系统提供该设置页时有效（手机一般可以）。手表等没有这个入口的设备会提示打不开，此时应用会自动改存到自己的专属目录，不影响下载。</string>
     <string name="setting_lab_marquee">关闭此开关后，将会全局禁用文字跑马灯，可能会提升性能但会导致部分文字显示不全。</string>
     <string name="setting_lab_download_old">若后台下载在你的设备上有问题，请打开此选项以换回旧版的前台下载器！</string>
     <string name="setting_lab_splashtext">顾名思义，可以更改开屏文字，支持换行。开屏文字在网络请求完成后就会被打断。</string>
@@ -163,6 +165,7 @@
     <string name="desc_player_skip_op_ed">播放番剧/影视时，进度走到片头或片尾会自动跳过去，并在屏幕下方留一个「撤回」按钮，点一下就能回到被跳过的地方。\n跳过只对 B 站标注了片头片尾的视频生效。</string>
     <string name="desc_subtitle_autoshow">开启后，播放存在字幕的视频时，将会自动弹出字幕选择对话框。</string>
     <string name="desc_subtitle_ai_allowed">打开此选项，如果视频只有一个中文AI字幕，播放时仍然会让你选择。\n可能比较烦人，谨慎开启。</string>
+    <string name="desc_player_subtitle_size">播放页字幕文字的大小，单位 sp，可填 6~40；超出范围会按边界显示，未设置时用默认值 11</string>
     <string name="desc_no_vip_color">开启此选项后，将不会在评论区为大会员用户显示专属的红色名称</string>
     <string name="desc_no_medal">开启此选项后，将不会在评论区显示用户的粉丝铭牌</string>
     <string name="desc_reply_marquee_name">开启此选项后，评论区的用户名称将会以跑马灯的形式展现，而不是换行</string>
@@ -774,6 +777,12 @@
     <string name="text_download_complete_rename_failed">下载完成，重命名失败</string>
     <!-- 图片下载完成提示（26.10.21 起带上实际保存目录；登记媒体库的细节见 util/PictureMediaStore.kt） -->
     <string name="msg_picture_saved">图片已保存：%1$s\n可在相册中查看</string>
+    <!-- 降级到应用专属目录时的图片提示：该目录不进系统相册（见 FileUtil.isPictureFallbackActive） -->
+    <string name="msg_picture_saved_fallback">图片已保存：%1$s\n该目录不在系统相册中，请用文件管理器查看</string>
+    <!-- 存储目录降级/不可写提示（见 FileUtil.resolveVideoDownloadDir / resolvePictureDownloadDir） -->
+    <string name="msg_storage_fallback">原缓存目录不可写，已自动改存到应用专属目录：%1$s</string>
+    <string name="msg_picture_fallback">原图片目录不可写，已自动改存到应用专属目录：%1$s</string>
+    <string name="msg_storage_unavailable">存储空间当前不可写（可能已满或被设为只读），请清理后重试</string>
     <string name="text_danmaku_download_failed">弹幕下载失败！</string>
     <string name="text_load_failed">加载失败</string>
     <!-- ===== 敏感操作前的 Cookie 检查提示（12.4 文案迁移：五批） ===== -->
@@ -1109,6 +1118,7 @@
     <string name="settingtext_settingsindex_078">显示清晰度按钮</string>
     <string name="settingtext_settingsindex_079">显示分P按钮</string>
     <string name="settingtext_settingsindex_080">互动选项字体大小</string>
+    <string name="settingtext_settingsindex_081">字幕字号大小</string>
     <string name="settingtext_settingterminalplayeractivity_001">开</string>
     <string name="settingtext_settingterminalplayeractivity_002">关</string>
     <string name="settingtext_settingterminalplayeractivity_003">沿用上次</string>
