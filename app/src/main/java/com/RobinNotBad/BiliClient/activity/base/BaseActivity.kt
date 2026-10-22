@@ -12,7 +12,9 @@ import android.os.Bundle
 import android.text.TextUtils
 import android.util.DisplayMetrics
 import android.view.Display
+import android.view.GestureDetector
 import android.view.KeyEvent
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
@@ -31,6 +33,7 @@ import androidx.recyclerview.widget.RecyclerView
 import com.RobinNotBad.BiliClient.BiliTerminal
 import com.RobinNotBad.BiliClient.R
 import com.RobinNotBad.BiliClient.activity.MenuActivity
+import com.RobinNotBad.BiliClient.activity.disguise.DisguiseLauncher
 import com.RobinNotBad.BiliClient.activity.dynamic.DynamicActivity
 import com.RobinNotBad.BiliClient.event.SnackEvent
 import com.RobinNotBad.BiliClient.tutorial.TutorialPagerActivity
@@ -43,6 +46,7 @@ import com.RobinNotBad.BiliClient.ui.appearance.AppearanceApplier
 import com.RobinNotBad.BiliClient.ui.appearance.AppearanceManager
 import com.RobinNotBad.BiliClient.ui.appearance.ColorScheme
 import com.RobinNotBad.BiliClient.util.AsyncLayoutInflaterX
+import com.RobinNotBad.BiliClient.util.DisguisePrefs
 import com.RobinNotBad.BiliClient.util.Logu
 import com.RobinNotBad.BiliClient.util.MsgUtil
 import com.RobinNotBad.BiliClient.util.SettingsKeys
@@ -354,6 +358,9 @@ open class BaseActivity : AppCompatActivity() {
     private var topbarExitInstalled: Boolean = false
     private var topbarLongPressInstalled: Boolean = false
 
+    /** 顶栏双击伪装的手势层是否已接管（见 [setupTopbarDoubleTapDisguise]）。 */
+    private var topbarDisguiseInstalled: Boolean = false
+
     override fun onStart() {
         super.onStart()
         if (this !is InstanceActivity) setTopbarExit()
@@ -364,6 +371,7 @@ open class BaseActivity : AppCompatActivity() {
         }
         autoTriggerTutorial()
         setupTopbarLongPressToHome()
+        setupTopbarDoubleTapDisguise()
     }
 
     /**
@@ -401,6 +409,70 @@ open class BaseActivity : AppCompatActivity() {
             startActivity(intent)
             true
         }
+    }
+
+    /**
+     * 双击顶栏 → 打开伪装页（issue #22）。
+     *
+     * <h3>为什么必须自己接管顶栏的触摸与单击</h3>
+     * 顶栏的单击语义是「返回上一页 / 打开菜单」，长按是「打开菜单列表 / 视频详情页关闭所有页」。
+     * 双击的第一次抬手**已经是一次完整点击**——如果还让 View 自己发 click，页面会先被关掉，
+     * 第二次点击根本落不到同一个 View 上。所以开启伪装时：
+     * - 用 `OnTouchListener` 消费全部触摸（View 不再自己发 click/longclick）；
+     * - 交给 [GestureDetector] 判定，单击（确认不是双击后）用 `performClick()` 回放原动作、
+     *   长按用 `performLongClick()` 回放，双击打开伪装页。
+     *
+     * 这样**各页面自己的顶栏监听器一行都不用改**：`performClick()` 调的就是它们装的那个
+     * `OnClickListener`（返回上一页、打开菜单、视频详情页的关闭所有详情页……语义全保留）。
+     *
+     * <h3>只在开启时安装，关闭时立刻摘掉</h3>
+     * 接管触摸的代价是**单击要等一个双击判定窗口**（系统双击超时，约 300ms）。
+     * 这是默认关的原因：不开这个功能的用户，单击顶栏的时序必须与改动前完全一致。
+     * 所以这里每次 `onStart` 都按当前开关重新判断，关掉时把触摸监听摘掉——
+     * 单击/长按监听器本身**从来没被摘过**，摘掉触摸层就回到改动前的行为。
+     *
+     * <h3>与长按手势的关系</h3>
+     * 顶栏长按的监听器由 [setupTopbarLongPressToHome] / 子类安装，本方法只是**不再让 View 自己触发**，
+     * 改成手势判定后显式 `performLongClick()` 回放——所以「长按顶栏打开菜单」仍然可用，
+     * 且仍然遵守 `TopbarLongPressPrefs` 的模式（那是被回放的那个监听器内部判断的）。
+     */
+    private fun setupTopbarDoubleTapDisguise() {
+        val topBar = findViewById<View>(R.id.top) ?: return
+        if (!DisguisePrefs.isEnabled()) {
+            // 关掉开关后回到原样：触摸层摘掉，单击/长按还给 View 自己（它们的监听器一直都在）
+            if (topbarDisguiseInstalled) {
+                topBar.setOnTouchListener(null)
+                topbarDisguiseInstalled = false
+            }
+            return
+        }
+        if (topbarDisguiseInstalled) return
+        topbarDisguiseInstalled = true
+
+        val detector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
+            override fun onDown(e: MotionEvent): Boolean = true
+
+            override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
+                // 确认不是双击：把单击还给顶栏原本的行为
+                topBar.performClick()
+                return true
+            }
+
+            override fun onDoubleTap(e: MotionEvent): Boolean {
+                DisguiseLauncher.launch(this@BaseActivity)
+                return true
+            }
+
+            override fun onLongPress(e: MotionEvent) {
+                // 没有长按监听器的页面（菜单页等），旧行为是抬手回落成单击，这里保持一致
+                if (!topBar.performLongClick()) topBar.performClick()
+            }
+        })
+        topBar.setOnTouchListener { _, event ->
+            detector.onTouchEvent(event)
+            true // 自己消费：否则 View 会在 UP 时自己再发一次 click，页面先被关掉
+        }
+        Logu.d("disguise", "顶栏双击伪装已就绪")
     }
 
     /**

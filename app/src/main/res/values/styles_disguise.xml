@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 伪装计算器按键样式。三个变体只差底色，字号/边距/点击属性统一在这里。 -->
+<resources>
+    <style name="DisguiseKey">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">match_parent</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:layout_margin">1.5dp</item>
+        <item name="android:gravity">center</item>
+        <item name="android:textSize">19sp</item>
+        <item name="android:textColor">@color/disguise_calc_key_text</item>
+        <item name="android:background">@drawable/disguise_key_digit</item>
+        <item name="android:clickable">true</item>
+        <item name="android:focusable">false</item>
+        <item name="android:maxLines">1</item>
+    </style>
+
+    <style name="DisguiseKey.Function">
+        <item name="android:background">@drawable/disguise_key_function</item>
+        <item name="android:textSize">17sp</item>
+    </style>
+
+    <style name="DisguiseKey.Operator">
+        <item name="android:background">@drawable/disguise_key_operator</item>
+        <item name="android:textSize">20sp</item>
+    </style>
+</resources>

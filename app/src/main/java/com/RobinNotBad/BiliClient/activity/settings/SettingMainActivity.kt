@@ -72,6 +72,7 @@ class SettingMainActivity : InstanceActivity() {
         buildUIGroup()
         buildContentGroup()
         buildNotifyGroup()
+        buildDisguiseGroup()
         buildDownloadGroup()
         buildLabGroup()
         buildAboutGroup()
@@ -162,6 +163,21 @@ class SettingMainActivity : InstanceActivity() {
             "通知设置",
             "新消息、追番更新等通知栏提醒的开关",
             GROUP_NOTIFY
+        )
+    }
+
+    /**
+     * 「伪装与安全」分组（issue #22）。
+     *
+     * 放第一层级而不是塞进「高级与实验」：这是给"被人走近"这种**需要立刻找到**的场景用的，
+     * 埋太深等于没有。
+     */
+    private fun buildDisguiseGroup() {
+        addGroup(
+            R.drawable.icon_person,
+            "伪装与安全",
+            "双击顶栏切到伪装页，默认关闭",
+            GROUP_DISGUISE
         )
     }
 

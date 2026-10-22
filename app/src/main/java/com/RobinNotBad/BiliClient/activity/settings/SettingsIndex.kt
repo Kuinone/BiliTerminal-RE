@@ -31,6 +31,10 @@ object SettingsIndex {
         list += Entry("界面与外观", "界面大小、主题与动画效果") { a -> openGroup(a, "ui", "界面与外观") }
         list += Entry("内容与浏览", "菜单、搜索、详情页、评论区与偏好") { a -> openGroup(a, "content", "内容与浏览") }
         list += Entry("通知设置", "新消息、追番更新等通知栏提醒的开关") { a -> openGroup(a, GROUP_NOTIFY, "通知设置") }
+        list += Entry(
+            "伪装与安全",
+            "双击顶栏切到伪装页（假计算器 / 假蓝牙提示），默认关闭"
+        ) { a -> openGroup(a, GROUP_DISGUISE, "伪装与安全") }
         list += Entry("缓存与下载", "下载引擎、缓存选项与存储路径") { a -> openGroup(a, "download", "缓存与下载") }
         list += Entry("高级与实验", "性能、推荐与实验功能") { a -> openGroup(a, "lab", "高级与实验") }
         list += Entry("关于与帮助", "版本信息、更新、公告与教程") { a -> openGroup(a, "about", "关于与帮助") }

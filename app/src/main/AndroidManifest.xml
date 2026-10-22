@@ -609,6 +609,23 @@
             android:exported="false"
             android:label="@string/uitext_favoritefolderadapter_002"
             android:screenOrientation="locked" />
+        <!--
+          伪装页（issue #22）。两个都 exported="false"：只能由本应用双击顶栏拉起，
+          绝不允许外部应用直接启动——否则伪装页本身就是一条「暴露这是 B 站客户端」的入口。
+          label 用与伪装内容一致的中文，避免最近任务里露出应用名。
+        -->
+        <activity
+            android:name=".activity.disguise.CalculatorDisguiseActivity"
+            android:exported="false"
+            android:label="@string/text_disguise_calc_label"
+            android:screenOrientation="locked"
+            android:theme="@style/Theme.BiliClient.Disguise" />
+        <activity
+            android:name=".activity.disguise.BluetoothDisguiseActivity"
+            android:exported="false"
+            android:label="@string/text_disguise_bt_title"
+            android:screenOrientation="locked"
+            android:theme="@style/Theme.BiliClient.Disguise.Dialog" />
         <activity
             android:name=".activity.SplashActivity"
             android:exported="true"

@@ -1280,6 +1280,17 @@ CenterThreadPool.supplyAsyncWithLiveData { fetch...().getOrThrow() }
 - **判据要「重算」不要「增量」**：按「当前活跃播放器是否真的在播」整体重算（`ShortVideoPlayerActivity.syncKeepScreenOn()`），并在 `onStop` 兜底清、`onStart` 回前台重算。增量 add/clear 会漏掉「本来就没在播」的路径（`releasePlayer()`），漏一次就是永久亮屏。
 - **别拿 `mWakefulness` 当验证判据**：MuMu 模拟器本身不自动熄屏（桌面对照 22 秒后仍 `Awake`），要看 `dumpsys window windows` 里窗口的 `fl` 是否含 `KEEP_SCREEN_ON`。
 
+### 7.53 顶栏双击：必须自己接管触摸，用 `performClick()` 回放原动作（26.10.22，issue #22）
+
+- **场景**：双击顶栏一键切到伪装页（假计算器 / 假「蓝牙已断开」，见 `docs/FEATURES.md` §19 与 `docs/review/fix-progress.md` §3.57）。
+- **为什么不能只加一个 `OnDoubleTapListener`**：顶栏单击的语义是「返回上一页 / 打开菜单」，长按是「打开菜单列表」。双击的**第一次抬手已经是一次完整 click** —— 若还让 View 自己发 click，页面先被 `finish()`，第二次点击根本落不到同一个 View 上。
+- **正确做法**（`BaseActivity.setupTopbarDoubleTapDisguise`）：
+  - `OnTouchListener` 返回 `true` 消费全部触摸（View 不再自己发 click/longclick），事件喂给 `GestureDetector`；
+  - 单击 → `topBar.performClick()`、长按 → `topBar.performLongClick()`（返回 false 时回落 `performClick()`，与"长按无监听器时抬手变单击"的旧行为一致）、双击 → 打开伪装页。
+  - **各页面自己的顶栏监听器一行都不用改**：`performClick()` 调的就是它们装的那个 `OnClickListener`，语义全保留（返回上一页 / 打开菜单 / 视频详情页关闭所有详情页）。
+- **代价**：单击要等一个双击判定窗口（约 300ms）。所以这个手势**只在开关打开时安装**，关闭时把触摸监听摘掉即可回到原状（单击/长按监听器从来没被摘过），`onStart` 每次按当前开关重新判断。
+- **别改成「在"单击监听器"里判断两次点击」**：第一次点击已经执行完了，那只会变成"退出两次"。
+
 ## 8. UI 基建速查（新增页面临摹用）
 
 ### 8.1 完整继承体系

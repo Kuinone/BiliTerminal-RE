@@ -1216,6 +1216,21 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
 - **验证（本机）**：`:app:assembleCoexistDebug` 通过；`:app:testStandardDebugUnitTest` = 76 类 / 809 例 / 0 失败（本次只有 UI 状态逻辑，无新增可单测的纯函数）。
 - **顺带记一笔**：`mWakefulness` **不能**当判据——MuMu 本身不自动熄屏（桌面对照实验 22 秒后仍 `Awake`），必须看窗口 `fl`。
 
+### 3.57 新增「伪装与安全」：双击顶栏切到假计算器 / 假蓝牙提示（issue #22，26.10.22）
+
+- **需求**（issue #22，用户定的三条口径）：① 两种样式都做、可在设置里选；② 计算器的退出方式是「输入暗号再按 `=`」；③ 做成设置开关、**默认关**；触发方式为**双击顶栏**。
+- **新增**：
+  - `util/DisguisePrefs.kt`：开关 / 样式（`calculator` / `bluetooth`）/ 暗号（4~8 位数字）与纯函数 `normalizeCode`、`matchesSecret`。暗号**只允许数字**，否则计算器上敲不出来 = 用户把自己锁在伪装页里，只能强杀应用。
+  - `util/CalculatorEngine.kt`：真能算的四则运算求值（先乘除后加减、小数、除零报错、末尾多余运算符忽略、**绝不抛异常**）。伪装页算错就等于暴露。
+  - `activity/disguise/CalculatorDisguiseActivity`：深灰底 + 橙色运算符的手表计算器（**刻意不继承 BaseActivity**——主题、DPI 适配、教程、EventBus 任何一项都会让伪装露馅）。暗号命中 → `finish()`；**返回键只当 `C`**，不退页。
+  - `activity/disguise/BluetoothDisguiseActivity`：半透明窗口（`Theme.BiliClient.Disguise.Dialog`）上盖一张仿系统提示卡，底下的页面会透出来再压一层暗色；「重新连接」只换一行字；**长按标题 2 秒**退出，返回键被吃掉。
+  - `activity/disguise/DisguiseLauncher`：按设置选样式的唯一入口。
+  - `BaseActivity.setupTopbarDoubleTapDisguise`：顶栏手势层，技术结论见 `docs/architecture-map.md` §7.53。
+  - 设置：新分组 `GROUP_DISGUISE`（「伪装与安全」）+ `SettingMainActivity` 一级入口 + `SettingsIndex` 搜索条目；`strings.xml` 全部文案；清单两个 Activity 均 `exported="false"` 并各带伪装主题。
+- **单测**：`CalculatorEngineTest` 12 例（空表达式、单数字、加减、乘除优先、小数显示、整除不带 `.0`、末尾运算符、连续运算符、除零、非法输入、`*` `/` 等价、负数）、`DisguisePrefsTest` 7 例（合法/裁空格/长度/非数字/匹配/非法暗号恒不匹配/样式合法性）。总计 **78 类 / 828 例 / 0 失败**。
+- **模拟器实测（MuMu Android 15 x86_64，coexist debug，用户本人操作）**：双击顶栏 → `WindowManagerShell` 日志确认 `CalculatorDisguiseActivity` 在 display 22 打开；输入暗号按 `=` → `disguise>暗号命中，退出伪装` 并回到原页面；全程 **0 条 `FATAL EXCEPTION` / `AndroidRuntime` 异常**；`BaseActivity>setupTopbarDoubleTapDisguise: 顶栏双击伪装已就绪` 在每个页面正常打印。
+- **手表端待验**：单击顶栏的 0.3 秒延迟在真机手感（尤其列表页"点顶栏返回"）是否可接受；半透明蓝牙提示页在圆屏手表上的布局。
+
 ## 4. 历史章节索引
 
 > 完整正文在 `docs/archive/review/fix-progress-history.md`。**编号在历史上有重复**（`## 二十二` / `## 二十九` 各出现两次、`## 30.` 是阿拉伯数字写法，原为不打断既有交叉引用而保持不动），下表**以归档文件的物理行序为准**。

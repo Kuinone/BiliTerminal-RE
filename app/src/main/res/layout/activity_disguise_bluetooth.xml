@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  假的「蓝牙已断开」提示（issue #22 的第二种伪装样式）。
+
+  窗口是半透明的（`Theme.BiliClient.Disguise.Dialog`），所以底下的页面会透出来一层暗色，
+  看起来就是「系统拿一个提示框盖在当前画面上」——这正是要的效果。
+  两个按钮都是假的：点了只改一行小字，不做任何真实操作。
+-->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/disguise_bt_scrim">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:layout_margin="10dp"
+        android:background="@drawable/disguise_bt_card_bg"
+        android:orientation="vertical"
+        android:padding="14dp">
+
+        <TextView
+            android:id="@+id/disguise_bt_title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/text_disguise_bt_title"
+            android:textColor="@color/disguise_bt_title"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/disguise_bt_body"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/text_disguise_bt_body"
+            android:textColor="@color/disguise_bt_body"
+            android:textSize="13sp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/disguise_bt_retry"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:padding="8dp"
+                android:text="@string/btn_disguise_bt_retry"
+                android:textColor="@color/disguise_bt_accent"
+                android:textSize="14sp" />
+
+            <TextView
+                android:id="@+id/disguise_bt_cancel"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:padding="8dp"
+                android:text="@string/btn_disguise_bt_cancel"
+                android:textColor="@color/disguise_bt_body"
+                android:textSize="14sp" />
+        </LinearLayout>
+    </LinearLayout>
+</FrameLayout>

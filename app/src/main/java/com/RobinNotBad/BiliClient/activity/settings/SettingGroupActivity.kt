@@ -27,6 +27,7 @@ import com.RobinNotBad.BiliClient.ui.appearance.FontStyle
 import com.RobinNotBad.BiliClient.util.Aria2Util
 import com.RobinNotBad.BiliClient.util.BetaUpdate
 import com.RobinNotBad.BiliClient.util.CenterThreadPool
+import com.RobinNotBad.BiliClient.util.DisguisePrefs
 import com.RobinNotBad.BiliClient.util.FileUtil
 import com.RobinNotBad.BiliClient.util.MsgUtil
 import com.RobinNotBad.BiliClient.util.NetWorkUtil
@@ -50,6 +51,9 @@ const val GROUP_FEEDBACK = "feedback"
 
 /** 「通知设置」分组的 group_type 取值。`SettingsIndex` 里跳转该分组时也用这个常量。 */
 const val GROUP_NOTIFY = "notify"
+
+/** 「伪装与安全」分组的 group_type 取值（issue #22）。`SettingsIndex` / `SettingMainActivity` 共用。 */
+const val GROUP_DISGUISE = "disguise"
 
 /**
  * 分组设置页：统一使用声明式 SettingSection 列表 + SettingsAdapter 渲染。
@@ -123,6 +127,7 @@ class SettingGroupActivity : RefreshListActivity() {
             "ui" -> buildUIGroup()
             GROUP_APPEARANCE -> buildAppearanceGroup()
             GROUP_NOTIFY -> buildNotifyGroup()
+            GROUP_DISGUISE -> buildDisguiseGroup()
             GROUP_FEEDBACK -> buildFeedbackGroup()
             "content" -> buildContentGroup()
             "download" -> buildDownloadGroup()
@@ -436,6 +441,66 @@ class SettingGroupActivity : RefreshListActivity() {
             SettingsKeys.PRIVATE_MSG_NOTIFY_ENABLE, true)
         switch("追番更新提醒", getString(R.string.desc_bangumi_update_notify_enable),
             SettingsKeys.BANGUMI_UPDATE_NOTIFY_ENABLE, true)
+    }
+
+    /**
+     * 伪装与安全（issue #22）。
+     *
+     * 三件事：总开关、样式、退出暗号。**默认全关**——开启后顶栏单击要等一个双击判定窗口
+     * （见 `BaseActivity.setupTopbarDoubleTapDisguise`），不该让所有用户承担这个代价。
+     *
+     * 暗号必须走 `input_string` + 自校验后再落盘：`input_int` 会把 `1234` 存成 Int、
+     * 读的时候又按 String 取，取不到就回退默认值——设置页显示的和实际用的会悄悄不一致。
+     */
+    private fun buildDisguiseGroup() {
+        title(getString(R.string.text_setting_disguise_group))
+
+        switch(
+            getString(R.string.text_setting_disguise_enabled),
+            getString(R.string.desc_setting_disguise_enabled),
+            SettingsKeys.DISGUISE_ENABLED,
+            DisguisePrefs.DEFAULT_ENABLED
+        ) { isChecked ->
+            if (isChecked) MsgUtil.showMsg(getString(R.string.msg_setting_disguise_hint))
+        }
+
+        listChoose(
+            getString(R.string.text_setting_disguise_style),
+            getString(R.string.desc_setting_disguise_style),
+            SettingsKeys.DISGUISE_STYLE,
+            DisguisePrefs.DEFAULT_STYLE,
+            listOf(
+                getString(R.string.text_setting_disguise_style_calculator),
+                getString(R.string.text_setting_disguise_style_bluetooth)
+            ),
+            listOf(DisguisePrefs.STYLE_CALCULATOR, DisguisePrefs.STYLE_BLUETOOTH)
+        )
+
+        input(
+            getString(R.string.text_setting_disguise_code),
+            getString(
+                R.string.desc_setting_disguise_code,
+                DisguisePrefs.CODE_MIN_LENGTH,
+                DisguisePrefs.CODE_MAX_LENGTH
+            ),
+            SettingsKeys.DISGUISE_CODE,
+            "input_string",
+            DisguisePrefs.DEFAULT_CODE
+        ) { value ->
+            // 非法输入不落盘：存进去一串敲不出来的字符，用户就永远退不出伪装页
+            val normalized = DisguisePrefs.normalizeCode(value)
+            if (normalized != null) {
+                SharedPreferencesUtil.putString(SettingsKeys.DISGUISE_CODE, normalized)
+            } else if (value.isNotEmpty()) {
+                MsgUtil.showMsg(
+                    getString(
+                        R.string.msg_setting_disguise_code_invalid,
+                        DisguisePrefs.CODE_MIN_LENGTH,
+                        DisguisePrefs.CODE_MAX_LENGTH
+                    )
+                )
+            }
+        }
     }
 
     private fun buildDownloadGroup() {

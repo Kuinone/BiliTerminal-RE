@@ -1,0 +1,163 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  伪装计算器（issue #22）。
+
+  刻意做成「普通手表计算器」的样子：深灰底、圆角键、橙色运算符，与应用主题毫无关联。
+  按键用 TextView 而不是 Button —— Button 会继承 AppCompat/Material 主题的着色与字体，
+  一眼就露馅。每个键的 `android:tag` 就是它的输入字符，`CalculatorDisguiseActivity` 据此分发。
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/disguise_calc_background"
+    android:orientation="vertical"
+    android:padding="4dp">
+
+    <TextView
+        android:id="@+id/disguise_display"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1.1"
+        android:ellipsize="start"
+        android:gravity="end|center_vertical"
+        android:maxLines="1"
+        android:paddingEnd="6dp"
+        android:paddingStart="6dp"
+        android:text="0"
+        android:textColor="@color/disguise_calc_display_text"
+        android:textSize="26sp" />
+
+    <LinearLayout
+        android:id="@+id/disguise_keypad"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="3.6"
+        android:orientation="vertical">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:orientation="horizontal">
+
+            <TextView
+                style="@style/DisguiseKey.Function"
+                android:tag="C"
+                android:text="C" />
+
+            <TextView
+                style="@style/DisguiseKey.Function"
+                android:tag="⌫"
+                android:text="⌫" />
+
+            <TextView
+                style="@style/DisguiseKey.Operator"
+                android:tag="÷"
+                android:text="÷" />
+
+            <TextView
+                style="@style/DisguiseKey.Operator"
+                android:tag="×"
+                android:text="×" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:orientation="horizontal">
+
+            <TextView
+                style="@style/DisguiseKey"
+                android:tag="7"
+                android:text="7" />
+
+            <TextView
+                style="@style/DisguiseKey"
+                android:tag="8"
+                android:text="8" />
+
+            <TextView
+                style="@style/DisguiseKey"
+                android:tag="9"
+                android:text="9" />
+
+            <TextView
+                style="@style/DisguiseKey.Operator"
+                android:tag="-"
+                android:text="−" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:orientation="horizontal">
+
+            <TextView
+                style="@style/DisguiseKey"
+                android:tag="4"
+                android:text="4" />
+
+            <TextView
+                style="@style/DisguiseKey"
+                android:tag="5"
+                android:text="5" />
+
+            <TextView
+                style="@style/DisguiseKey"
+                android:tag="6"
+                android:text="6" />
+
+            <TextView
+                style="@style/DisguiseKey.Operator"
+                android:tag="+"
+                android:text="+" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:orientation="horizontal">
+
+            <TextView
+                style="@style/DisguiseKey"
+                android:tag="1"
+                android:text="1" />
+
+            <TextView
+                style="@style/DisguiseKey"
+                android:tag="2"
+                android:text="2" />
+
+            <TextView
+                style="@style/DisguiseKey"
+                android:tag="3"
+                android:text="3" />
+
+            <TextView
+                style="@style/DisguiseKey.Operator"
+                android:tag="="
+                android:text="=" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:orientation="horizontal">
+
+            <TextView
+                style="@style/DisguiseKey"
+                android:layout_weight="3"
+                android:tag="0"
+                android:text="0" />
+
+            <TextView
+                style="@style/DisguiseKey"
+                android:tag="."
+                android:text="." />
+        </LinearLayout>
+    </LinearLayout>
+</LinearLayout>
