@@ -443,6 +443,14 @@ public class DanmakuView extends View implements IDanmakuView, IDanmakuViewContr
         }
     }
 
+    @Override
+    public void setMediaClock(DrawHandler.MediaClock clock) {
+        // 不判 isPrepared：绑定通常发生在 prepare 之前，handler 建好即转发（时钟空转无害）
+        if (handler != null) {
+            handler.setMediaClock(clock);
+        }
+    }
+
     public void adjust() {
         if (handler != null) {
             handler.syncTimerIfNeeded();

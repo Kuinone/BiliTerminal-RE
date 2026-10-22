@@ -63,7 +63,6 @@ import com.RobinNotBad.BiliClient.model.SubtitleLink
 import com.RobinNotBad.BiliClient.model.VideoInfo
 import com.RobinNotBad.BiliClient.model.ViewPoint
 import com.RobinNotBad.BiliClient.player.DanmakuManager
-import com.RobinNotBad.BiliClient.player.DanmakuSync
 import com.RobinNotBad.BiliClient.player.IjkNativeLibs
 import com.RobinNotBad.BiliClient.player.PlayerDefaults
 import com.RobinNotBad.BiliClient.player.LocalAudioTrackPolicy
@@ -264,10 +263,8 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
     @Volatile
     private var video_now: Int = 0
     private var video_now_last: Int = 0
-    /** 上次给弹幕时钟做基准对齐（`seekTo`）的时间，用于限频——见 `progressChange` 里的对齐块。 */
-    private var danmakuResyncMs: Long = 0
-    /** 连续吸附次数，用于「吸附也治不了」时退避（见 `DanmakuSync.decide`）。 */
-    private var danmakuSnapCount: Int = 0
+    /** 上次打印弹幕时钟偏差的时间（弹幕跟随媒体时钟的体检日志，见 progressChange）。 */
+    private var danmakuDriftLogMs: Long = 0
     private var lastMediaSessionSecond: Int = -1 // 上次上报 MediaSession 的整秒数，用于抑制重复 Binder IPC
     private var progress_history: Long = 0
     private var progress_str: String = ""
@@ -1648,33 +1645,25 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
                             } catch (_: Exception) {}
                         }
                     }
-                    // 弹幕时钟对齐：DFM 的时钟按自身 mTimeBase 自走，只有基准与视频位置一致时才会跟着视频走。
+                    // 弹幕时钟**不再做周期性纠偏**：自 26.10.22 起弹幕时间轴由
+                    // `DanmakuManager.bindMediaClock` 直接以 `video_now` 为时间源（见
+                    // DanmakuFlameMaster 的 `MediaClockSync` / `DrawHandler.syncTimer`），
+                    // 播放器跑到多少弹幕就跟到多少，不再存在"速率性发散"，也就不需要吸附。
                     //
-                    // **seekTo 的代价**：DrawHandler.SEEK_POS 会走 DrawTask.seek() → reset()，
-                    // 把屏上弹幕全部清掉再靠 CacheManagingDrawTask.prepareCaches(true) 重建
-                    // （见 DanmakuFlameMaster/.../controller/DrawTask.java 与 CacheManagingDrawTask.java）。
-                    // 所以**绝不能拿它做小偏差的"连续纠偏"**——那等于每隔一会儿清一次屏，
-                    // 用户看到的就是「弹幕闪一下又没了」。判据全部收敛到 DanmakuSync.decide：
-                    // 只有 >1.5s 的大跳才吸附、吸附后冷静 1.5s、连续 3 次不收敛退避 30s。
-                    if ((hasDanmaku || isLiveMode) && mDanmakuView != null &&
-                        loading_info.visibility != View.VISIBLE
-                    ) {
-                        // nowElapsed 由上方音频重同步那段统一取（同一帧内两处判定共用同一个时刻）
-                        val decision = DanmakuSync.decide(
-                            video_now.toLong(),
-                            mDanmakuView!!.currentTime,
-                            nowElapsed,
-                            danmakuResyncMs,
-                            danmakuSnapCount
-                        )
-                        danmakuSnapCount = decision.consecutive
-                        if (decision.snap) {
-                            danmakuResyncMs = nowElapsed
-                            Logu.d(
-                                "弹幕纠偏",
-                                "视频=$video_now 弹幕=${mDanmakuView!!.currentTime} 第 ${decision.consecutive} 次吸附"
-                            )
-                            mDanmakuView!!.seekTo(video_now.toLong())
+                    // 历史坑：以前这里的判据是"偏差 >1.5s 且距上次 >1.5s 就 seekTo"，看起来限了频，
+                    // 但 `seekTo` 会走 `DrawTask.seek() → reset()` 把屏上弹幕清空、再靠
+                    // `prepareCaches(true)` 重建，于是漂移持续时等于每隔十来秒清一次屏
+                    // （用户看到的「弹幕闪一下又没了」）。而漂移的根因是 DFM 用墙钟计时：
+                    // 实测视频只跑 0.9x 墙钟时，弹幕按 1.0x 走，每 4 秒必然多跑约 490ms。
+                    // **不要再把周期性 seekTo 加回来**，用户拖动/快进的对齐走 seekToVideo()。
+                    //
+                    // 体检：媒体时钟生效时偏差只应来自「250ms 采样 + 40ms/帧蠕动」，即 ±300ms 量级；
+                    // 持续超过 500ms 就说明媒体时钟没接上（比如位置一直是负数走了墙钟回退分支）。
+                    if (hasDanmaku && mDanmakuView != null) {
+                        val drift = video_now - mDanmakuView!!.currentTime
+                        if (Math.abs(drift) > 500 || nowElapsed - danmakuDriftLogMs >= 3000) {
+                            danmakuDriftLogMs = nowElapsed
+                            Logu.d("弹幕时钟", "视频=$video_now 弹幕=${mDanmakuView!!.currentTime} 偏差=$drift")
                         }
                     }
                     if (video_now_last != video_now) {
@@ -2227,7 +2216,18 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
     /** 重新绑定弹幕视图与弹幕管理器（弹幕视图在切分页/切互动分支后会重新取一次引用）。 */
     private fun bindDanmakuView() {
         mDanmakuView = findViewById(R.id.sv_danmaku)
-        danmakuManager = DanmakuManager(mDanmakuView!!)
+        danmakuManager = DanmakuManager(mDanmakuView!!).also { manager ->
+            // 弹幕时间轴跟随播放器位置（而不是墙钟）。**直播没有有意义的播放位置**，不绑。
+            //
+            // 两个 provider 都在 DFM 渲染线程上被每帧调用，只能读主线程采样好的内存值：
+            // video_now 就是 progressChange 每 250ms 从 ijkPlayer 读一次的那个 @Volatile 字段。
+            if (!isLiveMode) {
+                manager.bindMediaClock(
+                    { if (isPrepared && !destroyed) video_now.toLong() else -1L },
+                    { isPrepared && isPlaying && !destroyed }
+                )
+            }
+        }
     }
 
     /** 释放弹幕视图与管理器。 */
@@ -2993,10 +2993,9 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
      * 用户主动跳转（拖进度条 / 快进快退）的**唯一入口**。
      *
      * 为什么不能各处各写一遍「ijkPlayer.seekTo + mDanmakuView.seekTo」：
-     * ① `progressChange` 的弹幕纠偏判据比较的是 `video_now` 与弹幕时钟，**跳转后若不立刻更新
-     * `video_now`**，下一次采样会拿旧位置去比新时钟，算出几百秒的"偏差"并把弹幕视图 seek 回旧位置
-     * —— 用户看到的就是「拖完进度条弹幕没了，偶尔闪一下又消失」。
-     * 所以这里必须同时做四件事：更新 `video_now`、强制刷新进度显示、清掉纠偏计数、给一段冷静期。
+     * ① 跳转后必须立刻把 `video_now` 改成新位置——它就是弹幕时钟的时间源
+     * （见 [bindDanmakuView] 里绑的媒体时钟），不改的话弹幕会继续按旧位置推进。
+     * 同时清 `video_now_last`，让进度条/字幕下一帧立即按新位置刷新。
      *
      * ② DASH 双文件（video.mp4 + audio.m4a）是视频、音频两个播放器，**只 seek 视频会让音轨留在旧位置**；
      * 而 `progressChange` 的 800ms 偏差校正随后会再 seek 一次音频，用户听到的是"停顿两次"。
@@ -3021,15 +3020,13 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
     }
 
     /**
-     * 视频位置被动跳变（重播、切页、恢复现场）时同步 `video_now` 与弹幕纠偏的状态。
+     * 视频位置被动跳变（重播、切页、恢复现场）时同步 `video_now`。
      *
-     * 不更新 `video_now` 的后果见 [seekToVideo]：纠偏会拿旧位置把弹幕视图 seek 回去。
+     * 不更新 `video_now` 的后果见 [seekToVideo]：弹幕时钟（媒体时钟）会继续按旧位置推进。
      */
     private fun markSeekTarget(position: Long) {
         video_now = position.toInt()
         video_now_last = -1 // 让 progressChange 下一帧立刻按新位置刷新进度条/字幕
-        danmakuSnapCount = 0
-        danmakuResyncMs = android.os.SystemClock.elapsedRealtime()
     }
 
     /**

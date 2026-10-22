@@ -1262,6 +1262,17 @@ CenterThreadPool.supplyAsyncWithLiveData { fetch...().getOrThrow() }
 - **软键盘的「完成 / 下一项」也走同一条栈**：`BaseInputConnection.performEditorAction` 不直接调 `TextView.onEditorAction(int)`，而是合成一对带 `FLAG_SOFT_KEYBOARD|FLAG_KEEP_TOUCH_MODE|FLAG_EDITOR_ACTION` 的 ENTER（8.1 `569-582`、12 `665-678`）→ `InputMethodManager.dispatchKeyEventFromInputMethod` → `ViewRootImpl.dispatchKeyFromIme` → 与物理键同一条分发栈。所以崩溃栈里**分不出**是手按还是 IME 按的，上述兜底也一并管住它。
 - **未覆盖（已知缺口，别当成已修）**：`TerminalDialog.input()` 造的 `AlertDialog` 是独立窗口，按键分发不经过 Activity（`Dialog` 虽是 `Window.Callback`，`DecorView` 先 `superDispatchKeyEvent` 再回调，换 callback 拦不到）；改为给输入框装 `setOnEditorActionListener` 会改变多行输入框的回车行为，属未验证变更。线上从未出现弹窗内回车崩溃（全仓 `TerminalDialog.input()` 仅 2 处调用）。另外 `TextView.onEditorAction(IME_ACTION_NEXT/PREVIOUS)` 里也有同一条 ISE（8.1 `5926`/`5936`、12 `7164`/`7174`），框架内仅无障碍 `accessibilityActionImeEnter` 直接调它，未在范围。
 
+### 7.51 弹幕时间轴必须由播放器位置驱动，不能按墙钟（26.10.22，本周期的教训）
+
+- **判据**：DFM 原生 `DrawHandler.syncTimer()` 的时间源是 `SystemClock.uptimeMillis() - mTimeBase`，即**墙钟**。这只有在「视频恰好按 1.0x 实时播放」时等价于媒体时间。只要播放速率不等于墙钟速率（弱机解码跟不上、2x 倍速、缓冲停顿），弹幕与画面的差距就**按百分比线性增长**：模拟器实测视频跑 0.9x 时，弹幕每 4 秒多跑约 490ms，每 ~12 秒累积到 1.5s 就触发一次吸附。
+- **为什么曾经「看着能用」**：24–26.10 那几版用 `DanmakuSync.decide` 做「偏差 >1.5s 才 `seekTo`」的限频吸附，治的是症状。而 `seekTo` 走 `DrawTask.seek() → reset()`，本身就是**清屏 + 重建缓存**，所以限频之后用户看到的是「每隔十来秒弹幕闪一下又没了」。**周期性纠偏本身就是 bug，不要再加回来。**
+- **现在的做法**：`DanmakuManager.bindMediaClock(position, isPlaying)` → `DanmakuView.setMediaClock()` → `DrawHandler.syncTimerByMediaClock()`，纯逻辑在 `DanmakuFlameMaster/.../controller/MediaClockSync.java`（`project` 按倍速外推 / `nextTimerValue` 每帧最多挪 40ms / `isDiscontinuity` 位置差 >1s 直接硬对齐）。位置为负数时自动回退原生墙钟分支（直播就不绑）。
+- **两个不许改的点**：
+  - `MediaClock` 的方法跑在 **DFM 渲染线程**，只能读主线程采样好的 `@Volatile` 内存值（`PlayerActivity.video_now` / `ShortVideoPlayerActivity.videoNow`）。**绝不能**在里调 `IjkMediaPlayer.currentPosition`——取 native 锁，与主线程 seek/release 并发有卡死风险，也是 26.09.10 那版「渲染线程读位置导致弹幕全没」的老坑（`DanmakuManager.updateTimer` 的长注释记着全过程）。
+  - 用户拖动/快进后必须更新 `video_now`（走 `seekToVideo()` / `markSeekTarget()`），否则媒体时钟会继续按旧位置推进。
+- **不需要额外放大单条弹幕的滚动速度**：`DanmakuFactory` 的 `scrollSpeedFactor` 以媒体时间为单位，倍速下时钟走 2x，弹幕自然也是 2x 划过并保持与画面同步。
+- **体检日志**：`PlayerActivity.progressChange` 每 3 秒（或偏差超 500ms 时立刻）打一条 `弹幕时钟>视频=… 弹幕=… 偏差=…`。健康值来自「250ms 采样 + 40ms/帧蠕动」，即 **±300ms 以内**且不随时间增长；持续超 500ms 说明媒体时钟没接上（走了墙钟回退分支）。
+
 ## 8. UI 基建速查（新增页面临摹用）
 
 ### 8.1 完整继承体系

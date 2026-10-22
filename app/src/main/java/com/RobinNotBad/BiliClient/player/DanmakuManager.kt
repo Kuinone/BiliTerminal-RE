@@ -44,8 +44,39 @@ class DanmakuManager(
     private var danmakuContext: DanmakuContext? = null
     private var danmakuParser: BaseDanmakuParser? = null
 
+    private var mediaPosition: (() -> Long)? = null
+    private var mediaPlaying: (() -> Boolean)? = null
+
     private val _state = MutableStateFlow(DanmakuState())
     val state: StateFlow<DanmakuState> = _state.asStateFlow()
+
+    /**
+     * 绑定媒体时钟：弹幕时间轴从此跟随播放器位置，而不再跟随墙钟。
+     *
+     * 不绑定的后果见 [MediaClockSync] / [DrawHandler.MediaClock] 的注释：视频实际播放速率不是
+     * 1.0x 时（弱机解码跟不上、倍速、缓冲），弹幕与画面会按百分比持续拉开，只能靠周期性
+     * `seekTo` 硬拉回，而 `seekTo` 会清空屏上弹幕 —— 表现就是「弹幕每隔十来秒闪一下没掉」。
+     *
+     * [position] 与 [isPlaying] **都在 DFM 渲染线程上被每帧调用**，实现方只能返回主线程采样好的
+     * 内存值；位置不可用（未就绪/已销毁）时返回**负数**，DFM 会自动退回墙钟逻辑。
+     *
+     * 直播没有有意义的播放位置，不要绑。
+     */
+    fun bindMediaClock(position: () -> Long, isPlaying: () -> Boolean) {
+        mediaPosition = position
+        mediaPlaying = isPlaying
+        applyMediaClock()
+    }
+
+    private fun applyMediaClock() {
+        val position = mediaPosition ?: return
+        val playing = mediaPlaying ?: return
+        danmakuView.setMediaClock(object : DrawHandler.MediaClock {
+            override fun positionMs(): Long = position()
+
+            override fun isPlaying(): Boolean = playing()
+        })
+    }
 
     fun init() {
         val prefs = SharedPreferencesUtil.getSharedPreferences()
@@ -183,16 +214,10 @@ class DanmakuManager(
                 // timer，整批弹幕会被判定为"已过期"而一条都不显示（间歇性"弹幕没了"）。
                 // 现在连"读位置"本身都搬去了主线程，这条守卫随之取消。
                 //
-                // 为什么不能在这里校正时钟：DanmakuTimer 由 DFM 自走，DrawHandler.syncTimer 每帧按
-                // `gapTime = (uptimeMillis - mTimeBase) - timer.currMillisecond` 把时钟拉向墙钟基准
-                // （gapTime > 2000ms 时直接整段硬跳，见 DrawHandler.java:448），而 `mTimeBase` 只在
-                // PREPARE / RESUME / SEEK_POS 里改 —— `timer.update()` 改不到它。于是"我们拉回 pos →
-                // DFM 立刻追回旧基准"会反复发生：真机实测 2 秒内硬校正 84 次、瞬时偏差 1.8 秒；
-                // 片尾/重播场景偏差高达 199 秒，每轮就是一次肉眼可见的硬跳（用户报的「弹幕一抖一抖」）。
-                //
-                // 正确做法是让**基准**跟着视频走，放在主线程做（见 PlayerActivity.progressChange）：
-                // 用 [DanmakuSync.decide] 判定，命中则 `IDanmakuView.seekTo(pos)` —— seekTo 走
-                // DrawHandler 的 SEEK_POS 分支，会 `mTimeBase -= deltaMs`，基准才是真的对齐。
+                // 那正确的时间源怎么给？走 [bindMediaClock]：宿主在主线程采样 `video_now`，
+                // 由 DFM 的 [DrawHandler.MediaClock] 每帧读取（只读内存值，不碰 native 锁），
+                // 在 `DrawHandler.syncTimer` 里以「采样位置 + 墙钟外推 + 限幅蠕动」推进 timer。
+                // **不要**再在这里 `timer.update(pos)`：`mTimeBase` 不随之改变，会被 syncTimer 立刻拉回。
                 //
                 // 另外：本回调运行在 DanmakuView 的渲染线程上，绝不能在这里调
                 // ijkPlayer.currentPosition（取 native 锁，与主线程 seek/release 并发有卡死风险）。
@@ -205,6 +230,7 @@ class DanmakuManager(
 
         danmakuView.enableDanmakuDrawingCache(true)
         danmakuView.prepare(parser, danmakuContext)
+        applyMediaClock()
     }
 
     /**

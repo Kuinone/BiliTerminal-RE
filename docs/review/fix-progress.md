@@ -1123,6 +1123,7 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
   - 顺带修掉一处自测才暴露的问题：`弹幕缺口` 日志原先把"成功但为空"也算缺口，短 P 会天天刷 `分段 2~10（360~3600 秒无弹幕）`这种误报；现在只在**重试后仍为 null**（真失败）时打 E 级日志，空段只体现在"X/Y 段非空"里。
   - 顺带确认 `segmentCountFor(3600) = 10`（旧公式 `3600/360+1 = 11`，白发一个必空请求）。
 - **仍未做（另立项）**：`duration` 未就绪时按 3600 秒硬算 10 段（短 P 会白拉 9 段）——正确做法是先只取第 1 段、`onPrepared` 拿到真实时长后再补拉剩余分段（涉及二次加载时序，风险比本批大）。
+- **本节已被 §3.55 取代**：上面那套「周期性 `seekTo` 吸附」判据（`DanmakuSync.decide`）已于 26.10.22 **整体删除**。用户反馈「每隔一会自动纠偏本身就是不正常的行为」，根因是弹幕时钟按墙钟走导致速率性发散（见 §3.55），改为以播放器位置为时间源后不再需要任何周期性吸附。本节保留的是当时的排查过程与清屏机制的代码级结论，仍然有效。
 
 ### 3.52 存储兼容：默认目录按 API 分档 + 无全盘权限时自动降级（Wear OS，26.10.22，待真机）
 
@@ -1172,6 +1173,36 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
   - **真机判断方法**：若用户那台表实测「右滑仍退出」，就说明它属于上面第 ① 类（模拟返回键），此时开「左右滑动控制进度」或「禁用返回键」都能拦住，但这属于既有开关，不是本功能的缺陷。
 - **验证（本机，26.10.22 已跑）**：`.\gradlew.bat :app:assembleDebug :app:testStandardDebugUnitTest --offline` → `BUILD SUCCESSFUL in 56s`（两 flavor 都出 Debug 包，128 tasks）；单测按 `app/build/test-results/testStandardDebugUnitTest/*.xml` 实测 **76 类 / 804 例 / 0 失败 0 错误 0 跳过**，与改动前基线一致——本次只换窗口主题属性，没有可 JVM 单测的纯逻辑，故未新增用例（`noSwipe` 是 `ColorScheme.themeResId` 的既有参数，已被既有主题映射覆盖）。
 - **真机待验**：① 手表上「左右滑动控制进度」与「禁用返回键」都关着时，播放页右滑不再退出；② 开启「左右滑动控制进度」后右滑仍是调进度、不退出；③ 双击 / 长按倍速 / 捏合缩放 / 拖动画面全部照常；④ 顶栏返回按钮与返回键仍能退出；⑤ 主题配色与改动前一致；⑥ 短视频页右滑退出行为不变（本次未改，回归确认）。
+
+### 3.55 弹幕时间轴改由播放器位置驱动（彻底去掉周期性纠偏，26.10.22）
+
+- **用户反馈**：「弹幕每隔一会自动纠偏本就是一个不正常的行为，按理说应该全程跟随视频进度；其次在快进时这个纠偏更为严重。」并要求核实「弹幕的滚动速度计算是否有问题，导致弹幕与视频差距越来越大」。
+- **结论：确实是速率问题，不是阈值问题。** §3.51 的 `decide()` 只是把「清屏」限了频，没有消除漂移本身——根因在 DFM 内部：`DrawHandler.syncTimer()` 把 `SystemClock.uptimeMillis() - mTimeBase` 当成媒体时间，只有「视频恰好按 1.0x 实时播放」时才成立。
+- **实测取证（MuMu Android 15 x86_64，1.0x，临时诊断日志 1 秒一次）**：
+
+  ```text
+  视频=3743  弹幕=4249  差=-506      ← 弹幕跑快
+  视频=7754  弹幕=8722  差=-968
+  视频=11773 弹幕=13217 差=-1444
+  视频=15789 弹幕=15787 差=2         ← 触发一次吸附（= 清屏重建）
+  ```
+
+  视频每 4 秒只前进 3981ms（≈0.9x 墙钟，解码跟不上），弹幕每 4 秒前进 4478ms（≈1.0x 墙钟）——**速率差约 12.5%，差距线性增长**，所以「每隔十来秒必清一次屏」。倍速下同理：2.0x 时墙钟每 3 秒只该走 6 秒的一半，偏差扩大得更快，与用户「快进时更严重」的观察一致。
+- **为什么不能继续用 `seekTo` 修**：`seekTo` → `DrawTask.seek()` → `reset()` 是「清空屏上弹幕 + 重建缓存」（§3.51 已确证），拿它做纠偏等于周期性清屏。要让「全程跟随」成立，只能换时间源。
+- **修法（4 层，`DanmakuFlameMaster` 模块可改）**：
+  - 新增纯逻辑类 `DanmakuFlameMaster/.../controller/MediaClockSync.java`：`project(采样位置, 采样时刻, 当前时刻, 倍速)` 在两次采样之间外推（否则弹幕每 250ms 才动一次）；`nextTimerValue(当前, 理想)` 每帧**最多挪 40ms**（把采样抖动摊平，不出现画面回退）；`isDiscontinuity(上次, 本次)` 位置差 >1s 判为跳转/换源，直接硬对齐不走蠕动。
+  - `DrawHandler` 新增 `interface MediaClock { long positionMs(); boolean isPlaying(); }` 与 `setMediaClock()`；`syncTimer()` 优先走 `syncTimerByMediaClock()`，位置为负数（未就绪/已销毁）时**回退原生墙钟分支**。
+  - `IDanmakuView` / `DanmakuView` 暴露 `setMediaClock()`（转发不判 `isPrepared`，因为绑定通常早于 prepare）。
+  - `player/DanmakuManager.kt` 新增 `bindMediaClock(position, isPlaying)` 并在 `configureAndPrepare()` 末尾重放一次；`PlayerActivity.bindDanmakuView()` 绑 `video_now`（就是 `progressChange` 每 250ms 采样的那个 `@Volatile` 字段）与 `isPrepared && isPlaying && !destroyed`；`ShortVideoPlayerActivity` 同样绑定（`videoNow` 已补 `@Volatile`）。**直播不绑**（没有有意义的播放位置）。
+  - `PlayerActivity.progressChange` 里整块周期性吸附删除，`DanmakuSync.kt` 及其 9 例单测**删除**；新增 `MediaClockSyncTest`（12 例：外推、倍速、空档封顶、不倒推、限幅蠕动、半秒内收敛、不连续判定、阈值边界）。
+- **为什么不用改单条弹幕的滚动时长**：`DanmakuFactory` 的 `scrollSpeedFactor` 决定「一条弹幕在屏上停留多久（以媒体时间为单位）」。倍速下时钟推进 2x，同一条弹幕自然也是 2 倍速划过屏幕——这正是期望行为，弹幕出现时机与画面严格对齐，不需要额外放大滚动速度。
+- **线程安全边界（改动中最容易踩的坑）**：`MediaClock` 的两个方法跑在 DFM **渲染线程**上，只能读主线程采样好的内存值；**绝不能**在里调 `IjkMediaPlayer.currentPosition`（取 native 锁，与主线程 seek/release 并发有卡死风险，也是 26.09.10 那版「渲染线程读位置导致弹幕全没」的老坑）。
+- **模拟器实测（26.10.22，coexist debug 包；日志为新增的常驻体检 `弹幕时钟`，偏差取 `video_now - 弹幕时钟`）**：
+  - **1.0x 稳态 40 秒**：偏差 `9 / 11 / 25 / 26 / 5 / 15 / 18 / 10 / 13 / 16 / 9` ms，**横盘不增长**（改前同样条件每 4 秒涨 490ms）。
+  - **2.0x 播放 20 秒**（视频每 3 秒推进 ≈6020ms）：偏差 `42 / 39 / 34 / 40 / -102 / 26` ms，仍不累积；`-102` 是单帧采样抖动，下一帧即回落。
+  - **拖进度条**：从 81s 拖到 128s 后首个采样偏差 **8ms**（`isDiscontinuity` 硬对齐生效），截图确认弹幕立即可见、无"闪一下又没了"。
+  - **长时间无周期性清屏**：整段日志再无任何「纠偏/清屏」记录；`弹幕缺口` 无输出；错误日志只有 MuMu 自己的旋转提示，应用侧零异常。
+- **验证（本机）**：`:app:assembleCoexistDebug` 通过；`:app:testStandardDebugUnitTest` = **76 类 / 809 例 / 0 失败**（806 − 9 + 12）。**手表端仍待真机**（媒体时钟在弱机上的收敛速度、暂停/恢复的手感）。
 
 ## 4. 历史章节索引
 

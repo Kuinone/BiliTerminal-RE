@@ -79,6 +79,14 @@ public interface IDanmakuView {
 
     public void setSpeed(float speed);
 
+    /**
+     * 绑定外部媒体时钟（播放器位置）；传 null 退回按墙钟计时。
+     *
+     * 见 [DrawHandler.MediaClock]。不绑定的话，弹幕时钟按墙钟走，一旦视频实际播放速率
+     * 不是 1.0x 就会与画面持续发散。
+     */
+    public void setMediaClock(DrawHandler.MediaClock clock);
+
     public void adjust();
 
     public void start();

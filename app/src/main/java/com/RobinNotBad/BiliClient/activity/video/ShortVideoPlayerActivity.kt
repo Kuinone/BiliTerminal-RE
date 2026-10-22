@@ -45,7 +45,6 @@ import com.RobinNotBad.BiliClient.util.GlideUtil
 import com.RobinNotBad.BiliClient.util.StringUtil
 import com.RobinNotBad.BiliClient.util.VideoPreloadManager
 import com.RobinNotBad.BiliClient.player.DanmakuManager
-import com.RobinNotBad.BiliClient.player.DanmakuSync
 import com.RobinNotBad.BiliClient.player.IjkOption
 import com.RobinNotBad.BiliClient.player.IjkPlayerBridge
 import com.bumptech.glide.Glide
@@ -397,9 +396,6 @@ class ShortVideoPagerAdapter(
         private var isActive = false         // 当前页面是否为活跃状态
         private var isLoadingDanmaku = false // 是否正在加载弹幕
         private var isDanmakuVisible = true  // 弹幕是否可见
-        // 弹幕时钟吸附的时间与连续次数（见 DanmakuSync.decide：吸附会清屏，必须限频+退避）
-        private var danmakuSnapMs = 0L
-        private var danmakuSnapCount = 0
 
         private val speedOptions = listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f)
         private var currentSpeedIndex = 2
@@ -774,9 +770,15 @@ class ShortVideoPagerAdapter(
 
                 // 初始化弹幕视图
                 danmakuView = itemView.findViewById(R.id.danmakuView)
-                // 弹幕时钟不再由 DanmakuManager 自己校正（见其 updateTimer 注释与
-                // docs/review/fix-progress.md §3.6）：DFM 的基准只能靠 seekTo 重设。
-                danmakuManager = DanmakuManager(danmakuView!!)
+                danmakuManager = DanmakuManager(danmakuView!!).also { manager ->
+                    // 弹幕时间轴跟随播放器位置（而不是墙钟），见 DanmakuManager.bindMediaClock
+                    // 与 DanmakuFlameMaster 的 MediaClockSync。两个 provider 跑在 DFM 渲染线程上，
+                    // 只读主线程采样出来的内存值。
+                    manager.bindMediaClock(
+                        { if (isPrepared) videoNow.toLong() else -1L },
+                        { isPrepared && isPlaying }
+                    )
+                }
                 danmakuManager?.init()
 
                 playerBridge.setOnPrepared {
@@ -921,21 +923,10 @@ class ShortVideoPagerAdapter(
                         val pos = st.currentPosition.toInt()
                         if (pos != videoNowLast) {
                             videoNowLast = pos
+                            // 弹幕时钟以 videoNow 为时间源（见上面的 bindMediaClock），
+                            // 这里只需保证它是最新采样值，**不再做周期性 seekTo 吸附**
+                            // —— 吸附会清空屏上弹幕，表现就是「弹幕闪一下又没了」。
                             videoNow = pos
-                            // 弹幕时钟对齐（与 PlayerActivity 同源，见 DanmakuSync 的类注释）：
-                            // 只有 seekTo 会重设 DFM 的 mTimeBase，但**seekTo 会清空屏上弹幕**，
-                            // 所以只在 >1.5s 的大跳时做，并且带冷静期与退避——否则就是"弹幕闪一下又没了"。
-                            danmakuView?.let { dv ->
-                                val now = android.os.SystemClock.elapsedRealtime()
-                                val decision = DanmakuSync.decide(
-                                    pos.toLong(), dv.currentTime, now, danmakuSnapMs, danmakuSnapCount
-                                )
-                                danmakuSnapCount = decision.consecutive
-                                if (decision.snap) {
-                                    danmakuSnapMs = now
-                                    dv.seekTo(pos.toLong())
-                                }
-                            }
                             // 进度条每 250ms 刷（要平滑），但文本一秒才变一次，
                             // 所以只在整秒变化时才做字符串拼接与 setText
                             videoProgress.progress = pos
