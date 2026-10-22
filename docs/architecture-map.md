@@ -1273,6 +1273,13 @@ CenterThreadPool.supplyAsyncWithLiveData { fetch...().getOrThrow() }
 - **不需要额外放大单条弹幕的滚动速度**：`DanmakuFactory` 的 `scrollSpeedFactor` 以媒体时间为单位，倍速下时钟走 2x，弹幕自然也是 2x 划过并保持与画面同步。
 - **体检日志**：`PlayerActivity.progressChange` 每 3 秒（或偏差超 500ms 时立刻）打一条 `弹幕时钟>视频=… 弹幕=… 偏差=…`。健康值来自「250ms 采样 + 40ms/帧蠕动」，即 **±300ms 以内**且不随时间增长；持续超 500ms 说明媒体时钟没接上（走了墙钟回退分支）。
 
+### 7.52 播放页必须自己保持亮屏，且用窗口标志而不是 View 级 `keepScreenOn`（26.10.22）
+
+- **现状**：长视频页靠 `res/layout/activity_player.xml` 根布局的 `android:keepScreenOn="true"`；短视频页 (`activity_short_video_player.xml` / `fragment_short_video_page.xml`) 原先**一处都没有**，看到一半就熄屏。**新增任何播放页都要记得这件**，它是布局属性、不会被编译器或单测提醒。
+- **要用窗口标志**：`window.addFlags/clearFlags(FLAG_KEEP_SCREEN_ON)`。实测 View 级 `itemView.keepScreenOn` 在 RecyclerView 的 item 上清不干净（暂停后窗口 `fl` 仍带 `KEEP_SCREEN_ON`）。
+- **判据要「重算」不要「增量」**：按「当前活跃播放器是否真的在播」整体重算（`ShortVideoPlayerActivity.syncKeepScreenOn()`），并在 `onStop` 兜底清、`onStart` 回前台重算。增量 add/clear 会漏掉「本来就没在播」的路径（`releasePlayer()`），漏一次就是永久亮屏。
+- **别拿 `mWakefulness` 当验证判据**：MuMu 模拟器本身不自动熄屏（桌面对照 22 秒后仍 `Awake`），要看 `dumpsys window windows` 里窗口的 `fl` 是否含 `KEEP_SCREEN_ON`。
+
 ## 8. UI 基建速查（新增页面临摹用）
 
 ### 8.1 完整继承体系

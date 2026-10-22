@@ -1204,6 +1204,18 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
   - **长时间无周期性清屏**：整段日志再无任何「纠偏/清屏」记录；`弹幕缺口` 无输出；错误日志只有 MuMu 自己的旋转提示，应用侧零异常。
 - **验证（本机）**：`:app:assembleCoexistDebug` 通过；`:app:testStandardDebugUnitTest` = **76 类 / 809 例 / 0 失败**（806 − 9 + 12）。**手表端仍待真机**（媒体时钟在弱机上的收敛速度、暂停/恢复的手感）。
 
+### 3.56 短视频页没有阻止自动熄屏（26.10.22）
+
+- **问题**（用户提出「检查短视频部分是否没有做阻止自动熄屏」）：**确实没有**。全仓与亮屏相关的代码只有两处——`res/layout/activity_player.xml` 根布局的 `android:keepScreenOn="true"`（长视频播放页）与 `DownloadListActivity` 的下载期 `FLAG_KEEP_SCREEN_ON`；短视频这套（`activity_short_video_player.xml` + `fragment_short_video_page.xml`）**一处都没有**，看短视频到系统熄屏时间就黑屏。
+- **改法**（`activity/video/ShortVideoPlayerActivity.kt` + `ShortVideoFeedFragment.kt`）：
+  - `PageHolder.isPlaying` 加自定义 setter，任何一处改播放状态都触发宿主 `syncKeepScreenOn()`——赋值点有 8 处（`play` / `pause` / `resume` / `setActive` / `onPrepared` / 完成回调 / `releasePlayer` / state 收集），逐个补调用必漏。
+  - 判据取「当前活跃那一页是否真的在播」（`ShortVideoFeedFragment.isCurrentPlaying()` → `ShortVideoPagerAdapter.isCurrentPlaying()` → `activeHolder.isPlaying()`），**每次整体重算**而不是增量 add/clear：增量写法在 `releasePlayer()` 这类「本来就没在播」的路径上会漏，残留一次就是永久亮屏。
+  - `onStop` 兜底清标志、`onStart` 回前台重算，避免后台期间把状态带回来。
+- **为什么用窗口标志而不是 View 级 `keepScreenOn`**：先试过在 `PageHolder` 里设 `itemView.keepScreenOn`，模拟器实测**暂停后窗口 `fl` 里仍留着 `KEEP_SCREEN_ON`**（RecyclerView 的 item 挂着，View 级标志的清退不可靠）。换成 `window.addFlags/clearFlags(FLAG_KEEP_SCREEN_ON)` 后一次就对。
+- **实测（MuMu Android 15 x86_64，coexist debug，判据是 `dumpsys window windows | grep -c 'fl=KEEP_SCREEN_ON'`）**：播放中 `1` → 暂停后 `0` → 恢复播放 `1` → 上滑切下一条 `1`（新一条自动播）。用户随后在自己环境复验通过。
+- **验证（本机）**：`:app:assembleCoexistDebug` 通过；`:app:testStandardDebugUnitTest` = 76 类 / 809 例 / 0 失败（本次只有 UI 状态逻辑，无新增可单测的纯函数）。
+- **顺带记一笔**：`mWakefulness` **不能**当判据——MuMu 本身不自动熄屏（桌面对照实验 22 秒后仍 `Awake`），必须看窗口 `fl`。
+
 ## 4. 历史章节索引
 
 > 完整正文在 `docs/archive/review/fix-progress-history.md`。**编号在历史上有重复**（`## 二十二` / `## 二十九` 各出现两次、`## 30.` 是阿拉伯数字写法，原为不打断既有交叉引用而保持不动），下表**以归档文件的物理行序为准**。

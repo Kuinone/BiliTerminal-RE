@@ -20,6 +20,7 @@ import android.view.Surface
 import android.view.TextureView
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.ImageButton
 import android.widget.ImageView
@@ -116,6 +117,19 @@ class ShortVideoPlayerActivity : InstanceActivity() {
         screenHeight = metrics.heightPixels
     }
 
+    override fun onStart() {
+        super.onStart()
+        // 回到前台重算一次：后台期间可能已经暂停过，别把上一次的亮屏状态带回来
+        syncKeepScreenOn()
+    }
+
+    override fun onStop() {
+        // 进后台一律交还亮屏权：Fragment 的 onPause 走 pauseCurrent() 也会清，
+        // 但那条路依赖「活跃页引用还在」，这里再加一道兜底，避免窗口不可见却挂着标志。
+        window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        super.onStop()
+    }
+
     override fun onBackPressed() {
         // 在右侧详情/评论/相关推荐页时，返回先回到短视频首页，而不是直接退出本页
         if (::pager.isInitialized && pager.currentItem > 0) {
@@ -170,6 +184,31 @@ class ShortVideoPlayerActivity : InstanceActivity() {
     /** 播放完成的回调转交（播放逻辑在短视频页里；外壳只做转发）。 */
     internal fun onVideoCompleted(position: Int) {
         shellAdapter.activeFeedFragment?.handleVideoCompleted(position)
+    }
+
+    /**
+     * 重算「保持亮屏」。
+     *
+     * 短视频页原先**没有任何 keep-screen-on**（长视频页靠 `activity_player.xml` 的
+     * `android:keepScreenOn="true"`），看短视频到点就熄屏。
+     *
+     * 走**窗口标志**而不是某个 View 的 `keepScreenOn`：View 级标志挂在
+     * RecyclerView 的 item 上并不可靠（26.10.22 实测：暂停后窗口 `fl` 里仍留着
+     * `KEEP_SCREEN_ON`）。判据取「当前活跃那一页是否真的在播」，所以暂停、滑走、
+     * 进后台都会清掉，不会出现「停在暂停画面上也一直亮」。
+     *
+     * 每次播放状态变化都**整体重算**而不是增量开关：增量写法在
+     * `releasePlayer()` 这类「本来就没在播」的路径上会漏掉，残留一次就是永久亮屏。
+     */
+    internal fun syncKeepScreenOn() {
+        if (isFinishing || isDestroyed) return
+        if (!::shellAdapter.isInitialized) return
+        val keep = shellAdapter.activeFeedFragment?.isCurrentPlaying() == true
+        if (keep) {
+            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        } else {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
     }
 }
 
@@ -391,7 +430,19 @@ class ShortVideoPagerAdapter(
         // 否则弹幕线程可能读到过期的 true，继续把重建窗口期的脏位置灌进 DanmakuTimer
         @Volatile
         private var isPrepared = false
+
+        /**
+         * 播放状态。
+         *
+         * setter 里顺带通知宿主重算「保持亮屏」：本页原先**没有任何 keep-screen-on**
+         * （长视频页靠 `activity_player.xml` 根布局的 `android:keepScreenOn="true"`，
+         * 短视频这套布局没有），看短视频到点就熄屏。
+         */
         private var isPlaying = false
+            set(value) {
+                field = value
+                activity.syncKeepScreenOn()
+            }
         private var isSeeking = false
         private var isActive = false         // 当前页面是否为活跃状态
         private var isLoadingDanmaku = false // 是否正在加载弹幕
