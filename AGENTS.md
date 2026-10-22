@@ -43,14 +43,9 @@
 - 页面级排序/分区配置沿两个既有范式：`MenuConfig`（启用/未启用）与 `MySpaceConfig`（主列表/更多列表）——都是纯 Kotlin 单一数据源 + JVM 单测 + 复用 `MenuSettingAdapter` 式双分区拖拽写法。
 - 请求与解析分离，纯解析抽成 `static`/`object` 函数并补 JVM 单测（参考 `HotSearchApi.parseHotSearch`；需要 SharedPreferences 时注入 `SharedPreferencesUtil.sharedPreferences = FakeSharedPreferences()`——该假实现是共享助手 `app/src/test/…/util/FakeSharedPreferences.kt`，**别再抄一份**）。
 - **小步提交**：把改动切成小步，每步都能独立验证（`assembleDebug` + 单测通过）并说清楚改了什么，再进入下一步；不要一次性堆大量改动。
-- **做完就提交并推送，且按改动类型落到不同分支**（26.10.20 起）：一次改动完成后**自己写 commit message、自己 commit、自己 push**，不要等用户催；只有改动没验证过（构建/单测没跑通）才停下来问。惯例：中文、`type(scope): 摘要`（`fix` / `feat` / `docs` / `chore` / `refactor` / `test`），一次提交只装一个关注点，末尾带 `Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>`。**不开 PR**（自己的仓库不需要），一个改动做完后把该分支 merge 回 `main` 并 push，保证 `main` 始终是最新可发布状态。
-- **分支映射**（三条都是长期类型分支，2026-10-20 已全部同步到最新 `main`，此后各自往上叠；分支名是历史名字，**不要改名**，它们现在承担的是类型桶的角色）：
-
-  | 改动类型 | 推到哪个分支 |
-  | --- | --- |
-  | `feat/*`（新功能、新能力） | `feat/gitee-release` |
-  | `fix/*`（修 bug、行为纠正） | `fix/issue-1-swipe-seek-back` |
-  | `docs/*` / `chore/*` / `refactor/*` / `test/*` | `main`（直接提交） |
+- **做完就提交并推送，一律提交到 `main`**（26.10.22 收紧，原先「按改动类型分三条分支」的做法作废）：一次改动完成后**自己写 commit message、自己 commit、自己 push 到 `main`**，不要等用户催；只有改动没验证过（构建/单测没跑通）才停下来问。惯例：中文、`type(scope): 摘要`（`fix` / `feat` / `docs` / `chore` / `refactor` / `test`），一次提交只装一个关注点，末尾带 `Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>`。
+  - **为什么不再分分支**：分支桶让「一个改动」散在两处、`main` 上多出一批 merge 提交，提 PR 给上游时结构难看且容易重复。现在所有改动先落 `main`，需要 review / 合上游时再从 `main` 开 PR 或直接对比。
+  - 历史上的 `feat/gitee-release`、`fix/issue-1-swipe-seek-back` **两个分支名保留、内容停在 2026-10-22 的同步点，不再往上叠**（远程对象别删，CI / 旧链接可能还引用）。要发版仍走 tag / `build-release.yml`，与分支无关。
 
 - **改完必须自测，不许只说"应该没问题"**（26.10.22 起）：本机常驻 **MuMu 模拟器**（`adb connect 127.0.0.1:7555`，Android 15 / x86_64，`adb root` 可用 → 用 `app-coexist-x86-debug.apk`）。凡涉及播放器 / 网络 / UI 时序的改动，改完自己装包、跑一遍、看日志与截图，把实测结论（日志原文、关键截图、未复现的原因）写进 `docs/review/fix-progress.md`。**"编译通过 + 单测绿"只证明纯函数没写错，不证明功能可用**（见 `docs/review/device-test-plan.md` 〇节）。测法见 `docs/review/agent-test-guide.md`；MuMu 的两个坑：**活动会落在 display 3/4/5 等副屏**（`screencap -d 0` 拍到的是桌面，要用 `screencap -p -d <physicalId>`、`input -d <displayId>`，映射由 `dumpsys display | grep -o 'displayId=[0-9]*, uniqueId=.local:[0-9]*'` 查），且 `input` **必须带 `-d <displayId>`**，否则点击落在桌面。
 - **用户可见文案一律进 `app/src/main/res/values/strings.xml`**（26.10.19 起从「只有设置页用」改为全仓迁移，台账与规范见 `docs/copy-inventory/STRINGS-MIGRATION.md`）。命名沿用既有前缀：`pagename_` 页面标题 / `btn_` 按钮 / `text_` 界面文本 / `desc_` 设置说明 / `msg_` 一次性提示。**新代码不要再硬编码中文**；迁移未覆盖的老代码可以留着，但改到哪块顺手迁哪块，别新增第二份。写法：Kotlin `getString(R.string.x)`；`companion object` / `object` 里用 `BiliTerminal.context!!.getString(...)`；Java 用 `BiliTerminal.context.getString(...)`（别忘了 import `R` 与 `BiliTerminal`）。
