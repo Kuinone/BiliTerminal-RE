@@ -1079,11 +1079,11 @@
 
 - **改写**：在进度条下方用折线图展示弹幕密度分布
 
-### S-082 「自动跳过片头片尾」说明（入口已隐藏，字符串保留）
+### S-082 「自动跳过片头片尾」说明
 
-- **位置**：`app/src/main/res/values/strings.xml:160`（`R.string.desc_player_skip_op_ed`；设置项在 `SettingTerminalPlayerActivity.kt:139-140` 已被整行注释掉）
-- **出现在哪**：**当前不出现**——26.10.10 该设置项紧急撤回，`SettingsIndex` 里也同步摘掉了搜索词
-- **控件类型**：说明文字（保留资源，恢复功能时会重新可见）
+- **位置**：`app/src/main/res/values/strings.xml:165`（`R.string.desc_player_skip_op_ed`；设置项在 `SettingTerminalPlayerActivity.kt:136-137`）
+- **出现在哪**：设置 → 播放器 → 「显示高能进度条」下面；`SettingsIndex` 的搜索词也在（搜索「自动跳过片头片尾」可定位）。**26.10.10 撤回时曾隐藏，26.10.22 恢复上线（默认关闭）**
+- **控件类型**：说明文字（开关本身默认关）
 - **用途**：解释自动跳片头片尾与「撤回」按钮
 - **原文**：
 

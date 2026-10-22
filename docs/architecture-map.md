@@ -734,13 +734,15 @@ CenterThreadPool.supplyAsyncWithLiveData { fetch...().getOrThrow() }
 
 ### 7.7 番剧片头/片尾自动跳过（26.10.04 新增）
 
-> ⚠️ **26.10.10 已紧急撤回（versionCode 2610102）**：本节描述的功能**当前处于关闭状态，设置入口已隐藏**。
-> 代码与设置项一律保留，下面按「可用状态」写的设计说明仍然有效，只是暂时不生效。撤回机制：
-> `player/SkipOpEdPrefs.kt` 的 `FEATURE_ENABLED = false`（**与用户存档无关的否决位**——
-> 只改 `DEFAULT_ENABLED` 对老用户无效，他们的存档里早就是 `true`）；设置项在
-> `SettingTerminalPlayerActivity` 内被注释；关键词从 `SettingsIndex` 摘掉；
-> `PlayerActivity.needViewPoints()` 里的 `PLAYER_SKIP_OP_ED` 一项已删（否则老用户仍会为「跳过」白拉 `view_points`）。
-> 完整恢复清单见 `docs/review/fix-progress.md` **§3.3**（原 §43.5）。
+> ✅ **26.10.22 已恢复上线（口径改为默认关闭）**：26.10.10 的紧急撤回已解除——`player/SkipOpEdPrefs.kt` 的
+> `FEATURE_ENABLED` 回到 `true`，设置项回到 `SettingTerminalPlayerActivity`，关键词回到 `SettingsIndex`，
+> `PlayerActivity.needViewPoints()` 的 `PLAYER_SKIP_OP_ED` 一项恢复。
+> 撤回期的警告（下面这段）保留作历史依据，其中的常量值已不再是现状。撤回与恢复的完整记录见
+> `docs/review/fix-progress.md` **§3.3**。
+>
+> **`FEATURE_ENABLED` 这个「与存档无关的否决位」必须留着**：它是唯一能整体下线的开关——
+> 改 `DEFAULT_ENABLED` 对老用户无效（他们存档里早有值），只加 `isEnabled` 运行期闸门也不够
+> （`needViewPoints()` 会继续为「跳过」白拉 `view_points`）。下次再撤仍只改这一个常量。
 
 设计参照 PiliPlus（`bggRGjQaUbCoE/PiliPlus` @ `2515ecf`）的 `pgcSkipType` / `SkipType` 体系。
 
@@ -760,16 +762,25 @@ CenterThreadPool.supplyAsyncWithLiveData { fetch...().getOrThrow() }
 - 跳跃复用 `seekToPosition()`，与手动拖动走同一条路径，弹幕与外部音轨一起同步。
 - 反悔：`showSkipUndoSnack()` 用 `MsgUtil.createSnack(anchor, 文案, LENGTH_LONG, MsgUtil.Action("撤回"){...})` 跳回片段起点。`lastSkippedSegment` 用来判断这条 Snackbar 是否已过期，防止「期间又跳过别的片段」后点撤回把人拽回去。
 - **用户主动 seek 必须标记为已处理**：`seekToPosition()` 与 seekbar 的 `onStopTrackingTouch` 两条路径都调 `onUserSeekTo()`。不标的话，用户拖进片头想看一眼，下一轮定时器立刻又把他弹走。
-- `loadViewPoints()` 的三个调用条件从「显示视频分段开启」放宽为 `needViewPoints()`（显示分段 **或** 自动跳过，任一开启）。**26.10.10 撤回后这里只剩「显示视频分段」**，`PLAYER_SKIP_OP_ED` 一项已显式删除——只加运行期闸门不够，老用户存档里那一项还是 `true`，判断不改就仍会为跳过去拉 `view_points`。
+- `loadViewPoints()` 的三个调用条件从「显示视频分段开启」放宽为 `needViewPoints()`（显示分段 **或** 自动跳过，任一开启）。
+  **26.10.22 恢复时把存档原文判断加回来了**：`needViewPoints()` 里按 `getBoolean(PLAYER_SKIP_OP_ED, DEFAULT_ENABLED)` **原文**判断，
+  **不要包一层 `isEnabled()`**——`isEnabled` 带 `FEATURE_ENABLED` 否决位，包上之后再撤一次就又要来改这里（26.10.10 撤回时正是为此多改了一处）。
 - 换集/换P 时重置 `skipSegments` / `skipHandled` / `lastSkippedSegment`，不带上一集的进度。
 
-**设置项**（默认**开启**，26.10.04 后续由关闭改为开启；**26.10.10 起入口已隐藏，见本节顶部警告**）：
+**设置项**（当前默认**关闭**：26.10.04 后续曾改为开启，26.10.10 撤回，**26.10.22 恢复时由用户拍板改为默认关闭**）：
 
-- `SettingsKeys.PLAYER_SKIP_OP_ED`（`player_skip_op_ed`）——开关本体。**默认值只有一个来源**：`player/SkipOpEdPrefs.kt` 的 `DEFAULT_ENABLED = true`，四个调用点全部引用它（`PlayerActivity.needViewPoints()` / `skipOpEdEnabled()` / `SettingTerminalPlayerActivity`），别再散落 `true`/`false` 字面量（原先四处各写 `false`，改默认值时漏一处就会「设置页显示开着、播放器却不跳」）。
-- **老用户显式关过的保持关**：`SharedPreferences.getBoolean(key, def)` 的语义就是「键不存在才用 def」，所以只改默认值天然满足「新装默认开、升级后尊重旧选择」，**不需要任何迁移代码**。`SkipOpEdPrefsTest` 用「显式关过→仍为 false」钉死这条。
+- `SettingsKeys.PLAYER_SKIP_OP_ED`（`player_skip_op_ed`）——开关本体。**默认值只有一个来源**：`player/SkipOpEdPrefs.kt` 的 `DEFAULT_ENABLED = false`，四个调用点全部引用它（`PlayerActivity.needViewPoints()` / `skipOpEdEnabled()` / `SettingTerminalPlayerActivity`），别再散落 `true`/`false` 字面量（原先四处各写 `false`，改默认值时漏一处就会「设置页显示开着、播放器却不跳」）。
+- **用户显式选过的那一侧必须保留**：`SharedPreferences.getBoolean(key, def)` 的语义就是「键不存在才用 def」，所以只改默认值天然满足「新装用默认、升级后尊重旧选择」，**不需要任何迁移代码**。因此 26.10.22 把 `DEFAULT_ENABLED` 从 `true` 改成 `false` 也**不影响**存档里显式开过的老用户（他们恢复后仍然是开的）。`SkipOpEdPrefsTest` 对「显式关过→仍关」「显式开过→仍开」两侧都钉了测试。
 - `SettingsKeys.PLAYER_SKIP_OP_ED_GUIDED`（`player_skip_op_ed_guided`）——**只是「引导提示已弹过」的记账位，不出现在设置页**，别当成用户可见开关。
 
-**为什么改成默认开启**：PiliPlus（设计参照对象）的同类开关 `pgcSkipType` 默认就是 `SkipType.skipOnce`（`lib/utils/storage_pref.dart:977-979`），B 站官方播放器同样默认跳过；且跳过之后有「撤回」兜底，误跳的代价远小于「用户根本不知道有这功能」——本轮用户反馈「没看到实现了」正是因为默认关+入口深。
+**默认值为什么几经变化（别再按旧记忆改回去）**：
+
+| 时间 | 默认值 | 依据 |
+| --- | --- | --- |
+| 26.10.04 初版 | 关闭 | 初版保守 |
+| 26.10.04 后续 | **开启** | 参照 PiliPlus 的 `pgcSkipType` 默认 `SkipType.skipOnce`（`lib/utils/storage_pref.dart:977-979`）与 B 站官方播放器；且跳过有「撤回」兜底，误跳代价小于「用户不知道有这功能」 |
+| 26.10.10 | 整体撤回 | 用户报告「乱跳」，改由 `FEATURE_ENABLED` 关掉 |
+| **26.10.22（现状）** | **关闭** | 乱跳修掉后恢复，用户重新拍板：不让没主动开启的人被动跳片头 |
 
 **引导**：`SkipOpEdPrefs.shouldShowGuide(hasSegments, alreadyGuided) = hasSegments && !alreadyGuided`。
 判据**只看「引导过没有」，与开关当前值解耦**。原实现是「`skipSegments` 空就 return、开关开着就 return、引导过就 return」，一旦默认改成开启，第二条永远命中，**这条引导就变成死代码**（真机清单第 200 条永远测不到）。文案随开关状态分两套（`guideText` / `guideActionText`）：开关已开 → 「已自动跳过片头/片尾，可在下方撤回」+「知道了」（不再劝用户开启）；未开 → 「这个视频有片头片尾，可以自动跳过」+「开启」。写 `PLAYER_SKIP_OP_ED_GUIDED` 后永不再弹（每集都弹会很烦）。
@@ -1282,7 +1293,7 @@ CenterThreadPool.supplyAsyncWithLiveData { fetch...().getOrThrow() }
 
 ### 7.53 顶栏双击：必须自己接管触摸，用 `performClick()` 回放原动作（26.10.22，issue #22）
 
-- **场景**：双击顶栏一键切到伪装页（假计算器 / 假「蓝牙已断开」，见 `docs/FEATURES.md` §19 与 `docs/review/fix-progress.md` §3.57）。
+- **场景**：双击顶栏一键切到伪装页（假计算器 / 假「蓝牙已断开」，见 `docs/FEATURES.md` §19 与 `docs/review/fix-progress.md` §3.58）。
 - **为什么不能只加一个 `OnDoubleTapListener`**：顶栏单击的语义是「返回上一页 / 打开菜单」，长按是「打开菜单列表」。双击的**第一次抬手已经是一次完整 click** —— 若还让 View 自己发 click，页面先被 `finish()`，第二次点击根本落不到同一个 View 上。
 - **正确做法**（`BaseActivity.setupTopbarDoubleTapDisguise`）：
   - `OnTouchListener` 返回 `true` 消费全部触摸（View 不再自己发 click/longclick），事件喂给 `GestureDetector`；

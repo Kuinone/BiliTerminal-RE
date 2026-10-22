@@ -15,35 +15,36 @@ import com.RobinNotBad.BiliClient.util.UiText
  * （`lib/utils/storage_pref.dart:977-979`），B 站官方播放器同样默认跳过；且跳过之后有「撤回」兜底，
  * 误跳的代价远小于「用户不知道有这功能」。
  *
- * 注意 [DEFAULT_ENABLED] 只用于**读取**：`SharedPreferences.getBoolean(key, def)` 的语义就是
- * 「键不存在才用 def」，所以老用户若显式关过，升级后仍然是关的——这正是我们要的行为。
+ * **默认关闭**（26.10.22 恢复）：初版是默认开启，26.10.10 又因「乱跳」紧急撤回并在设置页隐藏；
+ * 26.10.22 修掉乱跳后恢复，口径由用户拍板为**默认关闭**——不让任何没主动开启的用户被动跳片头，
+ * 想要的人自己去设置页打开。
  *
- * ⚠️ **26.10.10 起本功能已紧急撤回**：整个功能由 [FEATURE_ENABLED] 关掉并在设置页隐藏，
- * 与用户存档无关。下面关于「默认开启」的历史说明保留，仅作为恢复后的依据。
+ * 注意 [DEFAULT_ENABLED] 只用于**读取**：`SharedPreferences.getBoolean(key, def)` 的语义就是
+ * 「键不存在才用 def」，所以**老用户若显式开过，恢复后仍然是开的**——这正是我们要的行为
+ * （他们当初主动开过，不该因为这次版本升级被悄悄关掉）。
+ *
+ * **26.10.10 的紧急撤回已于 26.10.22 解除**（[FEATURE_ENABLED] 回到 `true`）：撤回的三处配套改动
+ * （设置页入口、搜索索引、`needViewPoints` 的自动跳过分支）已一并恢复。
  */
 object SkipOpEdPrefs {
 
-    /** `player_skip_op_ed` 的默认值：开启。 */
-    const val DEFAULT_ENABLED = true
+    /** `player_skip_op_ed` 的默认值：26.10.22 恢复后改为**关闭**（见类注释）。 */
+    const val DEFAULT_ENABLED = false
 
     /**
-     * **功能总开关：26.10.10 紧急撤回，现在置为 `false`。**
+     * **功能总开关：26.10.22 已恢复为 `true`。**
      *
-     * 为什么不直接把 [DEFAULT_ENABLED] 改成 `false`：默认值只决定「键不存在时读什么」，
-     * 老用户存档里早就是 `true` 了，改默认值对他们**一点作用都没有**，自动跳过照旧生效。
-     * 撤回必须与存档无关，所以这里是独立的否决位。
+     * 它存在的意义没有变——它是一个**与用户存档无关**的否决位，紧急撤回时改 `false` 即可整体下线，
+     * 而不必去动 [DEFAULT_ENABLED]（改默认值对存档里已是 `true` 的老用户毫无作用）。
+     * 也就是说：以后再要撤一次，仍然只改这一个常量。
      *
-     * 撤回期间的实际表现：
-     * - 自动跳过完全失效（[isEnabled] 恒为 `false`，与 [DEFAULT_ENABLED]、存档都无关）；
-     * - 播放器不再为了跳过而拉取 `view_points`（见 `PlayerActivity.needViewPoints()`）；
-     * - 首次引导不再弹出（引导里带「开启」按钮，会写回存档）；
-     * - 设置页入口已隐藏（`SettingTerminalPlayerActivity`）与搜索索引里已摘掉
-     *   （`SettingsIndex`），用户没有任何途径把它打开。
-     *
-     * 恢复时只把这里改回 `true` 并把设置项加回去即可——[ViewPointSkip] 的判定逻辑
-     * 与它的单测**一行未动**，不是靠删代码做到的撤回。
+     * 当前（恢复后）的实际表现：
+     * - 自动跳过是否生效由 [isEnabled] 决定：总开关为真**且**用户存档为真；
+     * - 播放器只为跳过/分段显示而拉取 `view_points`（见 `PlayerActivity.needViewPoints()`）；
+     * - 首次引导会弹出（引导里带「开启」按钮，会写回存档）；
+     * - 设置页入口与搜索索引均已恢复（`SettingTerminalPlayerActivity` / `SettingsIndex`）。
      */
-    const val FEATURE_ENABLED = false
+    const val FEATURE_ENABLED = true
 
     /**
      * 自动跳过当前是否生效：功能总开关 **与** 用户存档，两者都为真才算开。

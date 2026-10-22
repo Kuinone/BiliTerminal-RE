@@ -67,6 +67,7 @@ import com.RobinNotBad.BiliClient.player.IjkNativeLibs
 import com.RobinNotBad.BiliClient.player.PlayerDefaults
 import com.RobinNotBad.BiliClient.player.LocalAudioTrackPolicy
 import com.RobinNotBad.BiliClient.player.PlayerSurfaceBinder
+import com.RobinNotBad.BiliClient.player.SkipCancelPolicy
 import com.RobinNotBad.BiliClient.player.SkipOpEdPrefs
 import com.RobinNotBad.BiliClient.player.ViewPointSkip
 import com.RobinNotBad.BiliClient.player.SurfaceTarget
@@ -267,6 +268,16 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
          * 之后播放的那一截就没了。15 秒与投稿视频的在线心跳同频，最大丢失量可接受。
          */
         private const val LOCAL_PROGRESS_SAVE_INTERVAL_MS = 15_000L
+
+        /**
+         * 自动跳转之后，片头/片尾判定暂停多久（毫秒）。
+         *
+         * 要盖住「`markSeekTarget` 写了新位置、IJK 的异步 seek 还没落地」那段窗口：窗口内
+         * `progressChange` 会把 `video_now` 拉回旧位置，旧位置若仍在片段内就会再判一次。
+         * 取 600ms（约 2 个定时器周期），且**必须显著短于片头/片尾之间的间隔**，
+         * 否则连续两段（片头紧接着片尾）时后一段会被静默期吃掉。
+         */
+        private const val SKIP_QUIET_AFTER_SEEK_MS = 600L
     }
 
     @Volatile // 被 PlaybackService 定时线程读（serviceDurationMs）
@@ -522,6 +533,23 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
 
     /** 最近一次自动跳过的片段，供「撤回」回到原位；跳完即置位，撤回后清空。 */
     private var lastSkippedSegment: ViewPointSkip.Segment? = null
+
+    /**
+     * 自动跳过判定的静默期截止时刻（`SystemClock.elapsedRealtime()`，0 = 不静默）。
+     *
+     * 跳转后 `video_now` 先写、IJK 的 `seekTo` 后落地，落地前 `currentPosition` 仍返回旧位置；
+     * 旧位置若还在片段内就会触发下一轮判定 —— 用户看到的是「跳完又跳回去」。
+     * 原先只靠 `skipHandled` 一条防线，现在加一道时间兜底（见 [SkipCancelPolicy]）。
+     */
+    private var skipQuietUntilMs: Long = 0L
+
+    /**
+     * 本次 `seekToVideo` 调用是否来自自动跳过，供 [markSeekTarget] 判断要不要起静默期。
+     *
+     * 用字段而不是给 `markSeekTarget` 加参数：它在别处还有调用点（重播、切页、恢复现场），
+     * 那些位置默认不该起静默期，加默认参数反而容易漏掉真正的调用者意图。
+     */
+    private var pendingSeekIsAutoSkip: Boolean = false
 
     private var eventBusInit = false
 
@@ -3004,9 +3032,16 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
         return super.onKeyDown(keyCode, event)
     }
 
-    private fun seekToPosition(position: Long) {
+    /**
+     * 跳转入口。
+     *
+     * @param userInitiated 是否由**用户手势/按键**发起。必须由调用点如实声明：自动跳过自己
+     *   调这个方法时传 `false`，否则它会被当成「用户想留在这段里」而把片段误标成已处理，
+     *   真正该跳的片段就被吃掉了（26.10.22「乱跳」的成因之一，见 [SkipCancelPolicy]）。
+     */
+    private fun seekToPosition(position: Long, userInitiated: Boolean = true) {
         if (ijkPlayer != null && isPrepared) {
-            seekToVideo(position)
+            seekToVideo(position, userInitiated)
         }
     }
 
@@ -3021,11 +3056,17 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
      * ② DASH 双文件（video.mp4 + audio.m4a）是视频、音频两个播放器，**只 seek 视频会让音轨留在旧位置**；
      * 而 `progressChange` 的 800ms 偏差校正随后会再 seek 一次音频，用户听到的是"停顿两次"。
      * 所以这里一并 seek 音频，并压住校正冷却（[AUDIO_RESYNC_COOLDOWN_MS]）。
+     *
+     * @param userInitiated 见 [seekToPosition]：默认 true。自动跳过自身调用时必须传 false。
      */
-    private fun seekToVideo(position: Long) {
-        // 用户手动拖进片头/片尾就算「已处理」，否则下一轮定时器会立刻把他弹走
-        onUserSeekTo(position)
+    private fun seekToVideo(position: Long, userInitiated: Boolean = true) {
+        // 用户手动拖进片头/片尾就算「已处理」，否则下一轮定时器会立刻把他弹走。
+        // 自动跳过自己调用时不标记（userInitiated=false），两路不互相污染。
+        onUserSeekTo(position, userInitiated)
+        // markSeekTarget 依据它决定要不要起片头/片尾判定的静默期
+        pendingSeekIsAutoSkip = !userInitiated
         markSeekTarget(position)
+        pendingSeekIsAutoSkip = false
 
         ijkPlayer?.seekTo(position)
         if (hasDanmaku && mDanmakuView != null) mDanmakuView!!.seekTo(position)
@@ -3048,24 +3089,35 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
     private fun markSeekTarget(position: Long) {
         video_now = position.toInt()
         video_now_last = -1 // 让 progressChange 下一帧立刻按新位置刷新进度条/字幕
+        // 片头/片尾判定同样要等 seek 落地，否则 progressChange 把 video_now 拉回旧位置后
+        // 会被立刻再判一次（「跳完又跳回去」）。只由自动跳过自己起静默期：用户主动拖动的落点
+        // 已经被 onUserSeekTo 正式记为「已处理」，不需要时间兜底，也不该因为拖一下
+        // 就压掉 600ms 的自动跳过。
+        //
+        // 合并说明：这里原本还写 `danmakuSnapCount = 0` / `danmakuResyncMs = now`，弹幕时钟改成
+        // 媒体时钟（见 bindDanmakuView）后这两个字段已删除，静默期直接按当前时刻算，语义不变。
+        if (pendingSeekIsAutoSkip) {
+            skipQuietUntilMs = android.os.SystemClock.elapsedRealtime() + SKIP_QUIET_AFTER_SEEK_MS
+        }
     }
 
     /**
-     * 是否需要 `view_points` 数据：只有「显示视频分段」用得到。
+     * 是否需要 `view_points` 数据：「显示视频分段」与「自动跳过片头片尾」都用得到。
      *
-     * 26.10.10 之前这里还 `|| PLAYER_SKIP_OP_ED`，因为自动跳过也要这份数据；该功能已撤回
-     * （见 [SkipOpEdPrefs.FEATURE_ENABLED]），只开了自动跳过、没开分段显示的用户不该再为它
-     * 白拉一次接口——但老用户存档里的 `true` 还在，所以这一项**必须显式去掉**，
-     * 光靠功能闸门会让网络请求照旧发出去。
+     * 26.10.10 撤回期间这里只有分段显示一项（撤回后没人消费片段表，白拉接口）；
+     * 26.10.22 恢复后把 `PLAYER_SKIP_OP_ED` 加回来——**按存档原文判断，不要包一层
+     * [SkipOpEdPrefs.isEnabled]**：那会把总开关状态也算进来，将来一旦再撤回，
+     * 老用户存档里的 `true` 仍会让接口白拉一次。
      */
     private fun needViewPoints(): Boolean =
-        SharedPreferencesUtil.getBoolean(SettingsKeys.PLAYER_SHOW_VIEWPOINTS, true)
+        SharedPreferencesUtil.getBoolean(SettingsKeys.PLAYER_SHOW_VIEWPOINTS, true) ||
+                SharedPreferencesUtil.getBoolean(SettingsKeys.PLAYER_SKIP_OP_ED, SkipOpEdPrefs.DEFAULT_ENABLED)
 
     /**
      * 自动跳过片头片尾当前是否生效。
      *
-     * 26.10.10 起本功能已紧急撤回：[SkipOpEdPrefs.isEnabled] 内含一道与存档无关的否决位，
-     * 所以这里恒为 `false`——老用户存档里留着的 `true` 不会让它复活。
+     * 是否生效 = [SkipOpEdPrefs.FEATURE_ENABLED]（与存档无关的总否决位）**且** 用户存档。
+     * 26.10.22 恢复后默认关闭：没在设置页主动打开过的用户，这里恒为 `false`。
      * 默认值与判据统一走 [SkipOpEdPrefs]，别在调用点写死字面量。
      */
     private fun skipOpEdEnabled(): Boolean =
@@ -3082,11 +3134,13 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
     private fun maybeAutoSkipOpEd(positionSec: Double) {
         if (skipSegments.isEmpty()) return
         if (!skipOpEdEnabled()) return
+        // 刚跳过一次：等 IJK 的异步 seek 落地再判，否则 video_now 回弹到旧位置会再判一次
+        if (android.os.SystemClock.elapsedRealtime() < skipQuietUntilMs) return
         val segment = ViewPointSkip.shouldSkip(positionSec, skipSegments, skipHandled) ?: return
         skipHandled.add(ViewPointSkip.keyOf(segment))
         Logu.d("跳过片头片尾", "跳过 type=" + segment.type + " " + segment.fromSec + "s -> " + segment.toSec + "s")
         // 落点是区间的右端点（右开区间之外），所以不会被自己再次判定
-        seekToPosition((segment.toSec * 1000.0).toLong())
+        seekToPosition((segment.toSec * 1000.0).toLong(), userInitiated = false)
         lastSkippedSegment = segment
         showSkipUndoSnack(segment)
     }
@@ -3111,10 +3165,15 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
      *
      * 用户主动拖进片头，说明他就是想看看片头，不能被下一轮定时器又弹走。
      * 自动跳过自己跳到区间右端点（区间之外），所以不会误伤这里。
+     *
+     * @param userInitiated 只有用户发起时才标记。自动跳过自己、以及自动流程调用 seekToVideo 时
+     *   必须传 false——传错了会让片段被误标，真正该跳的片段反而被吃掉
+     *   （26.10.22「乱跳」的成因之一，判据收敛在 [SkipCancelPolicy.cancelKeyFor]）。
      */
-    private fun onUserSeekTo(positionMs: Long) {
+    private fun onUserSeekTo(positionMs: Long, userInitiated: Boolean) {
         if (skipSegments.isEmpty()) return
-        val key = ViewPointSkip.keyForManualSeek(positionMs / 1000.0, skipSegments, skipHandled) ?: return
+        val segmentKey = ViewPointSkip.keyForManualSeek(positionMs / 1000.0, skipSegments, skipHandled)
+        val key = SkipCancelPolicy.cancelKeyFor(userInitiated, segmentKey, skipHandled) ?: return
         skipHandled.add(key)
         lastSkippedSegment = null
     }
@@ -3123,12 +3182,12 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
      * 第一次在「有片头片尾」的视频里播放时提示一次。
      *
      * **判据是「引导过没有」，不是「开关开着没有」**（见 [SkipOpEdPrefs.shouldShowGuide]）：
-     * 本功能已改为默认开启，若还按「开关开着就不引导」，清单第 200 条的引导会永远不出现，
-     * 新用户遇到自动跳过时会莫名其妙（不知道为什么进度自己动了）。
+     * 26.10.22 恢复后默认关闭，所以「首次遇到有片头片尾的视频」正是告诉用户「这功能存在」的时机，
+     * 界面上带一个「开启」按钮；若还按「开关开着就不引导」，没主动开过的用户永远不会知道有它。
      * 开关已开时文案改为「已自动跳过、可撤回」，不再劝用户「开启」。
      */
     private fun maybeShowSkipGuide() {
-        // 功能已撤回：连引导都不能出现。引导上带「开启」按钮，点了会往存档里写 true，
+        // 总开关为假（再次紧急撤回）时连引导都不能出现：引导上带「开启」按钮，点了会往存档里写 true，
         // 等于给了用户一条绕过闸门的路（虽然闸门仍然拦得住，但弹一条已经下线的功能提示本身就是骚扰）。
         if (!SkipOpEdPrefs.FEATURE_ENABLED) return
         val enabled = skipOpEdEnabled()
@@ -3973,9 +4032,9 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
                 Logu.d("视频分段", "开始加载分段数据 aid=" + aid + " cid=" + cid)
                 viewPoints = PlayerApi.getViewPoints(aid, cid)
                 // 片头/片尾只是 view_points 的子集（type=1/2），这里单独提炼一份给自动跳过用。
-                // 功能总开关关着（SkipOpEdPrefs.FEATURE_ENABLED=false，26.10.10 紧急撤回）时
-                // 直接留空，不白跑 buildSegments：唯一的消费点 maybeAutoSkipOpEd 已被
-                // SkipOpEdPrefs.isEnabled 拦死，算了也没人看。恢复时无需改这里。
+                // 功能总开关 [SkipOpEdPrefs.FEATURE_ENABLED] 为假（即再次紧急撤回）时直接留空，
+                // 不白跑 buildSegments：唯一的消费点 maybeAutoSkipOpEd 已被 SkipOpEdPrefs.isEnabled
+                // 拦死，算了也没人看。所以「撤一次/恢复一次」都只需改那个常量，这里不用动。
                 val segments = if (SkipOpEdPrefs.FEATURE_ENABLED) {
                     ViewPointSkip.buildSegments(
                         (viewPoints ?: emptyList()).map {
@@ -3988,10 +4047,16 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
 
                 runOnUiThread {
                     if (destroyed) return@runOnUiThread
-                    // 换集/换P 之后，上一集的进度不能带过来
+                    // 只有**片段内容真的变了**（换集/换P）才清空已处理集合与撤回位。
+                    // 原先无条件 clear()：loadViewPoints() 在一次播放里会被调用多次
+                    // （启动、投屏恢复等），响应晚到时会把「片头已处理」抹掉 → 下一轮定时器
+                    // 重新命中 → 开播十几秒后自己又往前跳一次，每多拉一次多跳一次。
+                    // 判据收敛在 SkipCancelPolicy.segmentsChanged（有单测）。
+                    if (SkipCancelPolicy.segmentsChanged(skipSegments, segments)) {
+                        skipHandled.clear()
+                        lastSkippedSegment = null
+                    }
                     skipSegments = segments
-                    skipHandled.clear()
-                    lastSkippedSegment = null
 
                     if (viewPoints != null && viewPoints!!.isNotEmpty()) {
                         // 只开了自动跳过的用户不需要这个按钮
