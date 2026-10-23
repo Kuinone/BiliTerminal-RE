@@ -1,6 +1,6 @@
 # 改前必查的已知坑
 
-> 触发：准备改 API 解析 / 通知 / 下载 / 播放器 / 弹幕 / 清单 / 列表 adapter / 跨包 id。**完整清单见 `docs/architecture-map.md` 第 7 节**；这里是仍存在、且踩过就会出事的那批，每条都标了实测/线上事故依据。
+> 触发：准备改 API 解析 / 通知 / 下载 / 播放器 / 弹幕 / 清单 / 列表 adapter / 跨包 id / 伪装与顶栏手势。**完整清单见 `docs/architecture-map.md` 第 7 节**；这里是仍存在、且踩过就会出事的那批，每条都标了实测/线上事故依据。
 
 ## API 与数据
 
@@ -35,3 +35,13 @@
 - **播放页必须自己保亮屏，且用窗口标志**（26.10.22）：长视频页靠 `activity_player.xml` 的 `android:keepScreenOn="true"`，短视频页原先漏了（看到一半熄屏）。新播放页要用 `window.addFlags(FLAG_KEEP_SCREEN_ON)` 并按「当前活跃播放器是否真在播」**整体重算**，`onStop` 兜底清；View 级 `keepScreenOn` 在 RecyclerView item 上清不干净（详见 `docs/architecture-map.md` §7.52）。
 - **原生库加载一律走 `player/IjkNativeLibs.ensureLoaded(context)` 并判返回值**（26.10.19 线上崩溃 #48）：`loadLibrariesOnce` / `IjkMediaPlayer()` 失败抛的是 `UnsatisfiedLinkError`（`Error`，`catch (Exception)` 兜不住），且构造内部会二次加载库。该类已做「失败即锁死 + 诊断写 `Logu` + 按隐私开关上报」，`PlayerActivity` / `IjkPlayerBridge` / `VideoPlayerCore` / `ShortVideoPlayerActivity` 均已接线，**新代码不要再裸调 `loadLibrariesOnce` / `IjkMediaPlayer()`**（详见 `docs/architecture-map.md` §7.44）。
 - **弹幕 XML 解析是懒执行的**（26.10.20 修）：交给 `DanmakuManager.createParser` 的流不能在该方法返回后关掉——真解析在 `DanmakuView` 渲染线程（`DrawTask.java:283`），`BiliDanmukuParser.parse()` 读到已关闭流会 `return null`，弹幕**静默全空**（26.10.02 的 `use{}` 就这样弄空了所有本地缓存视频的弹幕）。要传流就传 `ByteArrayInputStream`（close 是空操作），或先把内容读进内存（详见 `docs/architecture-map.md` §7.46）。
+
+## 伪装与顶栏手势
+
+> 需求与验收口径见 `docs/superpowers/specs/2026-10-22-disguise-mode.md`。这一节只记「踩过就会出事」的那几条。
+
+- **双击顶栏必须自己接管触摸，别只挂 `OnDoubleTapListener`**（26.10.22）：双击的**第一次抬手已经是一次完整 click**，页面会先 `finish()`，第二次点击根本落不到同一个 View 上。正确做法是 `OnTouchListener` 返回 `true` 消费全部触摸、事件喂 `GestureDetector`，单击 / 长按再用 `performClick()` / `performLongClick()` **回放**给各页面自己装的监听器（实现只有 `util/DisguiseGesture.kt` 一份，详见 `docs/architecture-map.md` §7.53）。**别改成「在单击监听器里判断两次点击」**——第一次点击已经执行完了，那会变成「退出两次」。
+- **在 `OnTouchListener` 里做长按计时，`ACTION_DOWN` 必须返回 `true`**（蓝牙伪装页的教训）：返回 `false` 时 View 没成为触摸目标，系统不再派发 `UP` / `CANCEL`，`removeCallbacks` 永远执行不到 → **轻点一下，2 秒后窗口自己 `finish()`**，伪装直接失效（`BluetoothDisguiseActivity.setupExitGesture`）。返回 `true` 时若要保留点击语义，得自己补 `performClick()`。
+- **顶栏延迟装载必须封顶**：`asyncInflate` 页面在 `onStart` 时 `findViewById(R.id.top)` 还是 null；但**有 11 个页面布局里根本没有 `R.id.top`**（Download / Catch / Tutorial / TutorialPager / JumpToDialog / InputDialog / CaptchaWebView / QRLoginRegister / ConfirmDialog / Dialog / ListDialog），无上限 `post` 会在这些页面里每帧投递一次、耗电到页面结束。现在封顶 20 次 × 50ms 并在放弃时打日志。**开开关进这些页面只该看到一条日志**，多了就是又没封顶。
+- **接线点三个，装和摘都要做**：`BaseActivity`（普通页）、`PlayerActivity.onStart`（**不继承** `BaseActivity`）、短视频 `PageHolder.syncDisguiseGesture()`（顶栏在分页 item 里）。只 `install` 不 `detach` 的话，开关关掉后已装上的触摸层不会自己消失，必须重进页面才失效。
+- **伪装页的暗号只允许 4~8 位数字**：计算器上敲不出字母，配了 `abc` 就是把自己锁在伪装页里、只能强杀应用。`DisguisePrefs.normalizeCode` 拦一次、`code()` 读取侧再兜一次，**别为了"支持复杂暗号"放开这两个校验**。

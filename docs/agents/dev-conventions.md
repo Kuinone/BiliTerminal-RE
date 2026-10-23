@@ -1,4 +1,4 @@
-# 开发硬约定（界面 / 菜单 / 设置 / 弹窗 / 文案）
+# 开发硬约定（界面 / 菜单 / 设置 / 弹窗 / 文案 / 伪装页）
 
 > 本册是写界面与功能时的实现细则；`AGENTS.md` 只放每次都要遵守的最短约束。
 > **做到哪节先读哪节**，不要凭记忆。改任何非平凡代码前还要读 `docs/architecture-map.md`。
@@ -40,6 +40,16 @@
 - **正确写法**：菜单型 `TerminalDialog.menu(context, title, items, danger)`、单选型 `TerminalDialog.singleChoice(context, title, items, checked)`、确认型 `TerminalDialog.confirm(context, title, message, confirmText, cancelText, confirmIsDanger)`、纯提示 `TerminalDialog.alert(context, title, message)`。破坏性项（删除/取消收藏之类）**必须**进 `danger`，别让用户靠文案猜。
 - **给新主题补 overlay**：`ThemeOverlay.<X>.Dialog` 里 `colorSurface` / `colorOnSurface` / `colorError` / `android:background=@drawable/dialog_background` 四项缺一不可，并在该主题里加 `<item name="alertDialogTheme">`。漏写不会崩（`TerminalDialog` 取属性带兜底默认值），但弹窗会退回 Material 默认配色。
 - 颜色**只读 `?attr/`**（`colorPrimary` / `colorOnSurface` / `colorError`），`TerminalDialog.kt` 内不写任何色值常量。
+
+## 伪装页（双击顶栏切过去的那两个页面）
+
+> 需求与验收见 `docs/superpowers/specs/2026-10-22-disguise-mode.md`；手势技术结论见 `docs/architecture-map.md` §7.53。
+
+- **伪装页刻意不继承 `BaseActivity`**：主题、DPI 适配、圆屏 `setRound`、教程触发、EventBus、顶栏手势，任何一项都可能把「这是 B 站客户端」暴露出来。用 `AppCompatActivity` + 专用主题（`Theme.BiliClient.Disguise` / `Theme.BiliClient.Disguise.Dialog`）。
+- **但圆屏留白是设备适配、不是外观**：不继承 `BaseActivity` 就拿不到 `setRound()`，改由 `activity/disguise/DisguiseRoundPadding.applyDisguiseRoundPadding(root)` 读同一组 `PADDING_H` / `PADDING_V` 换算。**新增伪装页必须调它**，否则圆屏最外圈的按键会被切掉。
+- **返回键必须吃掉**（计算器只当 `C`，蓝牙页完全不响应），并且要一起拦 `KEYCODE_ESCAPE`：用「模拟返回键」实现右滑的手表 ROM 到应用侧就是一个 `KEYCODE_BACK`，不拦就等于给伪装页开了个后门。
+- **入口只写 `DisguiseLauncher.launch(context)`**，别在调用点自己 `startActivity`——样式判定只该有一份。启动失败只记日志、**不弹 Toast**：弹一句「打开伪装页失败」比不伪装更显眼。
+- **`util/` 里那三个纯逻辑文件不许读资源**：`DisguisePrefs` 与 `CalculatorEngine` 会被 JVM 单测直接调用（本仓库无 Robolectric，单测里没有 Context），`getString` 必然空指针。`CalculatorEngine` 的 `ERROR = "错误"` 是结果值，属于已知破例。
 
 ## 页面级排序 / 分区配置
 
