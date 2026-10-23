@@ -11,7 +11,7 @@
 - **做完就提交并推送，一律提交到 `main`**（26.10.22 收紧，原先「按改动类型分三条分支」的做法作废）：一次改动完成后**自己写 commit message、自己 commit、自己 push 到 `main`**，不要等用户催；只有改动没验证过（构建/单测没跑通）才停下来问。
 - 惯例：中文、`type(scope): 摘要`（`fix` / `feat` / `docs` / `chore` / `refactor` / `test`），一次提交只装一个关注点，末尾带 `Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>`。
 - **为什么不再分分支**：分支桶让「一个改动」散在两处、`main` 上多出一批 merge 提交，提 PR 给上游时结构难看且容易重复。现在所有改动先落 `main`，需要 review / 合上游时再从 `main` 开 PR 或直接对比。
-- 历史上的 `feat/gitee-release`、`fix/issue-1-seek-back` **两个分支名保留、内容停在 2026-10-22 的同步点，不再往上叠**（远程对象别删，CI / 旧链接可能还引用）。要发版仍走 tag / `build-release.yml`，与分支无关。
+- 历史上的 `feat/gitee-release`、`fix/issue-1-swipe-seek-back` **两个分支名保留、内容停在 2026-10-22 的同步点，不再往上叠**（远程对象别删，CI / 旧链接可能还引用）。要发版仍走 tag / `build-release.yml`，与分支无关。
 
 ## 改完必须自测
 
