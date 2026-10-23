@@ -202,8 +202,8 @@ SplashActivity（LAUNCHER，typewriter 动画）
              ├─ 未完成初始设置 → SetupUIActivity
              ├─ 已完成 → SharedPreferencesUtil.loadMenuEnabled().firstOrNull()
              │            → MenuActivity.btnNames[key].second  ← 用"第一个启用的菜单项"当首屏
-             └─ 异步：App token / Cookie 刷新、CookiesApi.checkCookies、AppInfoApi.check
-                       + TerminalApi.checkAnnouncement()（自建公告差量）
+             └─ 异步：App token / Cookie 刷新、CookiesApi.checkCookies、AppInfoApi.check（更新包清理等）
+                       + TerminalApi.checkAnnouncement()（公告差量；**客户端唯一的公告源**）
                        + TelemetryReporter.reportIfNeeded()（匿名日活，一天一次）
 ```
 
@@ -213,6 +213,7 @@ SplashActivity（LAUNCHER，typewriter 动画）
 - **`CatchActivity` 跑在 `:error_activity` 独立进程**（26.10.04 批次 3，`AndroidManifest.xml` 的 `android:process`）。主进程已崩溃时，同进程再启 Activity 容易被一起带走，所以崩溃页必须自给自足：它**不会**经过 `PerformanceManager.init`、`ErrorCatch.init`、未读轮询、更新检查。往 `CatchActivity` 加依赖前先确认那个依赖不要求这些初始化。判进程用 `BiliTerminal.currentProcessName()`（读 `/proc/self/cmdline`——`minSdk 19` 用不了 API 28 的 `Application.getProcessName()`）。
 - 首屏由**用户自定义菜单顺序**决定，不是硬编码 `RecommendActivity`。改导航时注意 `loadMenuEnabled()`。
 - `onActivityPreCreated` 的强制更新拦截会 **finish 掉任意 Activity**，调试时若被"莫名其妙踢到更新页"，检查 `force_update_required` 这个 SharedPreferences 键。
+- **公告只有一个源**：客户端已**不再直连上游** `api.biliterminal.cn` 的公告接口。上游公告改由自建服务端拉取、管理员在控制台**逐条**审核后透传（`source=relay`），启动差量弹窗与「公告列表」都只读 `TerminalApi.checkAnnouncement()` / `getOwnAnnouncementList()`。**别在客户端重新加回「两路合并」**（26.10.23 已整体删除）。
 
 ---
 
@@ -395,8 +396,11 @@ CenterThreadPool.supplyAsyncWithLiveData { fetch...().getOrThrow() }
 
 ### 6.5 自建反馈 / 公告 / 匿名统计（26.10.09 新增，动这一块之前必读）
 
-这条链路和上游 `api.biliterminal.cn` **完全独立**：域名、服务端、code 约定、已读计数都是分开的，
-两者并存、互不覆盖。
+这条链路和上游 `api.biliterminal.cn` 是两套服务器：域名、code 约定、已读计数都分开。
+
+**但公告只有一个源**（26.10.23 起）：客户端不再直连上游公告接口；上游公告由本服务端用
+标准库 `urllib.request` 拉取，管理员在控制台**逐条**审核后透传（`source=relay`），
+未审核 / 被拒绝的对客户端不可见。客户端侧因此没有「两路合并」，也不再有「部分公告源连不上」的提示。
 
 **服务端**（在本项目自己的 HK 服务器上，不在本仓库运行时里）
 
@@ -431,11 +435,28 @@ CenterThreadPool.supplyAsyncWithLiveData { fetch...().getOrThrow() }
   当日新增回退，那是数据失真，不是清理。
 - **设备视图**（26.10.14 加）：`GET /admin/api/devices[?coexist=&version=&brand=&q=&limit=&offset=]`。
   **按 `dev_key` 聚合，一行一台设备** —— 一台双版本手机在 `installs` 里是两行，平铺会被读成两台设备。
+- **上游公告透传**（26.10.23 加，`SCHEMA_VERSION=4`）：客户端不再直连上游公告，改由服务端用标准库
+  `urllib.request` 拉（`UPSTREAM_ANN_URL`，可用环境变量 `REBILITERMINAL_UPSTREAM_ANN_URL` 覆盖，
+  超时 10s，跑在 `run_in_threadpool` 里）。`announcements` 加 `source`（`local`/`relay`，缺省 `local`）、
+  `origin_id`（上游 id，仅 relay）、`relay_state`（`pending`/`approved`/`rejected`）；新增 `meta` 键值表存
+  `relay_last_pull`。`relay_state='approved'` 才进 `_VISIBLE_SQL`（pending / rejected 对客户端与 `from`
+  差量都不可见）；同一上游 `origin_id` 靠部分唯一索引
+  `idx_announcements_origin ... WHERE source='relay'` 去重（**不能写进 `SCHEMA`**，老库那时还没有该列）。
+  管理接口：`GET /admin/api/announcement/relay`（三组 + `last_pull`）、
+  `POST .../relay/refresh`（拉取并 upsert，已存在条目只更新正文/时间、保留审核结论；**上游失败回
+  HTTP 200 + `{code:1,msg}`，不抛 500**）、`POST .../relay/decision` ← `{id, decision: approve|reject}`
+  （reject 对已透传项即「停止透传」，再次 approve 可恢复；refresh 不会复活 rejected）。
+  控制台「公告」页签有「上游透传（原版哔哩终端）」区块，打开时若 `last_pull` 超过 300s 自动补拉一次。
+  `GET /admin/api/announcements` 仍只回 `source='local'` 的行。`server/selftest.py` §22 钉住可见性/幂等/
+  审核结论保持/失败降级/v3→v4 迁移。
 - 接口（成功一律 `code=0`，HTTP 恒 2xx）：
   - `GET /terminal/health`
-  - `GET /terminal/announcement/get_list[?from=<id>]` → `{code:0,data:[{id,ctime,title,content}]}`。
-    `id` 是自增 id **+ 1000000000**，故意和上游公告 id 空间错开；
+  - `GET /terminal/announcement/get_list[?from=<id>]` → `{code:0,data:[{id,ctime,title,content,source}]}`。
+    `source` 是 `"local"`（本项目公告）或 `"relay"`（上游透传，缺省按 `local` 解析）。
+    `id` 是本地 `announcements` 自增 id **+ 1000000000**（本项公告与透传公告共用这一个 id 空间，
+    透传行另存 `origin_id` 去重，id 早已和上游 id 空间错开）；
     不带 `from` 是列表页（倒序），带 `from` 是启动弹窗的差量（只回 `id>from`，正序）。
+    **只返回 `relay_state='approved'` 的透传行**，pending / rejected 不可见；
     **会按 `X-Install-Id` 过滤定向公告**（公开公告人人可见）。
   - `POST /terminal/telemetry/ping` ← `{install_id, device_key, version_code, version_name, is_beta, sdk, brand, device, abi, is_coexist}`
   - `POST /terminal/feedback/submit` ← `{install_id, device_key, category, content, contact?, mid?, version_code, version_name, sdk, brand, device}`
@@ -460,8 +481,15 @@ CenterThreadPool.supplyAsyncWithLiveData { fetch...().getOrThrow() }
 
 - `api/TerminalApi.java` 是这条链路唯一的出口：`BASE_URL = https://rebiliterminal.zsapp.asia/terminal`。
   请求与解析分离——`buildPingPayload` / `buildFeedbackPayload` / `buildCrashPayload` /
-  `parseAnnouncements` / `mergeAnnouncements` 都是可在 JVM 上跑的纯函数，
+  `parseAnnouncements` 都是可在 JVM 上跑的纯函数，
   单测在 `app/src/test/java/com/RobinNotBad/BiliClient/api/TerminalApiTest.kt`。**改字段先改纯函数和测试。**
+- **公告客户端链路**（26.10.23 改为单源）：`TerminalApi.parseAnnouncements` 解析 `source`
+  （缺省 `local`）→ `model/Announcement.isRelayed()`；列表页 `activity/settings/AnnouncementsActivity.kt`
+  只调 `getOwnAnnouncementList()`；启动弹窗 `TerminalApi.checkAnnouncement()` 仍按
+  `SettingsKeys.TERMINAL_ANNOUNCEMENT_LAST` 做差量（两种公告共用该游标）。
+  透传公告点开后走 `MsgUtil.showText(title, content, relayed=true)` → `ShowTextActivity`
+  顶部多一行来源说明（`text_announcement_relay_source`「此公告来自原版哔哩终端」），
+  **只在正文页标注**，列表卡片不标。
 - `util/TelemetryReporter.kt`：启动时一天最多 ping 一次，**只有请求成功才写回日期**（断网启动不浪费当天机会）。
 - `util/CrashReporter.kt` + `util/CrashTrail.kt`：`ErrorCatch` 在崩溃瞬间把 `exception/message/thread/trail/uptime`
   塞进 Intent → `CatchActivity`（独立进程）在 `isCrashReportAutoEnabled()` 时自动上报，
@@ -604,6 +632,9 @@ CenterThreadPool.supplyAsyncWithLiveData { fetch...().getOrThrow() }
 7. **控制台前端不引任何外部资源**（无 CDN、无图表库），否则国内外网一抖后台就打不开；
    口令只出现在 `POST /console/login` 的表单里，会话 Cookie 是 `HttpOnly`，
    前端 JS 读不到、URL 里也不带。旧 `?token=` 入口保留但只作兜底。
+8. **公告只有一个源，别再引回上游直连**（26.10.23）：上游公告接口由服务端接、管理员逐条审核后
+   透传；客户端 `AppInfoApi` 里的公告方法与 `TerminalApi.mergeAnnouncements` 已全部删除。
+   改公告相关代码时**别恢复「两路合并」或「部分公告源连不上」的提示**，那是旧口径。
 
 ---
 
@@ -1695,8 +1726,8 @@ TTF/OTF/TTC，应用把它**拷进私有目录**（`filesDir/custom_font/custom_
 | `CookieRefreshApi` | Web Cookie 刷新 | `cookieInfo`、`getCorrespondPath`、`refreshCookie` |
 | `AppTokenRefreshApi` | access_token 续期 | `refreshAppToken` |
 | `ConfInfoApi` | **WBI 签名**（全 api 层依赖） | `signWBI`、`getWBIMixinKey`、`sortUrlParams` |
-| `AppInfoApi` | 公告/崩溃上报/赞助/检查更新 | `check`、`getAnnouncementList`、`uploadStack`、`getSponsors` |
-| `TerminalApi` | **自建**服务器：公告/反馈/匿名统计/崩溃上报（26.10.09 新增，见 §6.5） | `ping`、`submitFeedback`、`uploadCrash`、`checkAnnouncement`、`getOwnAnnouncementList`、`loadMergedAnnouncements` |
+| `AppInfoApi` | 上游服务器的崩溃上报 / 赞助 / 检查更新（公告接口已于 26.10.23 移除） | `check`、`uploadStack`、`getSponsors` |
+| `TerminalApi` | **自建**服务器：公告（含上游逐条审核透传）/反馈/匿名统计/崩溃上报（见 §6.5） | `ping`、`submitFeedback`、`uploadCrash`、`checkAnnouncement`、`getOwnAnnouncementList` |
 | `BilibiliIDConverter` | av/bv 互转（纯函数） | ~~`bvtoaid`、`aidtobv`~~ **26.09.11 已删除**（全工程 0 调用） |
 
 ### 网络出口的 3 个例外

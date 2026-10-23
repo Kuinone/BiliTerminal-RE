@@ -27,7 +27,6 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.UUID;
 
 import okhttp3.Response;
@@ -37,9 +36,9 @@ import okhttp3.Response;
  *
  * <p><b>与 {@link AppInfoApi} 的关系</b>：{@code AppInfoApi} 指向的是上游开发者
  * （RobinNotBad）的 {@code api.biliterminal.cn}，那是原作者的服务器。本 fork 的
- * 新主人另有自己的服务器，所以公告、反馈、遥测、崩溃报告走这里；上游那套接口
- * <b>原样保留、不动</b>——两路公告在客户端合并展示，见
- * {@link #getAnnouncementList()}。
+ * 新主人另有自己的服务器，所以公告、反馈、遥测、崩溃报告走这里。上游公告接口
+ * <b>客户端已不再直连</b>：上游公告由本服务端拉取、管理员在控制台逐条审核后透传
+ * （{@code source=relay}），客户端只跟自建服务器要公告。
  *
  * <p><b>安全红线（务必保持）</b>：
  * <ul>
@@ -265,9 +264,13 @@ public class TerminalApi {
 
     /**
      * 解析公告数组。服务端 {@code ctime} 是 **epoch 秒**，这里换算成毫秒后交给
-     * {@link TimeUtil#formatDate(long)}（与上游 {@code AppInfoApi.getAnnouncementList()} 一致）。
+     * {@link TimeUtil#formatDate(long)}。
      *
      * <p>缺 id 的条目直接跳过：没有 id 就无法参与「已读最大 id」的差量计算。
+     *
+     * <p>{@code source} 是服务端返回的来源标记：{@code local} 为本项目服务端发布，
+     * {@code relay} 为管理员在控制台审核后从上游（原版哔哩终端）透传；旧版服务端
+     * 不返回该字段时按 {@code local} 处理。
      */
     public static ArrayList<Announcement> parseAnnouncements(JSONArray data) {
         ArrayList<Announcement> list = new ArrayList<>();
@@ -280,30 +283,10 @@ public class TerminalApi {
             announcement.ctime = TimeUtil.formatDate(item.optLong("ctime", 0) * 1000);
             announcement.title = item.optString("title", "");
             announcement.content = item.optString("content", "");
+            announcement.source = item.optString("source", "local");
             list.add(announcement);
         }
         return list;
-    }
-
-    /** 把两路公告（上游 + 自建）按 id 倒序合并；id 相同的只保留一条。 */
-    public static ArrayList<Announcement> mergeAnnouncements(ArrayList<Announcement> upstream,
-                                                             ArrayList<Announcement> own) {
-        ArrayList<Announcement> merged = new ArrayList<>();
-        if (upstream != null) merged.addAll(upstream);
-        if (own != null) {
-            for (Announcement item : own) {
-                boolean duplicated = false;
-                for (Announcement exists : merged) {
-                    if (exists.id == item.id) {
-                        duplicated = true;
-                        break;
-                    }
-                }
-                if (!duplicated) merged.add(item);
-            }
-        }
-        Collections.sort(merged, (a, b) -> Integer.compare(b.id, a.id));
-        return merged;
     }
 
     /**
@@ -704,9 +687,10 @@ public class TerminalApi {
     /**
      * 启动时拉取自建公告源的增量并弹窗。
      *
-     * <p>与上游 {@link AppInfoApi#checkAnnouncement()} 完全对称，但用的是
-     * {@link SettingsKeys#TERMINAL_ANNOUNCEMENT_LAST} 这个独立计数——两边 id 空间
-     * 靠 10 亿偏移隔开，不会互相把对方的已读位推高。
+     * <p>上游公告不再由客户端直连：服务端会先拉取上游、等管理员逐条审核通过后再放进
+     * 这个接口（{@code source=relay}），所以本方法拿到的就是「本项目公告 + 已审核透传
+     * 公告」的完整可见集。{@link SettingsKeys#TERMINAL_ANNOUNCEMENT_LAST} 仍是唯一的
+     * 已读计数，透传公告沿用服务端分配的本地 id，与自建公告共处同一 id 空间。
      */
     public static void checkAnnouncement() throws Exception {
         String url = "/announcement/get_list?from="
@@ -714,20 +698,16 @@ public class TerminalApi {
         JSONObject result = get(url);
         requireOk(result);
 
-        JSONArray data = result.optJSONArray("data");
-        if (data == null) return;
-
-        for (int i = 0; i < data.length(); i++) {
-            JSONObject item = data.getJSONObject(i);
-            int id = item.getInt("id");
-            if (SharedPreferencesUtil.getInt(SettingsKeys.TERMINAL_ANNOUNCEMENT_LAST, 0) < id) {
-                SharedPreferencesUtil.putInt(SettingsKeys.TERMINAL_ANNOUNCEMENT_LAST, id);
+        ArrayList<Announcement> list = parseAnnouncements(result.optJSONArray("data"));
+        for (Announcement announcement : list) {
+            if (SharedPreferencesUtil.getInt(SettingsKeys.TERMINAL_ANNOUNCEMENT_LAST, 0) < announcement.id) {
+                SharedPreferencesUtil.putInt(SettingsKeys.TERMINAL_ANNOUNCEMENT_LAST, announcement.id);
             }
-            MsgUtil.showText(item.getString("title"), item.getString("content"));
+            MsgUtil.showText(announcement.title, announcement.content, announcement.isRelayed());
         }
     }
 
-    /** 公告列表（全量，倒序）。 */
+    /** 公告列表（全量，倒序；含已审核透传的上游公告）。 */
     public static ArrayList<Announcement> getOwnAnnouncementList() throws Exception {
         JSONObject result = get("/announcement/get_list");
         requireOk(result);
@@ -775,32 +755,5 @@ public class TerminalApi {
             list.add(String.valueOf(SharedPreferencesUtil.getLong(SharedPreferencesUtil.mid, 0L)));
         }
         return list;
-    }
-
-    /**
-     * 公告列表页用：把上游与自建两路合并后写入 [out]。
-     *
-     * <p>两路各自尽力而为：**任何一路失败都不影响另一路展示**。原实现是「一个源抛异常
-     * 整页就报错」，用户会连原有的上游公告都看不到。
-     *
-     * @return 两路**都**成功时 true；只要有一路成功就返回 false 但仍会把该路结果写入 [out]，
-     * 调用方据此决定是否提示「部分公告源不可用」
-     */
-    public static boolean loadMergedAnnouncements(ArrayList<Announcement> out) {
-        ArrayList<Announcement> upstream = null;
-        ArrayList<Announcement> own = null;
-        try {
-            upstream = AppInfoApi.getAnnouncementList();
-        } catch (Exception e) {
-            Logu.w("upstream announcement failed: " + e);
-        }
-        try {
-            own = getOwnAnnouncementList();
-        } catch (Exception e) {
-            Logu.w("own announcement failed: " + e);
-        }
-        out.clear();
-        out.addAll(mergeAnnouncements(upstream, own));
-        return upstream != null && own != null;
     }
 }

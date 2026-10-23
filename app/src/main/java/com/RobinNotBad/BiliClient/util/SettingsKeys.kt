@@ -236,8 +236,9 @@ object SettingsKeys {
     const val TELEMETRY_DEVICE_KEY = "terminal_device_key"
 
     /**
-     * 自建公告源已读到的最大 id。与上游 api.biliterminal.cn 的 `app_announcement_last`
-     * 分开计数：自建源的自增 id 统一带 10 亿偏移，两者互不影响。
+     * 客户端公告已读到的最大 id（唯一游标）：本项目公告与上游逐条审核透传的公告共用。
+     * id 是服务端自增 id + 10 亿偏移；上游 `api.biliterminal.cn` 的 `app_announcement_last`
+     * 客户端已不再使用（26.10.23 起不再直连上游公告接口）。
      */
     const val TERMINAL_ANNOUNCEMENT_LAST = "terminal_announcement_last"
 

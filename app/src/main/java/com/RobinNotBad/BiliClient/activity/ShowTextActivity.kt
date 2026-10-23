@@ -26,6 +26,11 @@ class ShowTextActivity : BaseActivity() {
         val pagename = findViewById<TextView>(R.id.pageName)
         pagename.text = intent.getStringExtra("title")
 
+        // 上游透传公告（管理员审核后由自建服务端下发，source=relay）在正文上方标注来源；
+        // 其他用途（彩蛋、视频摘要、更新日志等）不显示这一行。
+        val relaySource = findViewById<TextView>(R.id.relaySource)
+        relaySource.visibility =
+            if (intent.getBooleanExtra("relay_source", false)) View.VISIBLE else View.GONE
 
         val textView = findViewById<TextView>(R.id.textView)
 

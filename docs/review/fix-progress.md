@@ -1204,6 +1204,25 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
 - **验证（本机，26.10.22 已跑）**：`.\gradlew.bat :app:assembleDebug --offline --no-configuration-cache` → `BUILD SUCCESSFUL`（两 flavor 都出包）；`testStandardDebugUnitTest` 与 `testCoexistDebugUnitTest` → 各 **817 例 / 0 失败 0 错误**（改动前基线 806 例，新增 11 例）。改动只涉及播放器接线与纯判定，无新增用户可见文案。
 - **真机待验**：① 有片头片尾的视频开播后只跳一次，不再出现「十几秒后又跳」；② 番剧切集/切 P 后新一集仍能正常跳（不应因保留 handled 而漏跳）；③ 用户主动拖进片头后不被弹走；④ 连续两段（片头紧邻片尾）时片尾仍跳得到；⑤ 投屏/后台恢复后不重复跳。
 
+### 3.56 公告单源：上游公告改由服务端逐条审核透传 + 正文页标注来源（26.10.23，待部署 / 待真机）
+
+- **需求**（用户）：「从应用端移除上游路的公告」，把上游公告接口接到自建服务器，**由维护者亲自逐条选择是否透传**；透传的公告**只在正文页顶部标注一行来源**（列表卡片不加徽标）；透传公告**参与启动差量弹窗**。来源文案定为「此公告来自原版哔哩终端」。
+- **客户端改法（两路合并整体拆除，单源化）**：
+  - `api/AppInfoApi.java`：删掉 `checkAnnouncement()` / `getAnnouncementList()` 两个方法、`check()` 里的调用、`Announcement` import；`check()` 不再发公告请求，只留更新包清理 / debug 警告（原先那条 `catch (IOException)` 随之失去可抛出点而删除，`uploadStack` 的 catch 仍需要 import）。
+  - `api/TerminalApi.java`：删 `mergeAnnouncements` / `loadMergedAnnouncements`，`parseAnnouncements` 增加 `source`（`optString("source","local")`）；`checkAnnouncement()` 改为单一源差量、`MsgUtil.showText(title, content, isRelayed())`；反馈的 `feedbackHeaders` 顺带修掉一处行合并。
+  - `model/Announcement.java` 加 `source` 与 `isRelayed()`；`MsgUtil.showText(title,text,relayed)` 新重载传 `relay_source` extra；`activity/ShowTextActivity.kt` 据 extra 显隐顶部来源行（`res/layout/activity_simple_text.xml` 新 `TextView relaySource`）；`adapter/AnnouncementAdapter.kt` 点击时透传 `isRelayed()`。
+  - `activity/settings/AnnouncementsActivity.kt`：只调 `getOwnAnnouncementList()`，空态/失败态走 `showEmptyView` + `MsgUtil.err`，删掉「部分公告源连不上」提示（`strings.xml` 该串换成 `text_announcement_relay_source`）。
+  - `SettingsKeys.TERMINAL_ANNOUNCEMENT_LAST` 注释更新：本地公告与透传公告**共用这一个游标**。
+- **服务端（`server/`，26.10.23 由 teammate 实现，`SCHEMA_VERSION=4`）**：`announcements` 加 `source`/`origin_id`/`relay_state` + 部分唯一索引、新增 `meta` 表存 `relay_last_pull`；上游拉取用标准库 `urllib.request`（`UPSTREAM_ANN_URL` 可被环境变量覆盖、超时 10s、`run_in_threadpool`）；管理接口 `GET /admin/api/announcement/relay`、`POST …/relay/refresh`（失败回 HTTP 200 + `{code:1,msg}`）、`POST …/relay/decision`（approve / reject，reject 可撤销已透传项，refresh 不复活 rejected）；`_VISIBLE_SQL` 只放 `relay_state='approved'`；控制台「公告」页签新增「上游透传（原版哔哩终端）」区块（待审 / 已透传 / 已拒绝 + 手动拉取 + `last_pull` 超 300s 自动补拉一次）；`selftest.py` 新增 §22（8 小节）。
+- **契约**：客户端 `get_list` 每行多 `"source": "local"|"relay"`；id 仍是本地自增 + `1_000_000_000`（两类公告共用 id 空间，relay 另存 `origin_id` 去重）；`local` 行行为与排序/差量语义**完全不变**；pending / rejected 对客户端与 `from` 差量都不可见。
+- **验证（本机，26.10.23 已跑）**：
+  - `.\gradlew.bat :app:assembleDebug --offline` → `BUILD SUCCESSFUL`（standard + coexist 两个 Debug 包）。
+  - `:app:testStandardDebugUnitTest` 与 `:app:testCoexistDebugUnitTest` → 两 flavor 各 **815 例 / 0 失败 0 跳过**（`TerminalApiTest` 现 17 例：删掉 3 例「两路合并」并改为断言 `source`）。
+  - `server/`：`python -m py_compile` OK；`python server/selftest.py` → **187 项全通过**（含真上游冒烟；离线时 185 项）；本地 uvicorn 真服务 E2E 验证 approve 后客户端立即可见 `source=relay`、上游不可达时 `code=1`、登录后控制台含 relay 区块；`console.html` 的 script 块 `node --check` 通过。
+  - markdownlint：本次改动的 5 个 md 0 错误。
+- **未验证 / 待办**：① **未部署 HK**——上线前先 `server/backup.sh` 备份 `data.db`，再覆盖四个服务端文件并 `systemctl restart rebiliterminal-api`（首次打开公告页即可拉到待审条目）；② 控制台按钮**没在真实浏览器点过**；③ 客户端未真机验证（列表只剩自建源、透传标注、待审不可见、差量弹窗只弹一次、断网不卡启动）；④ 上游长时间不可达时控制台每次打开页签会重试一次（无退避，属取舍）。
+- **注意**：`server/` 整个目录在 `.gitignore` 里（既有约定，服务端代码不进版本库），所以本次服务端改动只存在于工作区与 HK 部署目录，不随客户端提交。
+
 ## 4. 历史章节索引
 
 > 完整正文在 `docs/archive/review/fix-progress-history.md`。**编号在历史上有重复**（`## 二十二` / `## 二十九` 各出现两次、`## 30.` 是阿拉伯数字写法，原为不打断既有交叉引用而保持不动），下表**以归档文件的物理行序为准**。

@@ -4,7 +4,6 @@ import android.os.Bundle
 import com.RobinNotBad.BiliClient.activity.base.RefreshListActivity
 import com.RobinNotBad.BiliClient.adapter.AnnouncementAdapter
 import com.RobinNotBad.BiliClient.api.TerminalApi
-import com.RobinNotBad.BiliClient.model.Announcement
 import com.RobinNotBad.BiliClient.util.CenterThreadPool
 import com.RobinNotBad.BiliClient.util.MsgUtil
 import com.RobinNotBad.BiliClient.R
@@ -28,17 +27,24 @@ class AnnouncementsActivity : RefreshListActivity() {
     private fun loadAnnouncements() {
         setRefreshing(true)
         CenterThreadPool.run {
-            // 26.10.09：上游（api.biliterminal.cn）与自建（rebiliterminal.zsapp.asia）两路公告合并。
-            // loadMergedAnnouncements 内部对两路各自 try/catch，任何一路挂掉都不影响另一路展示——
-            // 旧实现是「上游一个源抛异常整页就报错」，用户会连能取到的公告也看不到。
-            // 返回 false 表示至少有一路失败，但 out 里仍有成功那一路的内容。
-            val announcements = ArrayList<Announcement>()
-            val allOk = TerminalApi.loadMergedAnnouncements(announcements)
-            runOnUiThread {
-                if (announcements.isEmpty()) showEmptyView() else hideEmptyView()
-                setAdapter(AnnouncementAdapter(this@AnnouncementsActivity, announcements))
-                setRefreshing(false)
-                if (!allOk && announcements.isNotEmpty()) MsgUtil.showMsg(getString(R.string.msg_announcementsactivity_001))
+            // 只跟自建服务器这一个源要公告：上游 api.biliterminal.cn 的公告已改由服务端拉取、
+            // 管理员在控制台逐条审核后透传（source=relay），客户端不再直连上游。因此这里既
+            // 没有「两路合并」，也没有「部分公告源连不上」的中间状态。
+            try {
+                val announcements = TerminalApi.getOwnAnnouncementList()
+                runOnUiThread {
+                    if (isDestroyed) return@runOnUiThread
+                    if (announcements.isEmpty()) showEmptyView() else hideEmptyView()
+                    setAdapter(AnnouncementAdapter(this@AnnouncementsActivity, announcements))
+                    // 加载完必须复位：漏了会一直转圈，下拉也不再响应
+                    setRefreshing(false)
+                }
+            } catch (e: Exception) {
+                runOnUiThread {
+                    if (isDestroyed) return@runOnUiThread
+                    setRefreshing(false)
+                    MsgUtil.err(e)
+                }
             }
         }
     }

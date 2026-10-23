@@ -390,16 +390,15 @@ class SplashActivity : Activity() {
                     }
                     CenterThreadPool.run { AppInfoApi.check(this@SplashActivity) }
 
-                    // 26.10.09：自建服务器这一路（与上游那路完全独立，各自尽力而为）。
-                    // 1) 自建公告源的启动差量弹窗——上游 checkAnnouncement 照跑不动，
-                    //    两边的「已读最大 id」是两个独立的 key，靠 10 亿 id 偏移隔开；
-                    // 2) 匿名使用统计（唯一安装数 + 日活），一天一次，设置里可关。
+                    // 自建服务器这一路：公告（含服务端拉取、管理员逐条审核后透传的上游公告）
+                    // 的启动差量弹窗，以及匿名使用统计（唯一安装数 + 日活），一天一次，设置里可关。
+                    // 客户端已不再直连上游公告接口，所以这里只有这一个公告源。
                     // 两件事都包了异常：自建接口挂了不能影响启动流程。
                     CenterThreadPool.run {
                         try {
                             TerminalApi.checkAnnouncement()
                         } catch (e: Exception) {
-                            Log.e("Splash", "自建公告拉取失败: ${e.message}")
+                            Log.e("Splash", "公告拉取失败: ${e.message}")
                         }
                     }
                     CenterThreadPool.run { TelemetryReporter.reportIfNeeded() }
