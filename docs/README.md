@@ -8,7 +8,7 @@
 
 | 你要做的事 | 读这份 | 说明 |
 | --- | --- | --- |
-| 改任何非平凡代码 | [`../AGENTS.md`](../AGENTS.md) → [`architecture-map.md`](architecture-map.md) | AGENTS 是每次都要遵守的约定；架构地图是真实分层 + 逐条坑 |
+| 改任何非平凡代码 | [`../AGENTS.md`](../AGENTS.md) → [`architecture-map.md`](architecture-map.md) | AGENTS 是每次都要遵守的最小约定 + 按场景索引；领域细则在 [`agents/`](agents/)；架构地图是真实分层 + 逐条坑 |
 | 找「现在的状态 / 还没做的事」 | [`review/fix-progress.md`](review/fix-progress.md) | **唯一活台账**：当前版本状态、未完成待办（§2，含 §2.4 视觉技术债）、最新两版快照、历史章节索引 |
 | 改网络 / 接口 / 风控相关 | [`bilibili-api-notes.md`](bilibili-api-notes.md) | 接口常识与风控硬约束（错误码语义、取流有效期、弹幕协议取舍） |
 | 发版前上真机 | [`review/real-device-regression-checklist.md`](review/real-device-regression-checklist.md) | 与发行版同维护的回归清单（248 条），每条的来源小节都标在标题里 |
@@ -24,6 +24,20 @@
 | 看用户能用到什么 | [`FEATURES.md`](FEATURES.md) | 用户视角功能总表（对应用户文档，不含实现细节） |
 | 查 B 站接口字段 | [`../bilibili-API/`](../bilibili-API/) | 上游接口文档快照（**注意上游已关停，见 `bilibili-api-notes.md` §1 的合规风险**） |
 | 部署 / 维护自建服务端 | [`../server/README.md`](../server/README.md) | 反馈 / 公告 / 匿名统计 / 崩溃上报的后端（FastAPI + SQLite + nginx） |
+
+## AGENTS 分册（`agents/`）
+
+> `AGENTS.md` 只放每次都要遵守的最小约束 + 索引；下面是按领域拆开的细则，**做到哪块读哪份**，不要凭记忆。
+
+| 分册 | 内容 | 触发时机 |
+| --- | --- | --- |
+| [`agents/dev-conventions.md`](agents/dev-conventions.md) | 列表页 / 菜单 / 横滑翻页 / 设置项与子页面 / 外观设置 / 弹窗 / 排序分区 / 请求解析分离 / 用户可见文案 | 写界面与功能时 |
+| [`agents/security.md`](agents/security.md) | exported、https 与明文白名单、allowBackup、调试页只进 Debug、DUMP 权限、调试开关即改即生效 | 动清单 / 网络 / 备份 / 调试入口时 |
+| [`agents/build.md`](agents/build.md) | 构建任务名与 flavor、build_tui.py、adb / 模拟器、工具链、gradle.properties、build cache 回放、增量编译坏掉、量体积与 APK 构成、原生库 | 构建 / 单测 / 装包 / 构建报怪错时 |
+| [`agents/release.md`](agents/release.md) | Release 说明硬要求、relay 中转、附件名白名单、老客户端 config.json、build_only | 发版 / 改更新日志时 |
+| [`agents/workflow.md`](agents/workflow.md) | 小步提交、一律推 main 与 commit 格式、改完必须自测（MuMu）、小改动不必上模拟器的判据 | 准备提交 / 准备说"应该没问题"时 |
+| [`agents/pitfalls.md`](agents/pitfalls.md) | 仍存在的已知坑：API 重复解析、跨包 id、notifyItemRangeInserted、通知 ID、下载锁、播放器 / 弹幕 / 保亮屏 / 原生库 / 主线程判活 | 改这些易踩区之前 |
+| [`agents/docs.md`](agents/docs.md) | 改完同步文档的落点表、markdownlint 命令与豁免、copy-inventory 逐字素材 | 每个改动收尾时 |
 
 ## 文档清单（活）
 
@@ -55,4 +69,4 @@
 3. **归档不是删除**：`git mv` 进 `docs/archive/` 并在 `archive/README.md` 加一行「内容 + 为什么归档」，正文一字不改（只在开头加存档说明）。
 4. **归档前先回迁**：文档里唯一还活着的知识（不要回退的取舍、未落地的待办、实测数字）要先搬进活文档，再归档。
 5. 文档间引用一律写**仓库相对路径**（`docs/...`），归档后同步改引用；源码注释里的文档路径同样要改。
-6. **格式**：改完任何 `.md` 跑一次 `npx --yes markdownlint-cli2 "AGENTS.md" "readme.md" "docs/**/*.md" "!docs/archive/**"`，**0 错误**才算完；规则与豁免理由见 [`../AGENTS.md`](../AGENTS.md) 的「Markdown 格式规范」。
+6. **格式**：改完任何 `.md` 跑一次 `npx --yes markdownlint-cli2 "AGENTS.md" "readme.md" "docs/**/*.md" "!docs/archive/**"`，**0 错误**才算完；规则与豁免理由见 [`agents/docs.md`](agents/docs.md)。

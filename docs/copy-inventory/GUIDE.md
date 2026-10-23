@@ -407,7 +407,7 @@ val recommend = tutorial(
 
 看到 `BUILD SUCCESSFUL` 就通过。如果报 `Unresolved reference: R.string.xxx`，说明你把某个 `name` 改了或注释掉了（红线 1、3）。
 
-⚠️ **改了 `res/` 下的文件名或增删了资源文件时，编译可能骗你**——缓存会回放旧结果，报一个明明存在的东西「找不到」。症状和修法写在 `AGENTS.md` 的「更容易踩的坑（build cache 回放陈旧资源）」：先 `:app:clean`，再 `assembleDebug`，**分两次运行**，并且带上 `--offline --no-build-cache --no-configuration-cache`。
+⚠️ **改了 `res/` 下的文件名或增删了资源文件时，编译可能骗你**——缓存会回放旧结果，报一个明明存在的东西「找不到」。症状和修法写在 [`docs/agents/build.md`](../agents/build.md) 的「build cache 回放陈旧资源」：先 `:app:clean`，再 `assembleDebug`，**分两次运行**，并且带上 `--offline --no-build-cache --no-configuration-cache`。
 
 ---
 
@@ -606,4 +606,4 @@ Lead 按原则把全仓**不符合**的句子列出来，你只做「这条同�
 - 更新日志格式：[02-update-log.md](02-update-log.md) 文件头
 - 死字符串清单：[05-ui-pages.md](05-ui-pages.md) 第十五节
 - 设计占位符（不要改）：[05-ui-pages.md](05-ui-pages.md) 第十四节
-- 构建与缓存坑：`AGENTS.md`
+- 构建与缓存坑：[`docs/agents/build.md`](../agents/build.md)
