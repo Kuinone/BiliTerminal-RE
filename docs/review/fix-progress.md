@@ -23,7 +23,7 @@
 - **依赖仓库**：`settings.gradle` 已把 aliyun 的 `google` / `public` / `gradle-plugin` 三个镜像前置，`google()`/`mavenCentral()`/jitpack 仅作兜底。
 - **改了 `res/` 文件集合时**：`:app:clean` 与后续命令**必须分两次 Gradle 调用**，且带 `--no-build-cache --no-configuration-cache`，否则会回放陈旧资源（症状是 `Unresolved reference 'R.layout.xxx'`）。
 - **版本一致性**：`:app:verifyVersionConsistency` 以 `strings.xml` 的 `update_log_current` 为锚点校验版本一致性；发版说明也由 CI 从它抽取（抽不到直接拒绝发版）。
-- **单测（静态计数，26.10.23 合并上游后实测）**：**79 个测试类 / 840 个用例**，两个 flavor 完全相同（同源码），0 失败 0 错误 0 跳过。计数方式：`app/src/test/` 下 `*Test.kt|java` 计数（另有共享假实现 `util/FakeSharedPreferences.kt`），`app/build/test-results/testStandardDebugUnitTest/TEST-*.xml` 的 `tests=` 求和。用例数一律以机器产出为准，队友口述数字不进入文档。
+- **单测（静态计数，26.10.23 合并上游后实测）**：**79 个测试类 / 841 个用例**，两个 flavor 完全相同（同源码），0 失败 0 错误 0 跳过。计数方式：`app/src/test/` 下 `*Test.kt|java` 计数（另有共享假实现 `util/FakeSharedPreferences.kt`），`app/build/test-results/testStandardDebugUnitTest/TEST-*.xml` 的 `tests=` 求和。用例数一律以机器产出为准，队友口述数字不进入文档。
 - **26.10.10 那一轮的构建记录（历史，留作「改 minSdk / 重跑 release 链路」时的验证口径）**：`minSdk 24 → 19` 全部改动（含 jsoup 1.16.1、7 个 `res/drawable-v21` 资源）落盘后，按「`clean` → `assembleRelease` → `lintRelease` → 单测」四步跑完（均带 `--no-configuration-cache`，`clean` 与 `assemble` 分两次调用），四步全 `BUILD SUCCESSFUL`（37s / 2m13s / 1m25s / 39s）。当时单测汇总 **49 suites / 460 tests / 0 failures**（任务名当时还是 `testDebugUnitTest`，现已带 flavor 前缀），最新 XML 时间 `2026-10-09T22:59:04`（晚于当轮 APK 出包时间 22:56:58，覆盖了当轮全部源码改动）。`:app:lintRelease` 的 **`NewApi` 从 22 条降到 2 条**，且这 2 条就是 `PlayerActivity.kt:1981` 的已知假阳性。发版前仍建议再跑一次确认。
 - **「自动跳过片头片尾」已恢复上线（26.10.22）**：26.10.10 的紧急撤回**已解除**，`SkipOpEdPrefs.FEATURE_ENABLED` 回到 `true`，设置入口与搜索索引均已恢复；口径按用户拍板改为**默认关闭**（`DEFAULT_ENABLED = false`，老用户存档里显式写的值仍然优先）。恢复细节见 §3.3「恢复记录」，乱跳的三个根因修复见 §3.55。
 - **本轮基建改动（26.10.10）**：**`minSdk 24 → 21 → 19（Android 4.4）`**，唯一落点是 `app/build.gradle:21`。两级下调的成本不同，分开记：
@@ -1255,8 +1255,7 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
     selftest `789e00fa…`（49752）。
 - **验证（本机，26.10.23 已跑）**：
   - `.\gradlew.bat :app:assembleDebug --offline` → `BUILD SUCCESSFUL`（standard + coexist 两个 Debug 包）。
-  - `:app:testStandardDebugUnitTest` 与 `:app:testCoexistDebugUnitTest` → 两 flavor 各 **815 例 / 0 失败 0 跳过**（`TerminalApiTest` 现 17 例：删掉 3 例「两路合并」并改为断言 `source`）。这是上游在本 PR 之外的基线上测的；**合入本 PR 后全量基线为 79 类 / 840 例**（见 §1）。
-  - `server/`：`python -m py_compile` OK；`python server/selftest.py` → **206 项全通过**（含真上游冒烟；离线少 2 项）；本地 uvicorn 真服务 E2E 验证 approve 后客户端立即可见 `source=relay`、上游不可达时 `code=1`、登录后控制台含 relay 区块；定时拉取线程用临时脚本 E2E 通过（见上）；`console.html` 的 script 块 `node --check` 通过。
+  - `:app:testStandardDebugUnitTest` 与 `:app:testCoexistDebugUnitTest` → 两 flavor 各 **815 例 / 0 失败 0 跳过**（`TerminalApiTest` 现 17 例：删掉 3 例「两路合并」并改为断言 `source`）。  这是上游在本 PR 之外的基线上测的；**合入本 PR 后全量基线为 79 类 / 841 例**（见 §1）。  - `server/`：`python -m py_compile` OK；`python server/selftest.py` → **206 项全通过**（含真上游冒烟；离线少 2 项）；本地 uvicorn 真服务 E2E 验证 approve 后客户端立即可见 `source=relay`、上游不可达时 `code=1`、登录后控制台含 relay 区块；定时拉取线程用临时脚本 E2E 通过（见上）；`console.html` 的 script 块 `node --check` 通过。
   - markdownlint：本次改动的 5 个 md 0 错误。
 - **未验证 / 待办**：① 生产上 3 条待审上游公告**未做 approve/reject 实操**（避免真实客户端看到未定内容；按用户要求「亲自选择是否透传」留给维护者在控制台点）；② 控制台页签切换、公告筛选、回复删除按钮**没在真实浏览器点过**（目前只有 curl 冒烟 + TestClient 断言）；③ 客户端未真机验证（列表只剩自建源、透传标注、待审不可见、差量弹窗只弹一次、断网不卡启动）；④ 控制台兜底补拉仍无退避（每小时最多一次，后端定时线程已有退避）。
 - **注意**：`server/` 整个目录在 `.gitignore` 里（既有约定，服务端代码不进版本库），所以本次服务端改动只存在于工作区与 HK 部署目录，不随客户端提交。
@@ -1289,7 +1288,8 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
   - **2.0x 播放 20 秒**（视频每 3 秒推进 ≈6020ms）：偏差 `42 / 39 / 34 / 40 / -102 / 26` ms，仍不累积；`-102` 是单帧采样抖动，下一帧即回落。
   - **拖进度条**：从 81s 拖到 128s 后首个采样偏差 **8ms**（`isDiscontinuity` 硬对齐生效），截图确认弹幕立即可见、无"闪一下又没了"。
   - **长时间无周期性清屏**：整段日志再无任何「纠偏/清屏」记录；`弹幕缺口` 无输出；错误日志只有 MuMu 自己的旋转提示，应用侧零异常。
-- **验证（本机）**：`:app:assembleCoexistDebug` 通过；`:app:testStandardDebugUnitTest` = **76 类 / 809 例 / 0 失败**（806 − 9 + 12）。**手表端仍待真机**（媒体时钟在弱机上的收敛速度、暂停/恢复的手感）。
+- **验证（本机）**：`:app:assembleCoexistDebug` 通过；`:app:testStandardDebugUnitTest` = **76 类 / 809 例 / 0 失败**（806 − 9 + 12）。
+- **手表端**：**维护者已人工实测通过**（26.10.23，维护者自述，非本会话 agent 复现）：1.0x / 2x 播放与拖进度条下弹幕全程跟随、不再周期性清屏。仍**没有**设备侧量化数据的是「极弱机（真实手表 SoC）上媒体时钟的收敛速度」与「暂停→恢复的瞬时手感」——要等有人拿 `adb logcat -s 弹幕时钟` 在手表上跑一遍才有日志证据。
 
 ### 3.58 短视频页没有阻止自动熄屏（26.10.22）
 
@@ -1314,9 +1314,9 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
   - `activity/disguise/DisguiseLauncher`：按设置选样式的唯一入口。
   - `BaseActivity.setupTopbarDoubleTapDisguise`：顶栏手势层，技术结论见 `docs/architecture-map.md` §7.53。
   - 设置：新分组 `GROUP_DISGUISE`（「伪装与安全」）+ `SettingMainActivity` 一级入口 + `SettingsIndex` 搜索条目；`strings.xml` 全部文案；清单两个 Activity 均 `exported="false"` 并各带伪装主题。
-- **单测**：`CalculatorEngineTest` 12 例（空表达式、单数字、加减、乘除优先、小数显示、整除不带 `.0`、末尾运算符、连续运算符、除零、非法输入、`*` `/` 等价、负数）、`DisguisePrefsTest` 7 例（合法/裁空格/长度/非数字/匹配/非法暗号恒不匹配/样式合法性）。合并上游后的全量基线是 **79 类 / 840 例 / 0 失败**。
+- **单测**：`CalculatorEngineTest` 12 例（空表达式、单数字、加减、乘除优先、小数显示、整除不带 `.0`、末尾运算符、连续运算符、除零、非法输入、`*` `/` 等价、负数）、`DisguisePrefsTest` 7 例（合法/裁空格/长度/非数字/匹配/非法暗号恒不匹配/样式合法性）。合并上游后的全量基线是 **79 类 / 841 例 / 0 失败**。
 - **模拟器实测（MuMu Android 15 x86_64，coexist debug，用户本人操作）**：双击顶栏 → `WindowManagerShell` 日志确认 `CalculatorDisguiseActivity` 在 display 22 打开；输入暗号按 `=` → `disguise>暗号命中，退出伪装` 并回到原页面；全程 **0 条 `FATAL EXCEPTION` / `AndroidRuntime` 异常**；`BaseActivity>setupTopbarDoubleTapDisguise: 顶栏双击伪装已就绪` 在每个页面正常打印。
-- **手表端待验**：单击顶栏的 0.3 秒延迟在真机手感（尤其列表页"点顶栏返回"）是否可接受；半透明蓝牙提示页在圆屏手表上的布局。
+- **手表端**：**维护者已人工实测通过**（26.10.23，维护者自述）：双击顶栏可切到伪装页、计算器能算、暗号能退出、蓝牙样式轻点不再误退出。仍缺设备侧验证的是「单击顶栏那个 0.3 秒双击判定窗口在手表上的手感」与「半透明蓝牙提示页在圆屏上的布局」——这两条只能在圆屏真机上肉眼判断。
 
 ### 3.60 上游审查意见修复（26.10.23）
 
@@ -1331,10 +1331,10 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
   - 修法：新增 `stepFor(speed)`（步进上限随倍速放大）与 `SNAP_ERROR_MS = 500`（误差过半秒直接吸附）。`nextTimerValue` 增加 `speed` 参数，补单测 2 例。
 - **P1-3 计算器负数无法续算**：`3-6` 之后表达式里留下 `-3`，再按运算符或 `=` 会因为「首字符是运算符」直接 `ERROR`，伪装页显示「错误」很扎眼。
   - 修法：`CalculatorEngine` 支持表达式开头的一元负号；补负数用例 6 条（`-3+2` / `-3×2` / `0-3-3` / `-3` / `-3÷2`。
-- **P1-6 文档一致性**：`architecture-map` 的测试清单（§3/§8 两处 76 类 806 例 → 79 类 840 例，补 `MediaClockSyncTest` / `CalculatorEngineTest` / `DisguisePrefsTest` / `SkipCancelPolicyTest`，删已不存在的 `DanmakuSyncTest`）、弹幕时钟旧口径（把「DanmakuSync + 周期性 seekTo」整段换成 §7.51 的现行做法）、`docs/README.md`「19 章」→「20 章」、`FEATURES.md` 重编号后 6 处旧引用、`readme.md` 的分支制度与已不存在的 `testDebugUnitTest`。
+- **P1-6 文档一致性**：`architecture-map` 的测试清单（§3/§8 两处 76 类 806 例 → 79 类 841 例，补 `MediaClockSyncTest` / `CalculatorEngineTest` / `DisguisePrefsTest` / `SkipCancelPolicyTest`，删已不存在的 `DanmakuSyncTest`）、弹幕时钟旧口径（把「DanmakuSync + 周期性 seekTo」整段换成 §7.51 的现行做法）、`docs/README.md`「19 章」→「20 章」、`FEATURES.md` 重编号后 6 处旧引用、`readme.md` 的分支制度与已不存在的 `testDebugUnitTest`。
 - **P2 顺手修**：短视频 `onError` 未把 `isPlaying` 置 false（画面停住却一直挂着 `KEEP_SCREEN_ON`）；`isPlaying` 补 `@Volatile`（弹幕渲染线程读）；`format` 指定 `Locale.US`（默认 Locale 会把小数点写成逗号，结果再回填就解析不回来）；`DrawHandler` 的 SEEK_POS / RESUME 分支重置媒体时钟采样（避免暂停恢复后计时器前冲再回落）；长视频续播 seek 补 `markSeekTarget`；设置里的暗号不再**逐键**弹 toast（`TextWatcher` 每次击键都会触发）。
 - **未做（需单独决策）**：把 PR 拆成三份、`readme.md` 功能表补伪装条目之外的市场化描述、`excludeFromRecents`/图标（需真机确认最近任务卡片表现）、`setScreenOnWhilePlaying(true)` 对 TextureView 无效但仍保留（SurfaceView 路径可能有意义，改动收益不明确）。
-- **验证**：`:app:assembleCoexistDebug` 通过；`:app:testStandardDebugUnitTest` **79 类 / 840 例 / 0 失败**；模拟器实测 P0 与双击手势；markdownlint 31 文件 0 issue。
+- **验证**：`:app:assembleCoexistDebug` 通过；`:app:testStandardDebugUnitTest` **79 类 / 841 例 / 0 失败**；模拟器实测 P0 与双击手势；markdownlint 31 文件 0 issue。
 - **第二轮审查的三条必修（26.10.23 晚，已修 + 已实测）**：
   1. **双击伪装会无限自旋**：开关开启且本页没有 `R.id.top` 时，`BaseActivity` 用 `decorView.post` 无限重试——有 **11 个页面布局里本来就没有顶栏**（Download / Catch / Tutorial / TutorialPager / JumpToDialog / InputDialog / CaptchaWebView / QRLoginRegister / ConfirmDialog / Dialog / ListDialog），进这些页面会每帧投递一次、一直耗电到页面结束。改成「`postDelayed` + 封顶 20 次 × 50ms + `isFinishing/isDestroyed` 立刻停」，并在放弃时打一条 `XXX 没有 R.id.top，本页不安装双击伪装`。实测：进 `DownloadActivity` 只出现**一次**该日志。
   2. **蓝牙伪装页轻点标题就自动退出**（伪装的致命伤）：`OnTouchListener` 对 `ACTION_DOWN` 返回 `false` → View 没成为触摸目标 → 系统不再派发 `UP`/`CANCEL` → `removeCallbacks` 永远执行不到 → 轻点一下、2 秒后窗口自己 `finish()`。改成**全部返回 true**（消费事件；标题本就没有点击行为）。实测（真实坐标 `[144,1623][2016,1763]`，2160×3840 屏）：轻点 1 次 + 等 4 秒**仍在伪装页**，连点 5 次 + 等 4 秒**仍在**；长按 2.5 秒 → 退出到推荐页，日志 `disguise>长按标题，退出伪装`。
@@ -1344,6 +1344,17 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
   - **`setSpeed` 早于 DFM prepared 会被丢弃**：`DanmakuView.setSpeed` 有 `handler.isPrepared()` 守卫，而播放器 `onPrepared` 通常早于 DFM 的 `prepared()`（后者异步）→ 默认倍速非 1× 时那次调用等于没设。`DanmakuManager` 新增 `setSpeed()` 记 `pendingSpeed`，在 `prepared()` 回调里补设一次；`PlayerActivity` 的 5 处 `mDanmakuView?.setSpeed(...)` 全改走它。
   - **`DrawHandler` 的 PREPARE ready 回调吞掉起播位置**：`ready()` 是后台解析完才回调的（异步），无条件 `pausedPosition = 0` 会把此前 `start(pos)` 设好的位置清零 → 续播/切页时弹幕时间轴从 0 重走一遍。新增 `mPendingStartPos`，`START` 时记录、`ready()` 时优先取它。
   - P2 清扫：删掉计算器页空的 `onTouchEvent`、`DanmakuView.setMediaClock` 注释改成符合实现（只判 `handler != null`，不判 `isPrepared`）、圆屏 padding 抽成 `applyDisguiseRoundPadding`（两伪装页共用，蓝牙页也补上了）、设置分组文案与搜索索引改走 `strings.xml`（新增 `desc_setting_disguise_index`）。
+- **第三轮审查（Standards 轴 + 伊莲）后的补充修复（26.10.23 晚）**：
+  - **暂停中加载完弹幕会被 autostart 拉起**：`configureAndPrepare()` 末尾原来无条件 `start()`。改成「`prepared()` 回调里按 `mediaPlaying()` 判断」——不在播就不起渲染，之后由宿主各自的 `resume()` 路径拉起（DFM 的 RESUME 分支在 `mReady` 后会自行启动 UPDATE）。直播未绑媒体时钟（`mediaPlaying == null`）照常启动。
+  - **重复 start 会把时间轴锚回 0**：`PlayerActivity.onPrepared` 原来裸调 `mDanmakuView!!.start()`，续播/已经跑了一段时会让弹幕跳回开头闪一下。改成 `danmakuManager?.start(video_now)`。
+  - **短视频首播那处 `resume()` 是空操作**（`loadDanmaku()` 之前调用，`isPrepared` 必然 false）：删掉；真正的起播由 `prepared()` 负责。
+  - **计算器支持 `5×-2`**：`CalculatorEngine` 重写词法，把「期望数字位置出现的 `+`/`-`」当正负号（`5×-2 = -10`、`5--3 = 8`），并抽 `scanNumber()` 消掉原来两段重复的数字扫描；`CalculatorDisguiseActivity` 的运算符处理允许在 `×`/`÷` 后追加 `-`（否则 UI 上构造不出负数运算）。新增/调整 3 例。
+  - **未知按键 tag 不再静默拼进表达式**：只接受单个数字字符。
+  - **暗号输入改数字键盘**：`SettingsAdapter` 新增 `input_digits` 类型（`TYPE_CLASS_NUMBER`），设置项从 `input_string` 换过去。
+  - **Java Javadoc 的 `[X]` 链接**改成 `{@link ...}`（DFM 三个文件）。
+  - `CalculatorEngine.ERROR` 保留中文常量，KDoc 写明「纯函数跑在 JVM 单测里没有 Context，故意不读资源」（AGENTS.md 已有该例外条款）。
+- **文档计数修正**：`architecture-map` 的测试清单从「80 个文件」改为「**79 个文件**（78 个 `*Test` + 1 个 `FakeSharedPreferences.kt`）、**79 个测试类**」（`CalculatorEngineTest.kt` 内有 `CalculatorEngineTest` 与 `DisguisePrefsTest` 两个类），用例数统一为 **841**。`strings.xml` / `themes.xml` 末尾多余空行已清。
+- **手表端验证口径（26.10.23）**：本 PR 涉及的弹幕时间轴、短视频亮屏、伪装功能**已由维护者人工在手表上实测通过**（维护者自述，非本会话 agent 复现，因此没有设备日志/截图入库）。仍未覆盖的是「极弱机上的媒体时钟收敛」「单击顶栏 0.3 秒延迟的手感」「圆屏蓝牙提示页布局」——这三项只能真机肉眼判断，已分别记在 §3.57 / §3.59 的对应条目里。
 
 ## 4. 历史章节索引
 

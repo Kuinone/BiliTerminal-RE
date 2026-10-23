@@ -101,7 +101,11 @@ class CalculatorDisguiseActivity : AppCompatActivity() {
                     showingResult = false
                 }
                 if (expression.isEmpty()) return // 以运算符开头没有意义
-                if (expression.last() in "+-×÷") expression = expression.dropLast(1)
+                if (expression.last() in "+-×÷") {
+                    // × ÷ 后面接负号要**追加**（`5×-2` = 乘一个负数），其余情况替换前一个运算符
+                    val negateAfterMulDiv = key == "-" && expression.last() in "×÷"
+                    if (!negateAfterMulDiv) expression = expression.dropLast(1)
+                }
                 expression += key
             }
 
@@ -116,6 +120,9 @@ class CalculatorDisguiseActivity : AppCompatActivity() {
             }
 
             else -> {
+                // 只接受单个数字字符：按键的 tag 就是它的输入，未知 tag 不能静默拼进表达式
+                // （拼进去的结果是"算出一个看不出哪来的数"，比不响应更糟）
+                if (key.length != 1 || !key[0].isDigit()) return
                 if (showingResult) {
                     expression = ""
                     showingResult = false

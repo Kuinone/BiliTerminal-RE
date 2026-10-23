@@ -153,6 +153,7 @@ class SettingsAdapter(
             "input_int" to TYPE_INPUT_INT,
             "input_float" to TYPE_INPUT_FLOAT,
             "input_string" to TYPE_INPUT_STRING,
+            "input_digits" to TYPE_INPUT_STRING,
             "list_choose" to TYPE_LIST_CHOOSE,
             "nav" to TYPE_NAV,
             "button" to TYPE_BUTTON,
@@ -318,6 +319,12 @@ class SettingsAdapter(
                         settingSection.id,
                         settingSection.defaultValue.toFloat()
                     ).toString()
+                }
+                "input_digits" -> {
+                    // 纯数字串（如伪装页的退出暗号）：文本键盘上敲不出数字以外的字符，
+                    // 也就不会出现「存了非法值但界面显示得像存了」
+                    input.inputType = InputType.TYPE_CLASS_NUMBER
+                    text = SharedPreferencesUtil.getString(settingSection.id, settingSection.defaultValue)
                 }
                 else -> {
                     input.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE

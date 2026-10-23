@@ -439,7 +439,7 @@ public class DrawHandler extends Handler {
         /** 当前播放位置（毫秒）；**负数表示不可用**（未就绪/已销毁），此时退回墙钟逻辑。 */
         long positionMs();
 
-        /** 是否正在播放；false 时弹幕时钟冻结在 [positionMs]。 */
+        /** 是否正在播放；false 时弹幕时钟冻结在 positionMs。 */
         boolean isPlaying();
     }
 

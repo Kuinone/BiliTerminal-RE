@@ -212,6 +212,12 @@ class DanmakuManager(
                     // 3x 播放时 MediaClockSync 的步进补偿就失效了（见 §7.51）。
                     pendingSpeed?.let { danmakuView.setSpeed(it) }
                     addDanmaku(UiText.of("弹幕准备完毕"), Color.WHITE)
+                    // 数据就绪：只有「此刻真的在播」或「没绑媒体时钟（直播）」才启动渲染循环。
+                    // 暂停中启动会让用户手动暂停的弹幕被重新拉起（见 configureAndPrepare 的注释）。
+                    val shouldRender = runCatching { mediaPlaying?.invoke() != false }.getOrDefault(true)
+                    if (shouldRender) {
+                        start(runCatching { mediaPosition?.invoke() ?: -1L }.getOrDefault(-1L))
+                    }
                 } catch (e: Exception) {
                     Logu.e("弹幕", "prepared 回调异常: ${e.message}")
                     e.printStackTrace()
@@ -245,8 +251,11 @@ class DanmakuManager(
         danmakuView.enableDanmakuDrawingCache(true)
         danmakuView.prepare(parser, danmakuContext)
         applyMediaClock()
-        // 起播位置优先用已知播放位置（续播 / 切页回来别让时间轴从 0 重走一遍）
-        start(runCatching { mediaPosition?.invoke() ?: -1L }.getOrDefault(-1L))
+        // **不在这里 start**：prepare() 只准备数据，而它何时 ready 是异步的（后台解析）。
+        // 启动渲染循环放到 `prepared()` 回调里按「此刻是否真的在播」判断 —— 否则暂停中
+        // 加载完弹幕会被无条件拉起（用户手动暂停的弹幕被恢复、暂停画面上的弹幕开始跑）。
+        // 暂停中不启动的页面，之后走各自的 resume 路径（`IDanmakuView.resume()` 在
+        // mReady 后会自行启动 UPDATE 循环），不会漏。
     }
 
     /**

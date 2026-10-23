@@ -886,7 +886,9 @@ class ShortVideoPagerAdapter(
                         playerBridge.start()
                         isPlaying = true
                         buttonVideo.setImageResource(R.drawable.btn_player_pause)
-                        danmakuManager?.resume()
+                        // 不在这里 resume 弹幕：此刻 `loadDanmaku(item)` 还没跑，
+                        // `DanmakuManager.resume()` 会因 isPrepared=false 直接返回（空操作）。
+                        // 弹幕真正的起播由 `DanmakuManager.prepared()` 回调负责。
                     } else {
                         // 页面不活跃，暂停准备就绪
                         isPlaying = false

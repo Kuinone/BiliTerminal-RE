@@ -65,6 +65,14 @@ class CalculatorEngineTest {
     fun `连续运算符取最后一个`() {
         assertEquals("8", CalculatorEngine.evaluate("5++3"))
         assertEquals("2", CalculatorEngine.evaluate("5+-3"))
+        // 乘除后面接负号是「乘除一个负数」，不是替换运算符
+        assertEquals("-10", CalculatorEngine.evaluate("5×-2"))
+        assertEquals("-3", CalculatorEngine.evaluate("6÷-2"))
+    }
+
+    @Test
+    fun `减负数等于加`() {
+        assertEquals("8", CalculatorEngine.evaluate("5--3"))
     }
 
     @Test
@@ -88,9 +96,10 @@ class CalculatorEngineTest {
     fun `无法识别的内容返回错误`() {
         assertEquals(CalculatorEngine.ERROR, CalculatorEngine.evaluate("abc"))
         assertEquals(CalculatorEngine.ERROR, CalculatorEngine.evaluate("1.2.3"))
-        assertEquals(CalculatorEngine.ERROR, CalculatorEngine.evaluate("+5"))
         assertEquals(CalculatorEngine.ERROR, CalculatorEngine.evaluate("-"))
         assertEquals(CalculatorEngine.ERROR, CalculatorEngine.evaluate("-x"))
+        // 前置正号按正号处理（等价于 5）；前置负号见「负数结果可以继续算」
+        assertEquals("5", CalculatorEngine.evaluate("+5"))
     }
 
     @Test

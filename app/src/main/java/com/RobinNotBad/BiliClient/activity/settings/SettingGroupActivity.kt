@@ -484,7 +484,7 @@ class SettingGroupActivity : RefreshListActivity() {
                 DisguisePrefs.CODE_MAX_LENGTH
             ),
             SettingsKeys.DISGUISE_CODE,
-            "input_string",
+            "input_digits",
             DisguisePrefs.DEFAULT_CODE
         ) { value ->
             // 只在合法时落盘；**不弹 toast**：这个回调是逐键触发的（SettingsAdapter 的 TextWatcher），

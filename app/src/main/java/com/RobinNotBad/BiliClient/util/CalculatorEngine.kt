@@ -11,7 +11,13 @@ package com.RobinNotBad.BiliClient.util
  */
 object CalculatorEngine {
 
-    /** 出错时的显示文本（除零、表达式残缺等）。 */
+    /**
+     * 出错时的显示文本（除零、表达式残缺等）。
+     *
+     * **故意让纯函数带上这句中文**：本类由 JVM 单测直接调用，而单测里没有 Context，
+     * 取 `R.string.*` 必然空指针（AGENTS.md 的「纯函数不读资源」条款）。
+     * 这个常量只被伪装页和单测消费，调用方不要再包一层翻译。
+     */
     const val ERROR = "错误"
 
     private const val OP_ADD = '+'
@@ -32,7 +38,7 @@ object CalculatorEngine {
     /**
      * 求值。
      *
-     * @param expression 形如 `12+3×4`、`7.5÷2`；末尾多余的运算符会被忽略（用户正敲到一半按了 `=` 也不会出错）
+     * @param expression 形如 `12+3×4`、`7.5÷2`、`5×-2`（运算符后接负号表示乘/除一个负数）
      * @return 结果的显示文本；整数不带小数点后缀，无法计算时返回 [ERROR]
      */
     @JvmStatic
@@ -40,50 +46,40 @@ object CalculatorEngine {
         val text = expression?.trim().orEmpty()
         if (text.isEmpty()) return "0"
 
-        // 词法：数字（含小数点）与运算符
         val numbers = ArrayList<Double>()
         val operators = ArrayList<Char>()
         var index = 0
         while (index < text.length) {
             val c = text[index]
+            val expectNumber = operators.size == numbers.size
             if (isOperator(c)) {
-                if (numbers.isEmpty()) {
-                    // 表达式开头的负号 = 一元负号（结果态 `-3` 接着算时必须支持），
-                    // 其余运算符开头无意义
-                    if (c == OP_SUB) {
+                if (expectNumber) {
+                    // 期望数字的位置出现运算符：只有 +/- 能当正负号（`5×-2` = -10），
+                    // 其余视为"连续运算符"，取最后一个（`12+×` → `12×`，末尾再丢掉）
+                    if (c == OP_SUB || c == OP_ADD) {
                         index++
-                        val start = index
-                        var dots = 0
-                        while (index < text.length && (text[index].isDigit() || text[index] == '.')) {
-                            if (text[index] == '.') dots++
-                            index++
-                        }
-                        if (index == start || dots > 1) return ERROR
-                        val value = text.substring(start, index).toDoubleOrNull() ?: return ERROR
-                        numbers.add(-value)
+                        val (value, next) = scanNumber(text, index) ?: return ERROR
+                        if (next == index) return ERROR
+                        numbers.add(if (c == OP_SUB) -value else value)
+                        index = next
                         continue
                     }
-                    return ERROR
+                    if (numbers.isEmpty()) return ERROR
+                    operators[operators.size - 1] = normalizeOp(c)
+                } else {
+                    operators.add(normalizeOp(c))
                 }
-                // 末尾运算符（`12+`）直接忽略；连续运算符（`12++`）取最后一个
-                if (operators.size == numbers.size) operators[operators.size - 1] = normalizeOp(c)
-                else operators.add(normalizeOp(c))
                 index++
                 continue
             }
-            if (c.isDigit() || c == '.') {
-                val start = index
-                var dots = 0
-                while (index < text.length && (text[index].isDigit() || text[index] == '.')) {
-                    if (text[index] == '.') dots++
-                    index++
-                }
-                if (dots > 1) return ERROR
-                val value = text.substring(start, index).toDoubleOrNull() ?: return ERROR
+            if (expectNumber || numbers.isEmpty()) {
+                val (value, next) = scanNumber(text, index) ?: return ERROR
+                if (next == index) return ERROR // 当前位置不是数字
                 numbers.add(value)
+                index = next
                 continue
             }
-            return ERROR // 未知字符（空白、字母等）
+            return ERROR // 数字后面直接跟数字/未知字符
         }
 
         if (numbers.isEmpty()) return ERROR
@@ -120,6 +116,23 @@ object CalculatorEngine {
         }
         total += sign * current
         return format(total)
+    }
+
+    /**
+     * 从 [from] 开始读一个数字（整数或小数）。
+     *
+     * @return 数值与下一个位置；当前位置不是数字时返回 `null`。只有一个点、且点前至少一位数字才算合法。
+     */
+    private fun scanNumber(text: String, from: Int): Pair<Double, Int>? {
+        var index = from
+        var dots = 0
+        while (index < text.length && (text[index].isDigit() || text[index] == '.')) {
+            if (text[index] == '.') dots++
+            index++
+        }
+        if (index == from || dots > 1) return null
+        val value = text.substring(from, index).toDoubleOrNull() ?: return null
+        return value to index
     }
 
     /** 结果格式化：整数不显示 `.0`，小数最多保留 8 位并去掉尾随 0。 */

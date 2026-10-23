@@ -4581,7 +4581,11 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
 
         changeVideoSize()
 
-        if ((isLiveMode || hasDanmaku) && mDanmakuView != null) mDanmakuView!!.start()
+        // 起播弹幕：走 DanmakuManager 并带上当前播放位置。
+        // 不能裸调 `mDanmakuView.start()`——DFM 的 START 会把时间轴锚到 0，
+        // 续播/直播已经跑了一段时再 start 会让弹幕跳回开头闪一下。
+        // 直播不绑媒体时钟，从头开始是正确的。
+        if (isLiveMode || hasDanmaku) danmakuManager?.start(video_now.toLong())
         if (SharedPreferencesUtil.getBoolean("player_ui_showDanmakuBtn", true)) {
             // 「播放默认值 → 弹幕」：开/关直接决定；沿用上次读 pref_switch_danmaku
             // （沿用既有键，默认开 —— 与改造前完全一致）。
