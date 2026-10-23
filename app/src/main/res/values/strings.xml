@@ -2287,4 +2287,26 @@
     <string name="uitext_voteinfoactivity_017">请选择 %1$d 项</string>
     <string name="uitext_voteinfoactivity_018">请选择 %1$d 项（已选 %2$d）</string>
     <string name="uitext_voteinfoactivity_019">删除失败：%1$s</string>
+    <!-- ==================== 伪装 / 安全（issue #22） ==================== -->
+    <!-- 伪装成计算器时的应用标签/标题（最近任务里别露出应用名） -->
+    <string name="text_disguise_calc_label">计算器</string>
+    <!-- 假的「蓝牙已断开」提示 -->
+    <string name="text_disguise_bt_title">蓝牙已断开</string>
+    <string name="text_disguise_bt_body">与设备的连接已中断，请靠近设备后重试。</string>
+    <string name="text_disguise_bt_retrying">正在重新连接…</string>
+    <string name="text_disguise_bt_failed">连接失败，请检查设备电量后重试。</string>
+    <string name="btn_disguise_bt_retry">重新连接</string>
+    <string name="btn_disguise_bt_cancel">取消</string>
+    <!-- 设置分组与设置项 -->
+    <string name="text_setting_disguise_group">伪装与安全</string>
+    <string name="desc_setting_disguise_index">双击顶栏切到伪装页（假计算器 / 假蓝牙提示），默认关闭</string>
+    <string name="text_setting_disguise_enabled">双击顶栏伪装</string>
+    <string name="desc_setting_disguise_enabled">开启后双击有顶栏的页面顶部标题栏，立刻切到伪装页（默认关）</string>
+    <string name="text_setting_disguise_style">伪装样式</string>
+    <string name="desc_setting_disguise_style">伪装页显示成什么</string>
+    <string name="text_setting_disguise_style_calculator">计算器（暗号退出）</string>
+    <string name="text_setting_disguise_style_bluetooth">蓝牙已断开（长按标题退出）</string>
+    <string name="text_setting_disguise_code">退出暗号</string>
+    <string name="desc_setting_disguise_code">计算器上输入这 %1$d~%2$d 位数字后按「=」退出伪装。「蓝牙已断开」样式改为长按标题 2 秒退出。忘了暗号只能强杀应用，请记牢。</string>
+    <string name="msg_setting_disguise_hint">双击顶栏可随时切到伪装页，再按暗号或长按标题退出</string>
 </resources>

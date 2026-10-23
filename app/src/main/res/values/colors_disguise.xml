@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  伪装页专用配色。
+
+  为什么不复用主题色：伪装页的目的是"看不出这是哔哩终端"。只要跟应用配色（含默认的荧光粉强调色）
+  有任何关联，一眼就会被认出来，功能也就失效了。所以这里**刻意写死**与主题无关的中性色，
+  也不要接 `?attr/` —— 那不是"忘了走主题"，是有意的。
+-->
+<resources>
+    <!-- 计算器：深灰底 + 浅灰键 + 橙色运算键（与常见手表计算器一致） -->
+    <color name="disguise_calc_background">#FF1C1C1E</color>
+    <color name="disguise_calc_display_text">#FFF5F5F7</color>
+    <color name="disguise_calc_key_digit">#FF3A3A3C</color>
+    <color name="disguise_calc_key_function">#FF505054</color>
+    <color name="disguise_calc_key_operator">#FFFF9F0A</color>
+    <color name="disguise_calc_key_text">#FFFFFFFF</color>
+
+    <!-- 「蓝牙已断开」：白底卡片 + 蓝灰正文，模仿系统提示 -->
+    <color name="disguise_bt_scrim">#CC000000</color>
+    <color name="disguise_bt_card">#FFFAFAFA</color>
+    <color name="disguise_bt_title">#FF1A1A1A</color>
+    <color name="disguise_bt_body">#FF6B6B6B</color>
+    <color name="disguise_bt_accent">#FF3B7DD8</color>
+</resources>

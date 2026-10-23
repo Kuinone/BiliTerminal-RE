@@ -63,7 +63,6 @@ import com.RobinNotBad.BiliClient.model.SubtitleLink
 import com.RobinNotBad.BiliClient.model.VideoInfo
 import com.RobinNotBad.BiliClient.model.ViewPoint
 import com.RobinNotBad.BiliClient.player.DanmakuManager
-import com.RobinNotBad.BiliClient.player.DanmakuSync
 import com.RobinNotBad.BiliClient.player.IjkNativeLibs
 import com.RobinNotBad.BiliClient.player.PlayerDefaults
 import com.RobinNotBad.BiliClient.player.LocalAudioTrackPolicy
@@ -77,6 +76,8 @@ import com.RobinNotBad.BiliClient.ui.widget.BatteryView
 import com.RobinNotBad.BiliClient.ui.widget.HighEnergyProgressBar
 import com.RobinNotBad.BiliClient.ui.widget.recycler.CustomLinearManager
 import com.RobinNotBad.BiliClient.util.CenterThreadPool
+import com.RobinNotBad.BiliClient.util.DisguiseGesture
+import com.RobinNotBad.BiliClient.util.DisguisePrefs
 import com.RobinNotBad.BiliClient.util.LocalVideoProgress
 import com.RobinNotBad.BiliClient.util.Logu
 import com.RobinNotBad.BiliClient.util.MsgUtil
@@ -244,6 +245,21 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
          */
         private const val AUDIO_RESYNC_COOLDOWN_MS = 1_200L
 
+        /**
+         * 弹幕时钟偏差超过这个值就认为"媒体时钟没接上"（体检日志的判据）。
+         *
+         * 正常值只来自「250ms 采样 + 40ms/帧蠕动」，即 ±300ms 量级，所以 500ms 已是异常。
+         */
+        private const val DANMAKU_DRIFT_ALERT_MS = 500L
+
+        /**
+         * 弹幕时钟体检日志的最小间隔（毫秒）。
+         *
+         * 只在偏差超标时打，且限到这个频率：日志要拼字符串 + 写文件，健康状态下不该白烧；
+         * 而不限频时，媒体时钟真没接上会变成每 250ms（一个采样周期）一条。
+         */
+        private const val DANMAKU_DRIFT_LOG_INTERVAL_MS = 5_000L
+
         /** 恢复后位置又前进了这么多毫秒，才算"真的播起来了"，恢复计数清零 */
         private const val STALL_RECOVERED_MS = 5_000
 
@@ -275,10 +291,8 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
     @Volatile
     private var video_now: Int = 0
     private var video_now_last: Int = 0
-    /** 上次给弹幕时钟做基准对齐（`seekTo`）的时间，用于限频——见 `progressChange` 里的对齐块。 */
-    private var danmakuResyncMs: Long = 0
-    /** 连续吸附次数，用于「吸附也治不了」时退避（见 `DanmakuSync.decide`）。 */
-    private var danmakuSnapCount: Int = 0
+    /** 上次打印弹幕时钟偏差的时间（弹幕跟随媒体时钟的体检日志，见 progressChange）。 */
+    private var danmakuDriftLogMs: Long = 0
     private var lastMediaSessionSecond: Int = -1 // 上次上报 MediaSession 的整秒数，用于抑制重复 Binder IPC
     private var progress_history: Long = 0
     private var progress_str: String = ""
@@ -1007,7 +1021,7 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
                             onLongClick = false
                             val normalSpeed = speed_values[seekbar_speed.progress]
                             ijkPlayer?.setSpeed(normalSpeed)
-                            mDanmakuView?.setSpeed(normalSpeed)
+                            danmakuManager?.setSpeed(normalSpeed)
                             text_speed.text = speed_strs[seekbar_speed.progress]
                         }
                         if (gesture_moved) gesture_moved = false
@@ -1032,7 +1046,7 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
                     onLongClick = false
                     val normalSpeed = speed_values[seekbar_speed.progress]
                     ijkPlayer?.setSpeed(normalSpeed)
-                    mDanmakuView?.setSpeed(normalSpeed)
+                    danmakuManager?.setSpeed(normalSpeed)
                     text_speed.text = speed_strs[seekbar_speed.progress]
                 }
                 false
@@ -1048,7 +1062,7 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
                 if (!onLongClick && !gesture_click_disabled) {
                     hidecon.run()
                     ijkPlayer?.setSpeed(3.0F)
-                    mDanmakuView?.setSpeed(3.0f)
+                    danmakuManager?.setSpeed(3.0f)
                     text_speed.text = "x 3.0"
                     onLongClick = true
                     Logu.v("gesture", "longclick_down")
@@ -1601,7 +1615,7 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
         text_speed.text = speed_strs[index]
         text_newspeed.text = speed_strs[index]
         ijkPlayer?.setSpeed(speed_values[index])
-        mDanmakuView?.setSpeed(speed_values[index])
+        danmakuManager?.setSpeed(speed_values[index])
     }
 
     private fun changeVideoSize() {
@@ -1676,33 +1690,31 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
                             } catch (_: Exception) {}
                         }
                     }
-                    // 弹幕时钟对齐：DFM 的时钟按自身 mTimeBase 自走，只有基准与视频位置一致时才会跟着视频走。
+                    // 弹幕时钟**不再做周期性纠偏**：自 26.10.22 起弹幕时间轴由
+                    // `DanmakuManager.bindMediaClock` 直接以 `video_now` 为时间源（见
+                    // DanmakuFlameMaster 的 `MediaClockSync` / `DrawHandler.syncTimer`），
+                    // 播放器跑到多少弹幕就跟到多少，不再存在"速率性发散"，也就不需要吸附。
                     //
-                    // **seekTo 的代价**：DrawHandler.SEEK_POS 会走 DrawTask.seek() → reset()，
-                    // 把屏上弹幕全部清掉再靠 CacheManagingDrawTask.prepareCaches(true) 重建
-                    // （见 DanmakuFlameMaster/.../controller/DrawTask.java 与 CacheManagingDrawTask.java）。
-                    // 所以**绝不能拿它做小偏差的"连续纠偏"**——那等于每隔一会儿清一次屏，
-                    // 用户看到的就是「弹幕闪一下又没了」。判据全部收敛到 DanmakuSync.decide：
-                    // 只有 >1.5s 的大跳才吸附、吸附后冷静 1.5s、连续 3 次不收敛退避 30s。
-                    if ((hasDanmaku || isLiveMode) && mDanmakuView != null &&
-                        loading_info.visibility != View.VISIBLE
-                    ) {
-                        // nowElapsed 由上方音频重同步那段统一取（同一帧内两处判定共用同一个时刻）
-                        val decision = DanmakuSync.decide(
-                            video_now.toLong(),
-                            mDanmakuView!!.currentTime,
-                            nowElapsed,
-                            danmakuResyncMs,
-                            danmakuSnapCount
-                        )
-                        danmakuSnapCount = decision.consecutive
-                        if (decision.snap) {
-                            danmakuResyncMs = nowElapsed
-                            Logu.d(
-                                "弹幕纠偏",
-                                "视频=$video_now 弹幕=${mDanmakuView!!.currentTime} 第 ${decision.consecutive} 次吸附"
-                            )
-                            mDanmakuView!!.seekTo(video_now.toLong())
+                    // 历史坑：以前这里的判据是"偏差 >1.5s 且距上次 >1.5s 就 seekTo"，看起来限了频，
+                    // 但 `seekTo` 会走 `DrawTask.seek() → reset()` 把屏上弹幕清空、再靠
+                    // `prepareCaches(true)` 重建，于是漂移持续时等于每隔十来秒清一次屏
+                    // （用户看到的「弹幕闪一下又没了」）。而漂移的根因是 DFM 用墙钟计时：
+                    // 实测视频只跑 0.9x 墙钟时，弹幕按 1.0x 走，每 4 秒必然多跑约 490ms。
+                    // **不要再把周期性 seekTo 加回来**，用户拖动/快进的对齐走 seekToVideo()。
+                    //
+                    // 体检：媒体时钟生效时偏差只应来自「250ms 采样 + 40ms/帧蠕动」，即 ±300ms 量级；
+                    // 持续超过 500ms 就说明媒体时钟没接上（比如位置一直是负数走了墙钟回退分支）。
+                    //
+                    // 只在**异常**时打，且每 [DANMAKU_DRIFT_LOG_INTERVAL_MS] 最多一条：
+                    // 健康状态下每条日志都要拼字符串、写文件，纯属白烧；而"一超标就立刻打"
+                    // 在媒体时钟真没接上时会变成每 250ms 一条（一个采样周期一条），比不打更糟。
+                    if (hasDanmaku && mDanmakuView != null) {
+                        val drift = video_now - mDanmakuView!!.currentTime
+                        if (Math.abs(drift) > DANMAKU_DRIFT_ALERT_MS &&
+                            nowElapsed - danmakuDriftLogMs >= DANMAKU_DRIFT_LOG_INTERVAL_MS
+                        ) {
+                            danmakuDriftLogMs = nowElapsed
+                            Logu.d("弹幕时钟", "视频=$video_now 弹幕=${mDanmakuView!!.currentTime} 偏差=$drift")
                         }
                     }
                     if (video_now_last != video_now) {
@@ -2255,7 +2267,18 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
     /** 重新绑定弹幕视图与弹幕管理器（弹幕视图在切分页/切互动分支后会重新取一次引用）。 */
     private fun bindDanmakuView() {
         mDanmakuView = findViewById(R.id.sv_danmaku)
-        danmakuManager = DanmakuManager(mDanmakuView!!)
+        danmakuManager = DanmakuManager(mDanmakuView!!).also { manager ->
+            // 弹幕时间轴跟随播放器位置（而不是墙钟）。**直播没有有意义的播放位置**，不绑。
+            //
+            // 两个 provider 都在 DFM 渲染线程上被每帧调用，只能读主线程采样好的内存值：
+            // video_now 就是 progressChange 每 250ms 从 ijkPlayer 读一次的那个 @Volatile 字段。
+            if (!isLiveMode) {
+                manager.bindMediaClock(
+                    { if (isPrepared && !destroyed) video_now.toLong() else -1L },
+                    { isPrepared && isPlaying && !destroyed }
+                )
+            }
+        }
     }
 
     /** 释放弹幕视图与管理器。 */
@@ -2957,7 +2980,7 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
                     text_newspeed.text = speed_strs[position]
                     text_speed.text = speed_strs[position]
                     ijkPlayer?.setSpeed(speed_values[position])
-                    mDanmakuView?.setSpeed(speed_values[position])
+                    danmakuManager?.setSpeed(speed_values[position])
                     // 「播放默认值 → 倍速 = 沿用上次」的记录位：只有用户自己调过才算"上次用过的"。
                     SharedPreferencesUtil.putFloat(SettingsKeys.PLAYER_LAST_SPEED, speed_values[position])
                 }
@@ -3028,10 +3051,9 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
      * 用户主动跳转（拖进度条 / 快进快退）的**唯一入口**。
      *
      * 为什么不能各处各写一遍「ijkPlayer.seekTo + mDanmakuView.seekTo」：
-     * ① `progressChange` 的弹幕纠偏判据比较的是 `video_now` 与弹幕时钟，**跳转后若不立刻更新
-     * `video_now`**，下一次采样会拿旧位置去比新时钟，算出几百秒的"偏差"并把弹幕视图 seek 回旧位置
-     * —— 用户看到的就是「拖完进度条弹幕没了，偶尔闪一下又消失」。
-     * 所以这里必须同时做四件事：更新 `video_now`、强制刷新进度显示、清掉纠偏计数、给一段冷静期。
+     * ① 跳转后必须立刻把 `video_now` 改成新位置——它就是弹幕时钟的时间源
+     * （见 [bindDanmakuView] 里绑的媒体时钟），不改的话弹幕会继续按旧位置推进。
+     * 同时清 `video_now_last`，让进度条/字幕下一帧立即按新位置刷新。
      *
      * ② DASH 双文件（video.mp4 + audio.m4a）是视频、音频两个播放器，**只 seek 视频会让音轨留在旧位置**；
      * 而 `progressChange` 的 800ms 偏差校正随后会再 seek 一次音频，用户听到的是"停顿两次"。
@@ -3062,20 +3084,23 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
     }
 
     /**
-     * 视频位置被动跳变（重播、切页、恢复现场）时同步 `video_now` 与弹幕纠偏的状态。
+     * 视频位置被动跳变（重播、切页、恢复现场）时同步 `video_now`。
      *
-     * 不更新 `video_now` 的后果见 [seekToVideo]：纠偏会拿旧位置把弹幕视图 seek 回去。
+     * 不更新 `video_now` 的后果见 [seekToVideo]：弹幕时钟（媒体时钟）会继续按旧位置推进。
      */
     private fun markSeekTarget(position: Long) {
         video_now = position.toInt()
         video_now_last = -1 // 让 progressChange 下一帧立刻按新位置刷新进度条/字幕
-        danmakuSnapCount = 0
-        danmakuResyncMs = android.os.SystemClock.elapsedRealtime()
         // 片头/片尾判定同样要等 seek 落地，否则 progressChange 把 video_now 拉回旧位置后
         // 会被立刻再判一次（「跳完又跳回去」）。只由自动跳过自己起静默期：用户主动拖动的落点
         // 已经被 onUserSeekTo 正式记为「已处理」，不需要时间兜底，也不该因为拖一下
         // 就压掉 600ms 的自动跳过。
-        if (pendingSeekIsAutoSkip) skipQuietUntilMs = danmakuResyncMs + SKIP_QUIET_AFTER_SEEK_MS
+        //
+        // 合并说明：这里原本还写 `danmakuSnapCount = 0` / `danmakuResyncMs = now`，弹幕时钟改成
+        // 媒体时钟（见 bindDanmakuView）后这两个字段已删除，静默期直接按当前时刻算，语义不变。
+        if (pendingSeekIsAutoSkip) {
+            skipQuietUntilMs = android.os.SystemClock.elapsedRealtime() + SKIP_QUIET_AFTER_SEEK_MS
+        }
     }
 
     /**
@@ -3447,6 +3472,14 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
             EventBus.getDefault().register(this)
             Logu.v("event", "register")
             eventBusInit = true
+        }
+        // 伪装的「双击顶栏」：本页不继承 BaseActivity（那边统一安装），必须自己接一次线。
+        // 观看中是最需要一键遮屏的场景，所以播放页不能漏。
+        // 关掉开关时要摘掉：install 只在开启时生效，但已装上的触摸层不会自己消失，
+        // 不摘的话单击顶栏会一直多等一个双击判定窗口。
+        if (::layout_top.isInitialized) {
+            if (DisguisePrefs.isEnabled()) DisguiseGesture.install(this, layout_top)
+            else DisguiseGesture.detach(layout_top)
         }
     }
 
@@ -4548,7 +4581,11 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
 
         changeVideoSize()
 
-        if ((isLiveMode || hasDanmaku) && mDanmakuView != null) mDanmakuView!!.start()
+        // 起播弹幕：走 DanmakuManager 并带上当前播放位置。
+        // 不能裸调 `mDanmakuView.start()`——DFM 的 START 会把时间轴锚到 0，
+        // 续播/直播已经跑了一段时再 start 会让弹幕跳回开头闪一下。
+        // 直播不绑媒体时钟，从头开始是正确的。
+        if (isLiveMode || hasDanmaku) danmakuManager?.start(video_now.toLong())
         if (SharedPreferencesUtil.getBoolean("player_ui_showDanmakuBtn", true)) {
             // 「播放默认值 → 弹幕」：开/关直接决定；沿用上次读 pref_switch_danmaku
             // （沿用既有键，默认开 —— 与改造前完全一致）。
@@ -4643,17 +4680,21 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
                 SharedPreferencesUtil.getBoolean("player_from_last", true) -> progress_history
                 else -> 0L
             }
+            // 起播时把弹幕时钟锚到视频位置（0 也要锚）。
+            // DFM 的时钟是以 prepare 时刻为基准自走的（DrawHandler.PREPARE 里 mTimeBase = uptimeMillis），
+            // 起播前那段缓冲时间里它会一直跑在视频前面；而我们的容差校正只改 timer、不改 mTimeBase，
+            // 于是 syncTimer 里的 gapTime 又把它拽回去，"跑快→拽回"反复发生 —— 真机实测 2 秒内校正 84 次、
+            // 瞬时偏差最大 1803ms，肉眼就是弹幕一抖一抖。seekTo 会同时重设 mTimeBase（DrawHandler SEEK_POS）。
+            //
+            // 同时要更新 video_now（markSeekTarget）：它现在是媒体时钟的时间源（bindMediaClock），
+            // 不更新的话弹幕会先按旧位置推进一段再被吸附回来，肉眼就是起播闪一下。
+            markSeekTarget(resumeTarget)
             if (resumeTarget > 5) {
                 ijkPlayer!!.seekTo(resumeTarget)
                 Logu.d("进度跳转", resumeTarget.toString())
                 // 只有"按历史进度续播"才提示；恢复现场（系统重建）不该再提示一次
                 if (!restoredFromSaveState) runOnUiThread { MsgUtil.showMsg(UiText.of("已从上次的位置播放")) }
             }
-            // 起播时把弹幕时钟锚到视频位置（0 也要锚）。
-            // DFM 的时钟是以 prepare 时刻为基准自走的（DrawHandler.PREPARE 里 mTimeBase = uptimeMillis），
-            // 起播前那段缓冲时间里它会一直跑在视频前面；而我们的容差校正只改 timer、不改 mTimeBase，
-            // 于是 syncTimer 里的 gapTime 又把它拽回去，"跑快→拽回"反复发生 —— 真机实测 2 秒内校正 84 次、
-            // 瞬时偏差最大 1803ms，肉眼就是弹幕一抖一抖。seekTo 会同时重设 mTimeBase（DrawHandler SEEK_POS）。
             if (hasDanmaku && mDanmakuView != null) mDanmakuView!!.seekTo(resumeTarget)
         }
 

@@ -844,4 +844,31 @@
         <item name="android:background">@drawable/dialog_background</item>
     </style>
 
+    <!--
+      伪装页专用主题（issue #22）。
+
+      **刻意不继承任何 Theme.* 系列**：主题层会带进应用配色、字体与卡片圆角，伪装页一旦
+      跟应用长得像就失去意义。这里只把窗口属性摆平：
+      - `windowSwipeToDismiss=false`：手表右滑返回会在窗口层直接 finish()，
+        伪装页被一个右滑手势就关掉等于没伪装；
+      - 全屏 + 无标题，避免露出应用顶栏。
+
+      具体配色由 `res/values/colors_disguise.xml` 里的中性色负责，这里只定窗口底色。
+    -->
+    <style name="Theme.BiliClient.Disguise" parent="Theme.MaterialComponents.NoActionBar">
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowSwipeToDismiss" tools:ignore="NewApi">false</item>
+        <item name="android:windowBackground">@color/disguise_calc_background</item>
+    </style>
+
+    <!--
+      「蓝牙已断开」伪装用的半透明变体：底下的页面会透出来，再被布局里的暗色遮罩压一层，
+      看起来就是「系统提示框盖在当前画面上」。计算器那种全屏的用上面那个不透明主题。
+    -->
+    <style name="Theme.BiliClient.Disguise.Dialog" parent="Theme.BiliClient.Disguise">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:backgroundDimEnabled">false</item>
+    </style>
+
 </resources>

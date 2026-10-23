@@ -43,6 +43,8 @@ import com.RobinNotBad.BiliClient.ui.appearance.AppearanceApplier
 import com.RobinNotBad.BiliClient.ui.appearance.AppearanceManager
 import com.RobinNotBad.BiliClient.ui.appearance.ColorScheme
 import com.RobinNotBad.BiliClient.util.AsyncLayoutInflaterX
+import com.RobinNotBad.BiliClient.util.DisguiseGesture
+import com.RobinNotBad.BiliClient.util.DisguisePrefs
 import com.RobinNotBad.BiliClient.util.Logu
 import com.RobinNotBad.BiliClient.util.MsgUtil
 import com.RobinNotBad.BiliClient.util.SettingsKeys
@@ -354,6 +356,9 @@ open class BaseActivity : AppCompatActivity() {
     private var topbarExitInstalled: Boolean = false
     private var topbarLongPressInstalled: Boolean = false
 
+    /** 顶栏双击伪装延迟装载已重试的次数（见 [installTopbarDisguise]，必须封顶）。 */
+    private var topbarDisguiseRetries: Int = 0
+
     override fun onStart() {
         super.onStart()
         if (this !is InstanceActivity) setTopbarExit()
@@ -364,6 +369,7 @@ open class BaseActivity : AppCompatActivity() {
         }
         autoTriggerTutorial()
         setupTopbarLongPressToHome()
+        setupTopbarDoubleTapDisguise()
     }
 
     /**
@@ -401,6 +407,54 @@ open class BaseActivity : AppCompatActivity() {
             startActivity(intent)
             true
         }
+    }
+
+    /**
+     * 双击顶栏 → 打开伪装页（issue #22）。实现见 [DisguiseGesture]，本节只处理**本页的安装时序**。
+     *
+     * 每次 `onStart` 都重新判断一遍：开关可能在别的页面被改过，用户也可能刚关掉它。
+     */
+    private fun setupTopbarDoubleTapDisguise() {
+        topbarDisguiseRetries = 0
+        installTopbarDisguise()
+    }
+
+    /**
+     * 真正的安装逻辑，必要时延迟重试一次。
+     *
+     * **为什么要重试**：异步 inflate 的页面（`asyncInflate`，20 处）在 `onStart` 时
+     * `setContentView` 还没执行完，`findViewById(R.id.top)` 返回 null；直接 return 会让这些页面
+     * 首次进入时手势完全无效（退出再进才生效）。
+     *
+     * **为什么必须限次数**：有 11 个 `BaseActivity` 页面**布局里本来就没有** `R.id.top`
+     * （Dialog / ConfirmDialog / ListDialog / InputDialog / Catch / Tutorial / TutorialPager /
+     * CaptchaWebView / QRLoginRegister / JumpToPlayer / Download）。无上限的 `post` 会让这些页面
+     * 每帧投递一次、一直耗电到页面结束——所以这里封顶 [DISGUISE_INSTALL_MAX_RETRIES] 次、
+     * 每次间隔 [DISGUISE_INSTALL_RETRY_MS]，并在页面已经开始销毁时立刻停。
+     */
+    private fun installTopbarDisguise() {
+        if (isFinishing || isDestroyed) return
+        val enabled = DisguisePrefs.isEnabled()
+        val topBar = findViewById<View?>(R.id.top)
+        if (topBar == null) {
+            if (enabled && topbarDisguiseRetries < DISGUISE_INSTALL_MAX_RETRIES) {
+                topbarDisguiseRetries++
+                window?.decorView?.postDelayed(
+                    { installTopbarDisguise() },
+                    DISGUISE_INSTALL_RETRY_MS
+                )
+            } else if (enabled) {
+                // 本页布局里没有顶栏（11 个页面如此），或视图一直没装好。
+                // 留一条痕迹：用户报"这页双击没反应"时，先看这句就知道是"页面没有顶栏"而不是手势坏了。
+                Logu.d("disguise", "${getClassName()} 没有 R.id.top，本页不安装双击伪装")
+            }
+            return
+        }
+        if (!enabled) {
+            DisguiseGesture.detach(topBar)
+            return
+        }
+        DisguiseGesture.install(this, topBar)
     }
 
     /**
@@ -567,5 +621,19 @@ open class BaseActivity : AppCompatActivity() {
 
     fun getClassName(): String {
         return this.javaClass.simpleName
+    }
+
+    private companion object {
+        /**
+         * 顶栏伪装延迟装载的最大重试次数。
+         *
+         * 有 11 个页面布局里根本没有 `R.id.top`，与「asyncInflate 还没 inflate 完」外观一致，
+         * 只能靠重试封顶来区分：20 次 × 50ms = 1 秒，足够慢设备把布局装完，
+         * 又没有 top 的页面最多耗 1 秒就彻底停手。
+         */
+        const val DISGUISE_INSTALL_MAX_RETRIES = 20
+
+        /** 顶栏伪装延迟装载的重试间隔（毫秒）。 */
+        const val DISGUISE_INSTALL_RETRY_MS = 50L
     }
 }

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 「蓝牙已断开」卡片底：白色圆角（模仿系统提示框） -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="@color/disguise_bt_card" />
+    <corners android:radius="14dp" />
+</shape>

@@ -20,6 +20,7 @@ import android.view.Surface
 import android.view.TextureView
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.ImageButton
 import android.widget.ImageView
@@ -36,6 +37,8 @@ import com.RobinNotBad.BiliClient.api.ShortVideoFeedApi
 import com.RobinNotBad.BiliClient.model.ShortVideoItem
 import com.RobinNotBad.BiliClient.ui.widget.HighEnergyProgressBar
 import com.RobinNotBad.BiliClient.util.CenterThreadPool
+import com.RobinNotBad.BiliClient.util.DisguiseGesture
+import com.RobinNotBad.BiliClient.util.DisguisePrefs
 import com.RobinNotBad.BiliClient.util.Logu
 import com.RobinNotBad.BiliClient.util.MsgUtil
 import com.RobinNotBad.BiliClient.util.NetWorkUtil
@@ -45,7 +48,6 @@ import com.RobinNotBad.BiliClient.util.GlideUtil
 import com.RobinNotBad.BiliClient.util.StringUtil
 import com.RobinNotBad.BiliClient.util.VideoPreloadManager
 import com.RobinNotBad.BiliClient.player.DanmakuManager
-import com.RobinNotBad.BiliClient.player.DanmakuSync
 import com.RobinNotBad.BiliClient.player.IjkOption
 import com.RobinNotBad.BiliClient.player.IjkPlayerBridge
 import com.bumptech.glide.Glide
@@ -117,6 +119,19 @@ class ShortVideoPlayerActivity : InstanceActivity() {
         screenHeight = metrics.heightPixels
     }
 
+    override fun onStart() {
+        super.onStart()
+        // 回到前台重算一次：后台期间可能已经暂停过，别把上一次的亮屏状态带回来
+        syncKeepScreenOn()
+    }
+
+    override fun onStop() {
+        // 进后台一律交还亮屏权：Fragment 的 onPause 走 pauseCurrent() 也会清，
+        // 但那条路依赖「活跃页引用还在」，这里再加一道兜底，避免窗口不可见却挂着标志。
+        window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        super.onStop()
+    }
+
     override fun onBackPressed() {
         // 在右侧详情/评论/相关推荐页时，返回先回到短视频首页，而不是直接退出本页
         if (::pager.isInitialized && pager.currentItem > 0) {
@@ -171,6 +186,31 @@ class ShortVideoPlayerActivity : InstanceActivity() {
     /** 播放完成的回调转交（播放逻辑在短视频页里；外壳只做转发）。 */
     internal fun onVideoCompleted(position: Int) {
         shellAdapter.activeFeedFragment?.handleVideoCompleted(position)
+    }
+
+    /**
+     * 重算「保持亮屏」。
+     *
+     * 短视频页原先**没有任何 keep-screen-on**（长视频页靠 `activity_player.xml` 的
+     * `android:keepScreenOn="true"`），看短视频到点就熄屏。
+     *
+     * 走**窗口标志**而不是某个 View 的 `keepScreenOn`：View 级标志挂在
+     * RecyclerView 的 item 上并不可靠（26.10.22 实测：暂停后窗口 `fl` 里仍留着
+     * `KEEP_SCREEN_ON`）。判据取「当前活跃那一页是否真的在播」，所以暂停、滑走、
+     * 进后台都会清掉，不会出现「停在暂停画面上也一直亮」。
+     *
+     * 每次播放状态变化都**整体重算**而不是增量开关：增量写法在
+     * `releasePlayer()` 这类「本来就没在播」的路径上会漏掉，残留一次就是永久亮屏。
+     */
+    internal fun syncKeepScreenOn() {
+        if (isFinishing || isDestroyed) return
+        if (!::shellAdapter.isInitialized) return
+        val keep = shellAdapter.activeFeedFragment?.isCurrentPlaying() == true
+        if (keep) {
+            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        } else {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
     }
 }
 
@@ -265,6 +305,9 @@ class ShortVideoPagerAdapter(
         holder.boundPosition = position
         holder.bind(item, position)
         holders[position] = holder
+        // 顶栏在分页 item 里（不在 Activity 的视图树上），BaseActivity 那边装不到。
+        // 每次绑定时重算一次：用户可能在设置里把开关关掉了，已装上的触摸层不会自己消失。
+        holder.syncDisguiseGesture()
     }
 
     override fun onViewRecycled(holder: PageHolder) {
@@ -366,6 +409,11 @@ class ShortVideoPagerAdapter(
             mainHandler.post {
                 lastBufferingVisible = false
                 bufferingIndicator.visibility = View.GONE
+                // 出错后必须清 isPlaying：它是「保持亮屏」的判据，留着 true 会让窗口长期挂着
+                // KEEP_SCREEN_ON（画面已经不动了却一直不熄屏）
+                isPlaying = false
+                playIcon.visibility = View.VISIBLE
+                buttonVideo.setImageResource(R.drawable.btn_player_play)
             }
             MsgUtil.showMsg(UiText.of("播放错误"))
         })
@@ -392,14 +440,26 @@ class ShortVideoPagerAdapter(
         // 否则弹幕线程可能读到过期的 true，继续把重建窗口期的脏位置灌进 DanmakuTimer
         @Volatile
         private var isPrepared = false
+
+        /**
+         * 播放状态。
+         *
+         * setter 里顺带通知宿主重算「保持亮屏」：本页原先**没有任何 keep-screen-on**
+         * （长视频页靠 `activity_player.xml` 根布局的 `android:keepScreenOn="true"`，
+         * 短视频这套布局没有），看短视频到点就熄屏。
+         *
+         * `@Volatile`：主线程写、弹幕渲染线程（媒体时钟的 isPlaying 回调）读。
+         */
+        @Volatile
         private var isPlaying = false
+            set(value) {
+                field = value
+                activity.syncKeepScreenOn()
+            }
         private var isSeeking = false
         private var isActive = false         // 当前页面是否为活跃状态
         private var isLoadingDanmaku = false // 是否正在加载弹幕
         private var isDanmakuVisible = true  // 弹幕是否可见
-        // 弹幕时钟吸附的时间与连续次数（见 DanmakuSync.decide：吸附会清屏，必须限频+退避）
-        private var danmakuSnapMs = 0L
-        private var danmakuSnapCount = 0
 
         private val speedOptions = listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f)
         private var currentSpeedIndex = 2
@@ -533,6 +593,10 @@ class ShortVideoPagerAdapter(
                 }
                 activity.menuClick.run()
             }
+            // 双击顶栏伪装：短视频的顶栏在分页 item 里（不在 Activity 的视图树上），
+            // BaseActivity 那边找不到，必须在这里按 item 装。
+            // 先装一次，之后每次 onBindViewHolder 由 [syncDisguiseGesture] 重算（开关可能被关掉）。
+            syncDisguiseGesture()
 
             initBottomButtons()
         }
@@ -584,8 +648,20 @@ class ShortVideoPagerAdapter(
             currentSpeedIndex = (currentSpeedIndex + 1) % speedOptions.size
             currentSpeed = speedOptions[currentSpeedIndex]
             buttonSpeed.text = "${currentSpeed}x"
-            
-            playerBridge.setSpeed(currentSpeed)
+
+            applySpeedToPlayers(currentSpeed)
+        }
+
+        /**
+         * 同时把倍速交给播放器与弹幕。
+         *
+         * **弹幕必须一起设**：`MediaClockSync` 用 `DrawHandler.mSpeed` 做时间外推与步进放大
+         * （见 `docs/architecture-map.md` §7.51）。只设播放器的话，2x 下媒体时间每秒推进 2000ms
+         * 而弹幕时钟按 1x 追，越播越落后；3x 更是完全追不上。
+         */
+        private fun applySpeedToPlayers(speed: Float) {
+            playerBridge.setSpeed(speed)
+            danmakuManager?.setSpeed(speed)
         }
 
         /**
@@ -597,7 +673,7 @@ class ShortVideoPagerAdapter(
         private fun startSpeedBoost() {
             if (speedBoosted || isScaling) return
             speedBoosted = true
-            playerBridge.setSpeed(boostSpeed)
+            applySpeedToPlayers(boostSpeed)
             buttonSpeed.text = "${boostSpeed}x"
 
             hideVolumeRunnable?.let { mainHandler.removeCallbacks(it) }
@@ -608,7 +684,7 @@ class ShortVideoPagerAdapter(
         private fun endSpeedBoost() {
             if (!speedBoosted) return
             speedBoosted = false
-            playerBridge.setSpeed(currentSpeed)
+            applySpeedToPlayers(currentSpeed)
             buttonSpeed.text = "${currentSpeed}x"
             speedBoostHint.visibility = View.GONE
         }
@@ -774,9 +850,15 @@ class ShortVideoPagerAdapter(
 
                 // 初始化弹幕视图
                 danmakuView = itemView.findViewById(R.id.danmakuView)
-                // 弹幕时钟不再由 DanmakuManager 自己校正（见其 updateTimer 注释与
-                // docs/review/fix-progress.md §3.6）：DFM 的基准只能靠 seekTo 重设。
-                danmakuManager = DanmakuManager(danmakuView!!)
+                danmakuManager = DanmakuManager(danmakuView!!).also { manager ->
+                    // 弹幕时间轴跟随播放器位置（而不是墙钟），见 DanmakuManager.bindMediaClock
+                    // 与 DanmakuFlameMaster 的 MediaClockSync。两个 provider 跑在 DFM 渲染线程上，
+                    // 只读主线程采样出来的内存值。
+                    manager.bindMediaClock(
+                        { if (isPrepared) videoNow.toLong() else -1L },
+                        { isPrepared && isPlaying }
+                    )
+                }
                 danmakuManager?.init()
 
                 playerBridge.setOnPrepared {
@@ -797,14 +879,16 @@ class ShortVideoPagerAdapter(
                     playIcon.visibility = View.GONE
 
                     adjustVideoSize(screenW, screenH)
-                    playerBridge.setSpeed(currentSpeed)
+                    applySpeedToPlayers(currentSpeed)
 
                     // 只有当前页面活跃时才自动播放，防止弱网延迟准备导致两个视频同时播放
                     if (isActive) {
                         playerBridge.start()
                         isPlaying = true
                         buttonVideo.setImageResource(R.drawable.btn_player_pause)
-                        danmakuManager?.resume()
+                        // 不在这里 resume 弹幕：此刻 `loadDanmaku(item)` 还没跑，
+                        // `DanmakuManager.resume()` 会因 isPrepared=false 直接返回（空操作）。
+                        // 弹幕真正的起播由 `DanmakuManager.prepared()` 回调负责。
                     } else {
                         // 页面不活跃，暂停准备就绪
                         isPlaying = false
@@ -921,21 +1005,10 @@ class ShortVideoPagerAdapter(
                         val pos = st.currentPosition.toInt()
                         if (pos != videoNowLast) {
                             videoNowLast = pos
+                            // 弹幕时钟以 videoNow 为时间源（见上面的 bindMediaClock），
+                            // 这里只需保证它是最新采样值，**不再做周期性 seekTo 吸附**
+                            // —— 吸附会清空屏上弹幕，表现就是「弹幕闪一下又没了」。
                             videoNow = pos
-                            // 弹幕时钟对齐（与 PlayerActivity 同源，见 DanmakuSync 的类注释）：
-                            // 只有 seekTo 会重设 DFM 的 mTimeBase，但**seekTo 会清空屏上弹幕**，
-                            // 所以只在 >1.5s 的大跳时做，并且带冷静期与退避——否则就是"弹幕闪一下又没了"。
-                            danmakuView?.let { dv ->
-                                val now = android.os.SystemClock.elapsedRealtime()
-                                val decision = DanmakuSync.decide(
-                                    pos.toLong(), dv.currentTime, now, danmakuSnapMs, danmakuSnapCount
-                                )
-                                danmakuSnapCount = decision.consecutive
-                                if (decision.snap) {
-                                    danmakuSnapMs = now
-                                    dv.seekTo(pos.toLong())
-                                }
-                            }
                             // 进度条每 250ms 刷（要平滑），但文本一秒才变一次，
                             // 所以只在整秒变化时才做字符串拼接与 setText
                             videoProgress.progress = pos
@@ -968,6 +1041,19 @@ class ShortVideoPagerAdapter(
                 it.gravity = Gravity.CENTER
                 textureView?.layoutParams = it
             }
+        }
+
+        /**
+         * 重算这一页顶栏的双击伪装手势：开着就装，关掉就摘。
+         *
+         * 短视频页的顶栏在 RecyclerView 的 item 里，`BaseActivity` 的 `findViewById(R.id.top)`
+         * 找不到它，所以这一页必须自己接。`DisguiseGesture.install` 内部会判开关，
+         * 但**已装上的触摸层不会自动消失**，所以关闭时还要显式 `detach`——
+         * 否则单击顶栏会一直多等一个双击判定窗口。
+         */
+        fun syncDisguiseGesture() {
+            if (DisguisePrefs.isEnabled()) DisguiseGesture.install(activity, top)
+            else DisguiseGesture.detach(top)
         }
 
         fun play() {

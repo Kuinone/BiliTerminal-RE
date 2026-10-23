@@ -182,7 +182,8 @@ public class DrawHandler extends Handler {
                     sendEmptyMessageDelayed(PREPARE, 100);
                 } else {
                     prepare(() -> {
-                        pausedPosition = 0;
+                        // 异步 ready 期间的 start(pos) 不能被清零，见 mPendingStartPos 注释
+                        pausedPosition = mPendingStartPos >= 0 ? mPendingStartPos : 0;
                         mReady = true;
                         if (mCallback != null) {
                             mCallback.prepared();
@@ -219,6 +220,7 @@ public class DrawHandler extends Handler {
                 } else {
                     pausedPosition = 0;
                 }
+                mPendingStartPos = pausedPosition;
             case SEEK_POS:
                 if (what == SEEK_POS) {
                     quitFlag = true;
@@ -231,6 +233,7 @@ public class DrawHandler extends Handler {
                     if (drawTask != null)
                         drawTask.seek(position);
                     pausedPosition = position;
+                    mClockSamplePos = -1; // 位置跳变：丢掉旧采样，下一帧按新位置重新对齐
                 }
             case RESUME:
                 quitFlag = false;
@@ -239,6 +242,7 @@ public class DrawHandler extends Handler {
                     mDrawTimes.clear();
                     mTimeBase = SystemClock.uptimeMillis() - pausedPosition;
                     timer.update(pausedPosition);
+                    mClockSamplePos = -1; // 恢复时同样丢采样：别按"暂停期间流逝的墙钟"外推，否则会前冲再回落
                     removeMessages(RESUME);
                     sendEmptyMessage(UPDATE);
                     drawTask.start();
@@ -424,6 +428,40 @@ public class DrawHandler extends Handler {
     private long mSpeedOffsetRender = 0L;
     private float mSpeed = 1.0F;
 
+    /**
+     * 外部媒体时钟：返回播放器真实位置。设了它之后弹幕时钟以它为准，不再跟随墙钟。
+     *
+     * 实现方**必须是线程安全的读**（本接口在 DFM 的渲染线程上被每帧调用）：
+     * 只能读主线程采样出来的内存值，**绝对不能**在里面调 `MediaPlayer.currentPosition` 之类
+     * 会取 native 锁的方法（与主线程 seek/release 并发有卡死风险）。
+     */
+    public interface MediaClock {
+        /** 当前播放位置（毫秒）；**负数表示不可用**（未就绪/已销毁），此时退回墙钟逻辑。 */
+        long positionMs();
+
+        /** 是否正在播放；false 时弹幕时钟冻结在 positionMs。 */
+        boolean isPlaying();
+    }
+
+    private MediaClock mMediaClock;
+    private long mClockSamplePos = -1;
+    private long mClockSampleAt;
+
+    /**
+     * 通过 `start(position)` 指定的起播位置；`-1` 表示没指定（从头）。
+     *
+     * 必须单独存：`prepare()` 的 ready 回调是**异步**的（`CacheManagingDrawTask` 在后台解析完
+     * 弹幕才回调），在那之前 `start(pos)` 就已经把 `pausedPosition` 设成 pos 了；
+     * 如果 ready 回调无条件 `pausedPosition = 0`，续播/切页传进来的起播位置就被吞掉，
+     * 时间轴会从 0 重新走一遍（用户看到弹幕先闪一下旧的再跳回来）。
+     */
+    private long mPendingStartPos = -1;
+
+    public void setMediaClock(MediaClock clock) {
+        mMediaClock = clock;
+        mClockSamplePos = -1;
+    }
+
     public void setSpeed(float speed) {
         mSpeed = speed;
     }
@@ -433,6 +471,13 @@ public class DrawHandler extends Handler {
             return 0;
         }
         mInSyncAction = true;
+        if (mMediaClock != null) {
+            long done = syncTimerByMediaClock(startMS);
+            if (done == 0) {
+                mInSyncAction = false;
+                return 0;
+            }
+        }
         long d = 0;
         long time = startMS - mTimeBase;
         if (!mDanmakusVisible || mRenderingState.nothingRendered || mInWaitingState) {
@@ -473,6 +518,44 @@ public class DrawHandler extends Handler {
         }
         mInSyncAction = false;
         return d;
+    }
+
+    /**
+     * 以播放器位置为时间源推进弹幕时钟。
+     *
+     * @return 0 表示已经处理完（调用方直接用当前 timer 绘制）；非 0 表示时钟不可用，退回墙钟逻辑
+     */
+    private long syncTimerByMediaClock(long nowMs) {
+        long pos = mMediaClock.positionMs();
+        if (pos < 0) {
+            return -1; // 位置不可信（未就绪/已销毁），退回原生逻辑
+        }
+        boolean playing = mMediaClock.isPlaying();
+        if (MediaClockSync.isDiscontinuity(mClockSamplePos, pos)) {
+            // 首次采样 / seek / 换源 / 恢复进度：位置不连续，直接对齐，别慢慢蠕动
+            mClockSamplePos = pos;
+            mClockSampleAt = nowMs;
+            timer.update(pos);
+            mRemainingTime = 0;
+            if (mCallback != null) {
+                mCallback.updateTimer(timer);
+            }
+            return 0;
+        }
+        if (pos != mClockSamplePos) {
+            mClockSamplePos = pos;
+            mClockSampleAt = nowMs;
+        }
+        // 暂停时目标就是当前位置（冻结）；播放中按倍速外推，避免每 250ms 才推进一次
+        long ideal = playing
+                ? MediaClockSync.project(pos, mClockSampleAt, nowMs, mSpeed)
+                : pos;
+        timer.update(MediaClockSync.nextTimerValue(timer.currMillisecond, ideal, mSpeed));
+        mRemainingTime = 0;
+        if (mCallback != null) {
+            mCallback.updateTimer(timer);
+        }
+        return 0;
     }
 
     public void syncTimerIfNeeded() {

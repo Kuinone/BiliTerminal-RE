@@ -56,6 +56,9 @@ class ShortVideoFeedFragment : Fragment() {
     private val feedAdapter: ShortVideoPagerAdapter?
         get() = viewPager.adapter as? ShortVideoPagerAdapter
 
+    /** 当前活跃那页是否真的在播放；宿主据此决定要不要保持亮屏。 */
+    fun isCurrentPlaying(): Boolean = feedAdapter?.isCurrentPlaying() == true
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         audioManager = requireContext().getSystemService(android.content.Context.AUDIO_SERVICE) as AudioManager

@@ -60,6 +60,16 @@ object SettingsKeys {
      * （true → `all`，false → `video_only`），保证老用户升级后行为不变。写入一律写 [TOPBAR_LONG_PRESS_MODE]。
      */
     const val TOPBAR_LONG_PRESS_MENU_ENABLE = "topbar_long_press_menu_enable"
+    /**
+     * 「伪装 / 安全」总开关（双击顶栏切到假计算器或假「蓝牙已断开」）。
+     *
+     * 默认值、样式取值与暗号校验统一在 `util/DisguisePrefs`，不要在别处写死默认值。
+     */
+    const val DISGUISE_ENABLED = "disguise_enabled"
+    /** 伪装样式（`calculator` / `bluetooth`），取值见 `util/DisguisePrefs`。 */
+    const val DISGUISE_STYLE = "disguise_style"
+    /** 退出伪装用的数字暗号，长度 4~8。 */
+    const val DISGUISE_CODE = "disguise_code"
     const val CREATIVE_ENABLE = "creative_enable"
     const val SEARCH_SUGGESTIONS_ENABLE = "search_suggestions_enable"
     const val BACK_DISABLE = "back_disable"

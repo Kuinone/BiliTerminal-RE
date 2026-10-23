@@ -197,9 +197,9 @@
 `clone` 本项目，导入到你的 IDE 中进行开发、构建。
 
 ./gradlew.bat :app:assembleRelease   # 编译正式包（R8 + 资源压缩，ABI 分包 arm64-v8a / armeabi-v7a）
-./gradlew :app:testDebugUnitTest     # 单元测试
+./gradlew.bat :app:testStandardDebugUnitTest   # 单元测试（普通版；共存版用 testCoexistDebugUnitTest）
 
-> 开发以 `main` 分支为准，功能与修复走 `feat/*`、`fix/*` 分支合并回 `main`（例如 `feat/gitee-release`、`fix/issue-1-swipe-seek-back`）。欢迎提交 pr。
+> 所有改动**直接提交到 `main`**（26.10.22 起不再按类型分 `feat/*`、`fix/*` 分支），需要评审或合并上游时从 `main` 开 PR。欢迎提交 pr。
 
 ---
 

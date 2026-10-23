@@ -23,7 +23,7 @@
 - **依赖仓库**：`settings.gradle` 已把 aliyun 的 `google` / `public` / `gradle-plugin` 三个镜像前置，`google()`/`mavenCentral()`/jitpack 仅作兜底。
 - **改了 `res/` 文件集合时**：`:app:clean` 与后续命令**必须分两次 Gradle 调用**，且带 `--no-build-cache --no-configuration-cache`，否则会回放陈旧资源（症状是 `Unresolved reference 'R.layout.xxx'`）。
 - **版本一致性**：`:app:verifyVersionConsistency` 以 `strings.xml` 的 `update_log_current` 为锚点校验版本一致性；发版说明也由 CI 从它抽取（抽不到直接拒绝发版）。
-- **单测（静态计数，26.10.23 实测）**：**77 个测试类 / 815 个用例**，两个 flavor 完全相同（同源码），0 失败 0 错误 0 跳过。计数方式：`app/src/test/` 下 `*Test.kt|java` 计数（另有共享假实现 `util/FakeSharedPreferences.kt`），`app/build/test-results/testStandardDebugUnitTest/TEST-*.xml` 的 `tests=` 求和。用例数一律以机器产出为准，队友口述数字不进入文档。
+- **单测（静态计数，26.10.23 合并上游后实测）**：**79 个测试类 / 841 个用例**，两个 flavor 完全相同（同源码），0 失败 0 错误 0 跳过。计数方式：`app/src/test/` 下 `*Test.kt|java` 计数（另有共享假实现 `util/FakeSharedPreferences.kt`），`app/build/test-results/testStandardDebugUnitTest/TEST-*.xml` 的 `tests=` 求和。用例数一律以机器产出为准，队友口述数字不进入文档。
 - **26.10.10 那一轮的构建记录（历史，留作「改 minSdk / 重跑 release 链路」时的验证口径）**：`minSdk 24 → 19` 全部改动（含 jsoup 1.16.1、7 个 `res/drawable-v21` 资源）落盘后，按「`clean` → `assembleRelease` → `lintRelease` → 单测」四步跑完（均带 `--no-configuration-cache`，`clean` 与 `assemble` 分两次调用），四步全 `BUILD SUCCESSFUL`（37s / 2m13s / 1m25s / 39s）。当时单测汇总 **49 suites / 460 tests / 0 failures**（任务名当时还是 `testDebugUnitTest`，现已带 flavor 前缀），最新 XML 时间 `2026-10-09T22:59:04`（晚于当轮 APK 出包时间 22:56:58，覆盖了当轮全部源码改动）。`:app:lintRelease` 的 **`NewApi` 从 22 条降到 2 条**，且这 2 条就是 `PlayerActivity.kt:1981` 的已知假阳性。发版前仍建议再跑一次确认。
 - **「自动跳过片头片尾」已恢复上线（26.10.22）**：26.10.10 的紧急撤回**已解除**，`SkipOpEdPrefs.FEATURE_ENABLED` 回到 `true`，设置入口与搜索索引均已恢复；口径按用户拍板改为**默认关闭**（`DEFAULT_ENABLED = false`，老用户存档里显式写的值仍然优先）。恢复细节见 §3.3「恢复记录」，乱跳的三个根因修复见 §3.55。
 - **本轮基建改动（26.10.10）**：**`minSdk 24 → 21 → 19（Android 4.4）`**，唯一落点是 `app/build.gradle:21`。两级下调的成本不同，分开记：
@@ -1134,8 +1134,14 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
   - `api/DanmakuApi.java`：新增纯函数 `segmentCountFor(sec)`（`ceil`，≤0 视为 1 段）与 `SEGMENT_SECONDS`；每个分段失败重试 1 次（`fetchSegmentWithRetry`）；拿不满时**按区间打缺口日志**（"分段 3~5，720~1080 秒无弹幕"），事后能区分"数据缺失"和"渲染问题"。
 - **单测**：`DanmakuSyncTest` 重写为 9 例（稳态不吸附、小偏差反复采样也不吸附、大跳吸附、冷静期挡住第二次、连续 3 次退避、退避期满恢复、收敛清零、位置不可信不吸附、阈值远大于采样间隔）；新增 `DanmakuSegmentCountTest` 6 例（未知时长 1 段、刚满一段仍是 1 段、整倍数不多发、361 秒必须 2 段、2 小时 20 段、`SEGMENT_SECONDS=360`）。
 - **验证（本机构建/单测，26.10.21；数字为合并上游后的实测）**：`:app:assembleDebug`（两个 flavor 各 4 个 ABI 包，`BUILD SUCCESSFUL in 6m 3s`）；`:app:testStandardDebugUnitTest` + `:app:testCoexistDebugUnitTest` 各 **72 suites / 769 tests / 0 failures**。
-- **真机待验**：本机 `adb devices` 为空，上面三条根因全部来自 vendored DFM 源码与调用链，**必须真机复测**：① 正常播放中人为卡顿/切后台再回来，`adb logcat -s "弹幕纠偏"` 只应在 >1.5s 大跳时打一条，**不应每秒一条**；② 反复拖进度条/快进后退，弹幕应立即恢复且不闪；③ 长视频后半段不应出现整段无弹幕，`adb logcat -s "新版弹幕API"` 里"弹幕缺口"应为零。
-- **仍未做（另立项）**：`duration` 未就绪时按 3600 秒硬算 11 段——正确做法是先只取第 1 段、`onPrepared` 拿到真实时长后再补拉剩余分段（涉及二次加载时序，风险比本批大）。
+- **真机/模拟器实测（26.10.22，MuMu Android 15 x86_64，coexist debug 包）**：
+  - 视频 `av170001` P1（3:19 / 1754 条弹幕）：正常渲染；**连续 3 次快进**后截图仍满屏弹幕，`弹幕纠偏` 只有跳转 11s 后的一条正常吸附，**没有出现"几百秒偏差"的误吸附**（`markSeekTarget` 生效）。
+  - **拖动进度条**到 02:16 后弹幕正常（截图确认），30 秒稳态观察 `弹幕纠偏` 仅 **2 次**（旧逻辑在同样漂移下是每秒一次 = 每秒清屏一次）。
+  - **长视频** `av117466583799078`（44:41 / 4947 条）：按 10 段请求，**8 段有数据、9~10 段为空**（该视频只到 44:41，正好覆盖到第 8 段），与预期一致。
+  - 顺带修掉一处自测才暴露的问题：`弹幕缺口` 日志原先把"成功但为空"也算缺口，短 P 会天天刷 `分段 2~10（360~3600 秒无弹幕）`这种误报；现在只在**重试后仍为 null**（真失败）时打 E 级日志，空段只体现在"X/Y 段非空"里。
+  - 顺带确认 `segmentCountFor(3600) = 10`（旧公式 `3600/360+1 = 11`，白发一个必空请求）。
+- **仍未做（另立项）**：`duration` 未就绪时按 3600 秒硬算 10 段（短 P 会白拉 9 段）——正确做法是先只取第 1 段、`onPrepared` 拿到真实时长后再补拉剩余分段（涉及二次加载时序，风险比本批大）。
+- **本节已被 §3.57 取代**：上面那套「周期性 `seekTo` 吸附」判据（`DanmakuSync.decide`）已于 26.10.22 **整体删除**。用户反馈「每隔一会自动纠偏本身就是不正常的行为」，根因是弹幕时钟按墙钟走导致速率性发散（见 §3.57），改为以播放器位置为时间源后不再需要任何周期性吸附。本节保留的是当时的排查过程与清屏机制的代码级结论，仍然有效。
 
 ### 3.52 存储兼容：默认目录按 API 分档 + 无全盘权限时自动降级（Wear OS，26.10.22，待真机）
 
@@ -1249,11 +1255,106 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
     selftest `789e00fa…`（49752）。
 - **验证（本机，26.10.23 已跑）**：
   - `.\gradlew.bat :app:assembleDebug --offline` → `BUILD SUCCESSFUL`（standard + coexist 两个 Debug 包）。
-  - `:app:testStandardDebugUnitTest` 与 `:app:testCoexistDebugUnitTest` → 两 flavor 各 **815 例 / 0 失败 0 跳过**（`TerminalApiTest` 现 17 例：删掉 3 例「两路合并」并改为断言 `source`）。
-  - `server/`：`python -m py_compile` OK；`python server/selftest.py` → **206 项全通过**（含真上游冒烟；离线少 2 项）；本地 uvicorn 真服务 E2E 验证 approve 后客户端立即可见 `source=relay`、上游不可达时 `code=1`、登录后控制台含 relay 区块；定时拉取线程用临时脚本 E2E 通过（见上）；`console.html` 的 script 块 `node --check` 通过。
+  - `:app:testStandardDebugUnitTest` 与 `:app:testCoexistDebugUnitTest` → 两 flavor 各 **815 例 / 0 失败 0 跳过**（`TerminalApiTest` 现 17 例：删掉 3 例「两路合并」并改为断言 `source`）。  这是上游在本 PR 之外的基线上测的；**合入本 PR 后全量基线为 79 类 / 841 例**（见 §1）。  - `server/`：`python -m py_compile` OK；`python server/selftest.py` → **206 项全通过**（含真上游冒烟；离线少 2 项）；本地 uvicorn 真服务 E2E 验证 approve 后客户端立即可见 `source=relay`、上游不可达时 `code=1`、登录后控制台含 relay 区块；定时拉取线程用临时脚本 E2E 通过（见上）；`console.html` 的 script 块 `node --check` 通过。
   - markdownlint：本次改动的 5 个 md 0 错误。
 - **未验证 / 待办**：① 生产上 3 条待审上游公告**未做 approve/reject 实操**（避免真实客户端看到未定内容；按用户要求「亲自选择是否透传」留给维护者在控制台点）；② 控制台页签切换、公告筛选、回复删除按钮**没在真实浏览器点过**（目前只有 curl 冒烟 + TestClient 断言）；③ 客户端未真机验证（列表只剩自建源、透传标注、待审不可见、差量弹窗只弹一次、断网不卡启动）；④ 控制台兜底补拉仍无退避（每小时最多一次，后端定时线程已有退避）。
 - **注意**：`server/` 整个目录在 `.gitignore` 里（既有约定，服务端代码不进版本库），所以本次服务端改动只存在于工作区与 HK 部署目录，不随客户端提交。
+
+### 3.57 弹幕时间轴改由播放器位置驱动（彻底去掉周期性纠偏，26.10.22）
+
+- **用户反馈**：「弹幕每隔一会自动纠偏本就是一个不正常的行为，按理说应该全程跟随视频进度；其次在快进时这个纠偏更为严重。」并要求核实「弹幕的滚动速度计算是否有问题，导致弹幕与视频差距越来越大」。
+- **结论：确实是速率问题，不是阈值问题。** §3.51 的 `decide()` 只是把「清屏」限了频，没有消除漂移本身——根因在 DFM 内部：`DrawHandler.syncTimer()` 把 `SystemClock.uptimeMillis() - mTimeBase` 当成媒体时间，只有「视频恰好按 1.0x 实时播放」时才成立。
+- **实测取证（MuMu Android 15 x86_64，1.0x，临时诊断日志 1 秒一次）**：
+
+  ```text
+  视频=3743  弹幕=4249  差=-506      ← 弹幕跑快
+  视频=7754  弹幕=8722  差=-968
+  视频=11773 弹幕=13217 差=-1444
+  视频=15789 弹幕=15787 差=2         ← 触发一次吸附（= 清屏重建）
+  ```
+
+  视频每 4 秒只前进 3981ms（≈0.9x 墙钟，解码跟不上），弹幕每 4 秒前进 4478ms（≈1.0x 墙钟）——**速率差约 12.5%，差距线性增长**，所以「每隔十来秒必清一次屏」。倍速下同理：2.0x 时墙钟每 3 秒只该走 6 秒的一半，偏差扩大得更快，与用户「快进时更严重」的观察一致。
+- **为什么不能继续用 `seekTo` 修**：`seekTo` → `DrawTask.seek()` → `reset()` 是「清空屏上弹幕 + 重建缓存」（§3.51 已确证），拿它做纠偏等于周期性清屏。要让「全程跟随」成立，只能换时间源。
+- **修法（4 层，`DanmakuFlameMaster` 模块可改）**：
+  - 新增纯逻辑类 `DanmakuFlameMaster/.../controller/MediaClockSync.java`：`project(采样位置, 采样时刻, 当前时刻, 倍速)` 在两次采样之间外推（否则弹幕每 250ms 才动一次）；`nextTimerValue(当前, 理想)` 每帧**最多挪 40ms**（把采样抖动摊平，不出现画面回退）；`isDiscontinuity(上次, 本次)` 位置差 >1s 判为跳转/换源，直接硬对齐不走蠕动。
+  - `DrawHandler` 新增 `interface MediaClock { long positionMs(); boolean isPlaying(); }` 与 `setMediaClock()`；`syncTimer()` 优先走 `syncTimerByMediaClock()`，位置为负数（未就绪/已销毁）时**回退原生墙钟分支**。
+  - `IDanmakuView` / `DanmakuView` 暴露 `setMediaClock()`（转发不判 `isPrepared`，因为绑定通常早于 prepare）。
+  - `player/DanmakuManager.kt` 新增 `bindMediaClock(position, isPlaying)` 并在 `configureAndPrepare()` 末尾重放一次；`PlayerActivity.bindDanmakuView()` 绑 `video_now`（就是 `progressChange` 每 250ms 采样的那个 `@Volatile` 字段）与 `isPrepared && isPlaying && !destroyed`；`ShortVideoPlayerActivity` 同样绑定（`videoNow` 已补 `@Volatile`）。**直播不绑**（没有有意义的播放位置）。
+  - `PlayerActivity.progressChange` 里整块周期性吸附删除，`DanmakuSync.kt` 及其 9 例单测**删除**；新增 `MediaClockSyncTest`（12 例：外推、倍速、空档封顶、不倒推、限幅蠕动、半秒内收敛、不连续判定、阈值边界）。
+- **为什么不用改单条弹幕的滚动时长**：`DanmakuFactory` 的 `scrollSpeedFactor` 决定「一条弹幕在屏上停留多久（以媒体时间为单位）」。倍速下时钟推进 2x，同一条弹幕自然也是 2 倍速划过屏幕——这正是期望行为，弹幕出现时机与画面严格对齐，不需要额外放大滚动速度。
+- **线程安全边界（改动中最容易踩的坑）**：`MediaClock` 的两个方法跑在 DFM **渲染线程**上，只能读主线程采样好的内存值；**绝不能**在里调 `IjkMediaPlayer.currentPosition`（取 native 锁，与主线程 seek/release 并发有卡死风险，也是 26.09.10 那版「渲染线程读位置导致弹幕全没」的老坑）。
+- **模拟器实测（26.10.22，coexist debug 包；日志为当时的体检输出，现已收敛为「仅异常时、≥5 秒一条」）**：
+  - **1.0x 稳态 40 秒**：偏差 `9 / 11 / 25 / 26 / 5 / 15 / 18 / 10 / 13 / 16 / 9` ms，**横盘不增长**（改前同样条件每 4 秒涨 490ms）。
+  - **2.0x 播放 20 秒**（视频每 3 秒推进 ≈6020ms）：偏差 `42 / 39 / 34 / 40 / -102 / 26` ms，仍不累积；`-102` 是单帧采样抖动，下一帧即回落。
+  - **拖进度条**：从 81s 拖到 128s 后首个采样偏差 **8ms**（`isDiscontinuity` 硬对齐生效），截图确认弹幕立即可见、无"闪一下又没了"。
+  - **长时间无周期性清屏**：整段日志再无任何「纠偏/清屏」记录；`弹幕缺口` 无输出；错误日志只有 MuMu 自己的旋转提示，应用侧零异常。
+- **验证（本机）**：`:app:assembleCoexistDebug` 通过；`:app:testStandardDebugUnitTest` = **76 类 / 809 例 / 0 失败**（806 − 9 + 12）。
+- **手表端**：**维护者已人工实测通过**（26.10.23，维护者自述，非本会话 agent 复现）：1.0x / 2x 播放与拖进度条下弹幕全程跟随、不再周期性清屏。仍**没有**设备侧量化数据的是「极弱机（真实手表 SoC）上媒体时钟的收敛速度」与「暂停→恢复的瞬时手感」——要等有人拿 `adb logcat -s 弹幕时钟` 在手表上跑一遍才有日志证据。
+
+### 3.58 短视频页没有阻止自动熄屏（26.10.22）
+
+- **问题**（用户提出「检查短视频部分是否没有做阻止自动熄屏」）：**确实没有**。全仓与亮屏相关的代码只有两处——`res/layout/activity_player.xml` 根布局的 `android:keepScreenOn="true"`（长视频播放页）与 `DownloadListActivity` 的下载期 `FLAG_KEEP_SCREEN_ON`；短视频这套（`activity_short_video_player.xml` + `fragment_short_video_page.xml`）**一处都没有**，看短视频到系统熄屏时间就黑屏。
+- **改法**（`activity/video/ShortVideoPlayerActivity.kt` + `ShortVideoFeedFragment.kt`）：
+  - `PageHolder.isPlaying` 加自定义 setter，任何一处改播放状态都触发宿主 `syncKeepScreenOn()`——赋值点有 8 处（`play` / `pause` / `resume` / `setActive` / `onPrepared` / 完成回调 / `releasePlayer` / state 收集），逐个补调用必漏。
+  - 判据取「当前活跃那一页是否真的在播」（`ShortVideoFeedFragment.isCurrentPlaying()` → `ShortVideoPagerAdapter.isCurrentPlaying()` → `activeHolder.isPlaying()`），**每次整体重算**而不是增量 add/clear：增量写法在 `releasePlayer()` 这类「本来就没在播」的路径上会漏，残留一次就是永久亮屏。
+  - `onStop` 兜底清标志、`onStart` 回前台重算，避免后台期间把状态带回来。
+- **为什么用窗口标志而不是 View 级 `keepScreenOn`**：先试过在 `PageHolder` 里设 `itemView.keepScreenOn`，模拟器实测**暂停后窗口 `fl` 里仍留着 `KEEP_SCREEN_ON`**（RecyclerView 的 item 挂着，View 级标志的清退不可靠）。换成 `window.addFlags/clearFlags(FLAG_KEEP_SCREEN_ON)` 后一次就对。
+- **实测（MuMu Android 15 x86_64，coexist debug，判据是 `dumpsys window windows | grep -c 'fl=KEEP_SCREEN_ON'`）**：播放中 `1` → 暂停后 `0` → 恢复播放 `1` → 上滑切下一条 `1`（新一条自动播）。用户随后在自己环境复验通过。
+- **验证（本机）**：`:app:assembleCoexistDebug` 通过；`:app:testStandardDebugUnitTest` = 76 类 / 809 例 / 0 失败（本次只有 UI 状态逻辑，无新增可单测的纯函数）。
+- **顺带记一笔**：`mWakefulness` **不能**当判据——MuMu 本身不自动熄屏（桌面对照实验 22 秒后仍 `Awake`），必须看窗口 `fl`。
+
+### 3.59 新增「伪装与安全」：双击顶栏切到假计算器 / 假蓝牙提示（issue #22，26.10.22）
+
+- **需求**（issue #22，用户定的三条口径）：① 两种样式都做、可在设置里选；② 计算器的退出方式是「输入暗号再按 `=`」；③ 做成设置开关、**默认关**；触发方式为**双击顶栏**。
+- **新增**：
+  - `util/DisguisePrefs.kt`：开关 / 样式（`calculator` / `bluetooth`）/ 暗号（4~8 位数字）与纯函数 `normalizeCode`、`matchesSecret`。暗号**只允许数字**，否则计算器上敲不出来 = 用户把自己锁在伪装页里，只能强杀应用。
+  - `util/CalculatorEngine.kt`：真能算的四则运算求值（先乘除后加减、小数、除零报错、末尾多余运算符忽略、**绝不抛异常**）。伪装页算错就等于暴露。
+  - `activity/disguise/CalculatorDisguiseActivity`：深灰底 + 橙色运算符的手表计算器（**刻意不继承 BaseActivity**——主题、DPI 适配、教程、EventBus 任何一项都会让伪装露馅）。暗号命中 → `finish()`；**返回键只当 `C`**，不退页。
+  - `activity/disguise/BluetoothDisguiseActivity`：半透明窗口（`Theme.BiliClient.Disguise.Dialog`）上盖一张仿系统提示卡，底下的页面会透出来再压一层暗色；「重新连接」只换一行字；**长按标题 2 秒**退出，返回键被吃掉。
+  - `activity/disguise/DisguiseLauncher`：按设置选样式的唯一入口。
+  - `BaseActivity.setupTopbarDoubleTapDisguise`：顶栏手势层，技术结论见 `docs/architecture-map.md` §7.53。
+  - 设置：新分组 `GROUP_DISGUISE`（「伪装与安全」）+ `SettingMainActivity` 一级入口 + `SettingsIndex` 搜索条目；`strings.xml` 全部文案；清单两个 Activity 均 `exported="false"` 并各带伪装主题。
+- **单测**：`CalculatorEngineTest` 12 例（空表达式、单数字、加减、乘除优先、小数显示、整除不带 `.0`、末尾运算符、连续运算符、除零、非法输入、`*` `/` 等价、负数）、`DisguisePrefsTest` 7 例（合法/裁空格/长度/非数字/匹配/非法暗号恒不匹配/样式合法性）。合并上游后的全量基线是 **79 类 / 841 例 / 0 失败**。
+- **模拟器实测（MuMu Android 15 x86_64，coexist debug，用户本人操作）**：双击顶栏 → `WindowManagerShell` 日志确认 `CalculatorDisguiseActivity` 在 display 22 打开；输入暗号按 `=` → `disguise>暗号命中，退出伪装` 并回到原页面；全程 **0 条 `FATAL EXCEPTION` / `AndroidRuntime` 异常**；`BaseActivity>setupTopbarDoubleTapDisguise: 顶栏双击伪装已就绪` 在每个页面正常打印。
+- **手表端**：**维护者已人工实测通过**（26.10.23，维护者自述）：双击顶栏可切到伪装页、计算器能算、暗号能退出、蓝牙样式轻点不再误退出。仍缺设备侧验证的是「单击顶栏那个 0.3 秒双击判定窗口在手表上的手感」与「半透明蓝牙提示页在圆屏上的布局」——这两条只能在圆屏真机上肉眼判断。
+
+### 3.60 上游审查意见修复（26.10.23）
+
+上游对 PR 提了 1 个 P0 + 7 条 P1/P2。逐条核对后的处理：
+
+- **P0（真回归，§3.57 引入）短视频首播弹幕不显示**：`ShortVideoPlayerActivity` 在 `loadDanmaku()` **之前**调 `danmakuManager?.resume()`，而 `DanmakuManager.resume()` 有 `isPrepared` 守卫，此刻必然 false → 空操作；全页又没有任何 `start()`。DFM 的 UPDATE 循环**只由 START / SEEK_POS / RESUME 三个分支拉起，`prepare()` 本身不会启动**，旧实现是靠周期性 `seekTo` 的副作用（SEEK_POS 落穿到 RESUME）间接启动的。§3.57 删掉周期性 seekTo 时把这个副作用一起删了。
+  - 修法：`DanmakuManager` 新增 `start(positionMs = -1)`，并在 `configureAndPrepare()` 末尾自动调用（起播位置优先取媒体时钟的已知位置，续播/切页别从 0 重走）。等价于长视频页原本在 `onPrepared` 里做的 `mDanmakuView.start()`。
+  - 实测（模拟器）：进入短视频页**不做任何操作**，弹幕区出现「弹幕准备完毕」+ 多条滚动弹幕（修复前只有烧进画面的字幕）。
+- **P1-1 双击顶栏覆盖面与文案不一致**：`PlayerActivity` 不继承 `BaseActivity`（没有手势）；20 个 `asyncInflate` 页面在 `onStart` 时视图还没进来，`findViewById(R.id.top)` 为 null 直接 return（首次进入无效、退出再进才生效）；短视频的顶栏在分页 item 里也装不上。
+  - 修法：手势实现抽成 `util/DisguiseGesture.kt`（`install` / `detach` / `isInstalled`，用 `WeakHashMap` 防重复安装）；`BaseActivity` 拿不到顶栏时 `decorView.post` 重试一次；`PlayerActivity.onStart` 与短视频 `PageHolder` 各接一次线。现在「双击任意页面顶栏」与文案一致。
+- **P1-2 3× 长按媒体时钟追不上**：`MAX_STEP_MS = 40` 在 60fps 下只能追 2400ms/s，3× 需要 3000ms/s；而 `DISCONTINUITY_MS = 1000` 又大于 3× 的相邻采样差 750ms，永不触发硬对齐。
+  - 修法：新增 `stepFor(speed)`（步进上限随倍速放大）与 `SNAP_ERROR_MS = 500`（误差过半秒直接吸附）。`nextTimerValue` 增加 `speed` 参数，补单测 2 例。
+- **P1-3 计算器负数无法续算**：`3-6` 之后表达式里留下 `-3`，再按运算符或 `=` 会因为「首字符是运算符」直接 `ERROR`，伪装页显示「错误」很扎眼。
+  - 修法：`CalculatorEngine` 支持表达式开头的一元负号；补负数用例 6 条（`-3+2` / `-3×2` / `0-3-3` / `-3` / `-3÷2`。
+- **P1-6 文档一致性**：`architecture-map` 的测试清单（§3/§8 两处 76 类 806 例 → 79 类 841 例，补 `MediaClockSyncTest` / `CalculatorEngineTest` / `DisguisePrefsTest` / `SkipCancelPolicyTest`，删已不存在的 `DanmakuSyncTest`）、弹幕时钟旧口径（把「DanmakuSync + 周期性 seekTo」整段换成 §7.51 的现行做法）、`docs/README.md`「19 章」→「20 章」、`FEATURES.md` 重编号后 6 处旧引用、`readme.md` 的分支制度与已不存在的 `testDebugUnitTest`。
+- **P2 顺手修**：短视频 `onError` 未把 `isPlaying` 置 false（画面停住却一直挂着 `KEEP_SCREEN_ON`）；`isPlaying` 补 `@Volatile`（弹幕渲染线程读）；`format` 指定 `Locale.US`（默认 Locale 会把小数点写成逗号，结果再回填就解析不回来）；`DrawHandler` 的 SEEK_POS / RESUME 分支重置媒体时钟采样（避免暂停恢复后计时器前冲再回落）；长视频续播 seek 补 `markSeekTarget`；设置里的暗号不再**逐键**弹 toast（`TextWatcher` 每次击键都会触发）。
+- **未做（需单独决策）**：把 PR 拆成三份、`readme.md` 功能表补伪装条目之外的市场化描述、`excludeFromRecents`/图标（需真机确认最近任务卡片表现）、`setScreenOnWhilePlaying(true)` 对 TextureView 无效但仍保留（SurfaceView 路径可能有意义，改动收益不明确）。
+- **验证**：`:app:assembleCoexistDebug` 通过；`:app:testStandardDebugUnitTest` **79 类 / 841 例 / 0 失败**；模拟器实测 P0 与双击手势；markdownlint 31 文件 0 issue。
+- **第二轮审查的三条必修（26.10.23 晚，已修 + 已实测）**：
+  1. **双击伪装会无限自旋**：开关开启且本页没有 `R.id.top` 时，`BaseActivity` 用 `decorView.post` 无限重试——有 **11 个页面布局里本来就没有顶栏**（Download / Catch / Tutorial / TutorialPager / JumpToDialog / InputDialog / CaptchaWebView / QRLoginRegister / ConfirmDialog / Dialog / ListDialog），进这些页面会每帧投递一次、一直耗电到页面结束。改成「`postDelayed` + 封顶 20 次 × 50ms + `isFinishing/isDestroyed` 立刻停」，并在放弃时打一条 `XXX 没有 R.id.top，本页不安装双击伪装`。实测：进 `DownloadActivity` 只出现**一次**该日志。
+  2. **蓝牙伪装页轻点标题就自动退出**（伪装的致命伤）：`OnTouchListener` 对 `ACTION_DOWN` 返回 `false` → View 没成为触摸目标 → 系统不再派发 `UP`/`CANCEL` → `removeCallbacks` 永远执行不到 → 轻点一下、2 秒后窗口自己 `finish()`。改成**全部返回 true**（消费事件；标题本就没有点击行为）。实测（真实坐标 `[144,1623][2016,1763]`，2160×3840 屏）：轻点 1 次 + 等 4 秒**仍在伪装页**，连点 5 次 + 等 4 秒**仍在**；长按 2.5 秒 → 退出到推荐页，日志 `disguise>长按标题，退出伪装`。
+  3. **文案与覆盖不一致 / 关开关不摘手势**：`desc_setting_disguise_enabled` 与 FEATURES 从「任意页面」改成「**有顶栏的页面**」（并说明对话框/崩溃页/教程页没有该手势）；`PlayerActivity.onStart` 与短视频 `PageHolder.syncDisguiseGesture()`（`onBindViewHolder` 每次重算）都补上「关掉开关就 `detach`」，不再需要重进页面才失效。
+- **顺带修掉的真 bug（同批）**：
+  - **短视频页从来没给弹幕设过倍速**：全页只有 `playerBridge.setSpeed(...)`，`danmakuManager.setSpeed` 一处都没有 → 0.5~3.0x 下 `DrawHandler.mSpeed` 一直是 1.0，媒体时钟的倍速外推与步进补偿（§7.51）在短视频上完全没生效。新增 `applySpeedToPlayers(speed)` 一并设，三个调用点（`cycleSpeed` / `startSpeedBoost` / `endSpeedBoost`）与 `onPrepared` 全部改走它。
+  - **`setSpeed` 早于 DFM prepared 会被丢弃**：`DanmakuView.setSpeed` 有 `handler.isPrepared()` 守卫，而播放器 `onPrepared` 通常早于 DFM 的 `prepared()`（后者异步）→ 默认倍速非 1× 时那次调用等于没设。`DanmakuManager` 新增 `setSpeed()` 记 `pendingSpeed`，在 `prepared()` 回调里补设一次；`PlayerActivity` 的 5 处 `mDanmakuView?.setSpeed(...)` 全改走它。
+  - **`DrawHandler` 的 PREPARE ready 回调吞掉起播位置**：`ready()` 是后台解析完才回调的（异步），无条件 `pausedPosition = 0` 会把此前 `start(pos)` 设好的位置清零 → 续播/切页时弹幕时间轴从 0 重走一遍。新增 `mPendingStartPos`，`START` 时记录、`ready()` 时优先取它。
+  - P2 清扫：删掉计算器页空的 `onTouchEvent`、`DanmakuView.setMediaClock` 注释改成符合实现（只判 `handler != null`，不判 `isPrepared`）、圆屏 padding 抽成 `applyDisguiseRoundPadding`（两伪装页共用，蓝牙页也补上了）、设置分组文案与搜索索引改走 `strings.xml`（新增 `desc_setting_disguise_index`）。
+- **第三轮审查（Standards 轴 + 伊莲）后的补充修复（26.10.23 晚）**：
+  - **暂停中加载完弹幕会被 autostart 拉起**：`configureAndPrepare()` 末尾原来无条件 `start()`。改成「`prepared()` 回调里按 `mediaPlaying()` 判断」——不在播就不起渲染，之后由宿主各自的 `resume()` 路径拉起（DFM 的 RESUME 分支在 `mReady` 后会自行启动 UPDATE）。直播未绑媒体时钟（`mediaPlaying == null`）照常启动。
+  - **重复 start 会把时间轴锚回 0**：`PlayerActivity.onPrepared` 原来裸调 `mDanmakuView!!.start()`，续播/已经跑了一段时会让弹幕跳回开头闪一下。改成 `danmakuManager?.start(video_now)`。
+  - **短视频首播那处 `resume()` 是空操作**（`loadDanmaku()` 之前调用，`isPrepared` 必然 false）：删掉；真正的起播由 `prepared()` 负责。
+  - **计算器支持 `5×-2`**：`CalculatorEngine` 重写词法，把「期望数字位置出现的 `+`/`-`」当正负号（`5×-2 = -10`、`5--3 = 8`），并抽 `scanNumber()` 消掉原来两段重复的数字扫描；`CalculatorDisguiseActivity` 的运算符处理允许在 `×`/`÷` 后追加 `-`（否则 UI 上构造不出负数运算）。新增/调整 3 例。
+  - **未知按键 tag 不再静默拼进表达式**：只接受单个数字字符。
+  - **暗号输入改数字键盘**：`SettingsAdapter` 新增 `input_digits` 类型（`TYPE_CLASS_NUMBER`），设置项从 `input_string` 换过去。
+  - **Java Javadoc 的 `[X]` 链接**改成 `{@link ...}`（DFM 三个文件）。
+  - `CalculatorEngine.ERROR` 保留中文常量，KDoc 写明「纯函数跑在 JVM 单测里没有 Context，故意不读资源」（AGENTS.md 已有该例外条款）。
+- **文档计数修正**：`architecture-map` 的测试清单从「80 个文件」改为「**79 个文件**（78 个 `*Test` + 1 个 `FakeSharedPreferences.kt`）、**79 个测试类**」（`CalculatorEngineTest.kt` 内有 `CalculatorEngineTest` 与 `DisguisePrefsTest` 两个类），用例数统一为 **841**。`strings.xml` / `themes.xml` 末尾多余空行已清。
+- **手表端验证口径（26.10.23）**：本 PR 涉及的弹幕时间轴、短视频亮屏、伪装功能**已由维护者人工在手表上实测通过**（维护者自述，非本会话 agent 复现，因此没有设备日志/截图入库）。仍未覆盖的是「极弱机上的媒体时钟收敛」「单击顶栏 0.3 秒延迟的手感」「圆屏蓝牙提示页布局」——这三项只能真机肉眼判断，已分别记在 §3.57 / §3.59 的对应条目里。
 
 ## 4. 历史章节索引
 

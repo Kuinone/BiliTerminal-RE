@@ -44,8 +44,48 @@ class DanmakuManager(
     private var danmakuContext: DanmakuContext? = null
     private var danmakuParser: BaseDanmakuParser? = null
 
+    private var mediaPosition: (() -> Long)? = null
+    private var mediaPlaying: (() -> Boolean)? = null
+
+    /**
+     * 最近一次请求的倍速。
+     *
+     * 存下来是因为 [IDanmakuView.setSpeed] 只在 DFM 已经 prepared 时才吃进去，
+     * 而播放器 `onPrepared` 往往早于 DFM 的 `prepared()`（后者异步）——
+     * 那一次调用会被静默丢弃。`prepared()` 回调里会用它补设一次。
+     */
+    private var pendingSpeed: Float? = null
+
     private val _state = MutableStateFlow(DanmakuState())
     val state: StateFlow<DanmakuState> = _state.asStateFlow()
+
+    /**
+     * 绑定媒体时钟：弹幕时间轴从此跟随播放器位置，而不再跟随墙钟。
+     *
+     * 不绑定的后果见 [MediaClockSync] / [DrawHandler.MediaClock] 的注释：视频实际播放速率不是
+     * 1.0x 时（弱机解码跟不上、倍速、缓冲），弹幕与画面会按百分比持续拉开，只能靠周期性
+     * `seekTo` 硬拉回，而 `seekTo` 会清空屏上弹幕 —— 表现就是「弹幕每隔十来秒闪一下没掉」。
+     *
+     * [position] 与 [isPlaying] **都在 DFM 渲染线程上被每帧调用**，实现方只能返回主线程采样好的
+     * 内存值；位置不可用（未就绪/已销毁）时返回**负数**，DFM 会自动退回墙钟逻辑。
+     *
+     * 直播没有有意义的播放位置，不要绑。
+     */
+    fun bindMediaClock(position: () -> Long, isPlaying: () -> Boolean) {
+        mediaPosition = position
+        mediaPlaying = isPlaying
+        applyMediaClock()
+    }
+
+    private fun applyMediaClock() {
+        val position = mediaPosition ?: return
+        val playing = mediaPlaying ?: return
+        danmakuView.setMediaClock(object : DrawHandler.MediaClock {
+            override fun positionMs(): Long = position()
+
+            override fun isPlaying(): Boolean = playing()
+        })
+    }
 
     fun init() {
         val prefs = SharedPreferencesUtil.getSharedPreferences()
@@ -166,7 +206,18 @@ class DanmakuManager(
                 // 一旦异常逸出会打断该线程，表现就是"弹幕一条都不显示"且没有任何上层报错。
                 try {
                     _state.update { it.copy(isPrepared = true) }
+                    // 补设倍速：`DanmakuView.setSpeed` 有 `handler.isPrepared()` 守卫，
+                    // 播放器的 onPrepared 往往早于 DFM 的 prepared（DFM 是异步 prepare），
+                    // 那一次调用会被直接丢弃 → 弹幕时钟永远按 1.0x 走。
+                    // 3x 播放时 MediaClockSync 的步进补偿就失效了（见 §7.51）。
+                    pendingSpeed?.let { danmakuView.setSpeed(it) }
                     addDanmaku(UiText.of("弹幕准备完毕"), Color.WHITE)
+                    // 数据就绪：只有「此刻真的在播」或「没绑媒体时钟（直播）」才启动渲染循环。
+                    // 暂停中启动会让用户手动暂停的弹幕被重新拉起（见 configureAndPrepare 的注释）。
+                    val shouldRender = runCatching { mediaPlaying?.invoke() != false }.getOrDefault(true)
+                    if (shouldRender) {
+                        start(runCatching { mediaPosition?.invoke() ?: -1L }.getOrDefault(-1L))
+                    }
                 } catch (e: Exception) {
                     Logu.e("弹幕", "prepared 回调异常: ${e.message}")
                     e.printStackTrace()
@@ -183,16 +234,10 @@ class DanmakuManager(
                 // timer，整批弹幕会被判定为"已过期"而一条都不显示（间歇性"弹幕没了"）。
                 // 现在连"读位置"本身都搬去了主线程，这条守卫随之取消。
                 //
-                // 为什么不能在这里校正时钟：DanmakuTimer 由 DFM 自走，DrawHandler.syncTimer 每帧按
-                // `gapTime = (uptimeMillis - mTimeBase) - timer.currMillisecond` 把时钟拉向墙钟基准
-                // （gapTime > 2000ms 时直接整段硬跳，见 DrawHandler.java:448），而 `mTimeBase` 只在
-                // PREPARE / RESUME / SEEK_POS 里改 —— `timer.update()` 改不到它。于是"我们拉回 pos →
-                // DFM 立刻追回旧基准"会反复发生：真机实测 2 秒内硬校正 84 次、瞬时偏差 1.8 秒；
-                // 片尾/重播场景偏差高达 199 秒，每轮就是一次肉眼可见的硬跳（用户报的「弹幕一抖一抖」）。
-                //
-                // 正确做法是让**基准**跟着视频走，放在主线程做（见 PlayerActivity.progressChange）：
-                // 用 [DanmakuSync.decide] 判定，命中则 `IDanmakuView.seekTo(pos)` —— seekTo 走
-                // DrawHandler 的 SEEK_POS 分支，会 `mTimeBase -= deltaMs`，基准才是真的对齐。
+                // 那正确的时间源怎么给？走 [bindMediaClock]：宿主在主线程采样 `video_now`，
+                // 由 DFM 的 [DrawHandler.MediaClock] 每帧读取（只读内存值，不碰 native 锁），
+                // 在 `DrawHandler.syncTimer` 里以「采样位置 + 墙钟外推 + 限幅蠕动」推进 timer。
+                // **不要**再在这里 `timer.update(pos)`：`mTimeBase` 不随之改变，会被 syncTimer 立刻拉回。
                 //
                 // 另外：本回调运行在 DanmakuView 的渲染线程上，绝不能在这里调
                 // ijkPlayer.currentPosition（取 native 锁，与主线程 seek/release 并发有卡死风险）。
@@ -205,6 +250,12 @@ class DanmakuManager(
 
         danmakuView.enableDanmakuDrawingCache(true)
         danmakuView.prepare(parser, danmakuContext)
+        applyMediaClock()
+        // **不在这里 start**：prepare() 只准备数据，而它何时 ready 是异步的（后台解析）。
+        // 启动渲染循环放到 `prepared()` 回调里按「此刻是否真的在播」判断 —— 否则暂停中
+        // 加载完弹幕会被无条件拉起（用户手动暂停的弹幕被恢复、暂停画面上的弹幕开始跑）。
+        // 暂停中不启动的页面，之后走各自的 resume 路径（`IDanmakuView.resume()` 在
+        // mReady 后会自行启动 UPDATE 循环），不会漏。
     }
 
     /**
@@ -256,6 +307,41 @@ class DanmakuManager(
         if (!_state.value.isPrepared) return
         try { danmakuView.resume() } catch (_: Exception) {}
     }
+
+    /**
+     * 启动 DFM 的渲染循环，从 [positionMs] 起播（<0 表示从头）。
+     *
+     * **DFM 的 `prepare()` 只准备数据，不启动更新循环**：`DrawHandler` 的 UPDATE 只由
+     * START / SEEK_POS / RESUME 三个分支拉起（`DrawHandler.java` 的 `handleMessage`），
+     * 而 RESUME 分支要求 `mReady` 为真。所以「加载完弹幕但一条都不显示」的原因是没人调过
+     * `start()` —— 旧实现靠周期性 `seekTo` 的副作用启动，那个副作用随弹幕时钟改造一起没了
+     * （见 `docs/review/fix-progress.md` §3.56）。
+     *
+     * `start()` 在未 ready 时会每 100ms 自行重试（START 落穿到 RESUME 分支），所以不必等
+     * `prepared()` 回调，[configureAndPrepare] 末尾直接调即可。
+     *
+     * @param positionMs 起始位置；续播 / 切页回来时传已知播放位置，别让时间轴从 0 重新走
+     */
+    fun start(positionMs: Long = -1L) {
+        try {
+            if (positionMs > 0) danmakuView.start(positionMs) else danmakuView.start()
+        } catch (e: Exception) {
+            Logu.e("弹幕", "启动渲染循环失败: ${e.message}")
+        }
+    }
+
+    /**
+     * 设置播放倍速。
+     *
+     * **不要直接调 `mDanmakuView.setSpeed(...)`**：DFM 未 prepared 时那次调用会被丢弃
+     * （`DanmakuView.setSpeed` 的 `handler.isPrepared()` 守卫），而播放器 `onPrepared`
+     * 通常在 DFM `prepared()` 之前。这里记下倍速，`prepared()` 回调会补设一次。
+     */
+    fun setSpeed(speed: Float) {
+        pendingSpeed = speed
+        try { danmakuView.setSpeed(speed) } catch (_: Exception) {}
+    }
+
     fun seekTo(ms: Long) {
         if (!_state.value.isPrepared) return
         try { danmakuView.seekTo(ms) } catch (_: Exception) {}
