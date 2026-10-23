@@ -449,6 +449,10 @@ CenterThreadPool.supplyAsyncWithLiveData { fetch...().getOrThrow() }
   控制台「公告」页签有「上游透传（原版哔哩终端）」区块，打开时若 `last_pull` 超过 300s 自动补拉一次。
   `GET /admin/api/announcements` 仍只回 `source='local'` 的行。`server/selftest.py` §22 钉住可见性/幂等/
   审核结论保持/失败降级/v3→v4 迁移。
+  **上线口径（26.10.23）**：生产三件套原本停在 26.10.17 基线（比仓库工作副本多出 `/admin?token=` 303 →
+  HttpOnly 会话 Cookie、控制台 UI 打磨等），本次把 relay 改动**合并进生产基线**后再部署；工作副本已同步为
+  合并产物。以后改 `server/` 先 `ssh HK` 取生产文件再 diff，**别拿本地旧文件直接覆盖**。部署与冒烟记录见
+  `docs/review/fix-progress.md` §3.56。
 - 接口（成功一律 `code=0`，HTTP 恒 2xx）：
   - `GET /terminal/health`
   - `GET /terminal/announcement/get_list[?from=<id>]` → `{code:0,data:[{id,ctime,title,content,source}]}`。
