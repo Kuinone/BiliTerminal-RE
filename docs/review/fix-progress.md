@@ -1227,19 +1227,38 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
   - 上线冒烟：公网 `get_list` 正常（local 行带 `"source":"local"`）；未登录 `GET /admin/api/announcement/relay` 与 `POST …/relay/decision` 均 **403**；`https://console.zsapp.asia/` 200 且含 relay 区块（`CONSOLE_VERSION = "v4 2026-10-23"`）；带 token 真拉上游 → `added=3 total=3`，relay 列表 `pending=3 approved=0 rejected=0`；`from=1000000000` 差量返回 4 行且 `relay=0`（待审不泄漏）；本地公告管理接口 41 行且仅 local。
   - 部署后本目录 `server/` 三件套已同步为合并产物（106452 / 83457 / 45849 bytes）。
 - **控制台 v5 改版（26.10.23 21:23，已部署）**：
-  - 「上游透传」从公告页搬成**独立页签**：`data-tab="relay"`、待审角标 `c-relay`、hash 记 `#relay`、键盘 `1`-`5` 切页（footer 同步改 1-5）；页签打开时 `last_pull` 超 300s 仍自动补拉一次（初始化时不在 relay 页才预取，避免重复请求）。
+  - 「上游透传」从公告页搬成**独立页签**：`data-tab="relay"`、待审角标 `c-relay`、hash 记 `#relay`、键盘 `1`-`5` 切页（footer 同步改 1-5）；页签打开时 `last_pull` 超 1 小时只是**兜底补拉一次**（初始化时不在 relay 页才预取，避免重复请求）。
   - 「公告」页前端过滤 `reply_feedback_id>0` 的行（后端 `GET /admin/api/announcements` 仍返回这些行与 `reply_feedback_id`，脚本调用方不受影响），37 条定向回复不再混在正式公告里。
   - 定向回复的删除入口挪到「反馈」对话里每条开发者气泡旁：新增 `POST /admin/api/feedback/reply/delete` ← `{id}`（内部公告 id；只删 `reply_feedback_id>0` 的行，不存在/非回复 404）；`_db_feedback_thread` 的 dev 消息多带内部 `ann_id` 供回传，客户端忽略该字段。
   - `selftest.py` 增 `§3` 页签断言与 `§16b` 删除定向回复用例；当前 **201 项**全通过（离线少 2 项真上游冒烟）。
   - 顺带修掉旧 `/admin` 兜底看板的 500：`crash_rows` 把第 11 列（`substr(stack,…)`）当 `ctime` 传给 `ts()`，库里有带堆栈的崩溃就 `int()` 失败、整页 500；改为 `ts(r[12])`，并在 §20.1 加回归断言「有崩溃堆栈时旧看板仍 200」。
   - 部署：`./backup.sh` → `backups/data-20261023.db`（8 张表）；旧文件另存 `.bak-20261023-212226-v5`；上传后 restart active。冒烟：`/` 200 且 `CONSOLE_VERSION = "v5 2026-10-23"`、含 relay 页签与公告筛选代码；公网 `console.zsapp.asia` 200；旧 `/admin` 从 500 恢复 **200**；`relay pending=3 approved=0 rejected=0`；本地公告管理接口 41 行（37 条定向回复由前端隐藏）；客户端 `get_list` 仍 4 行、全部 `source=local`；未登录 relay/回复删除接口均 403。
   - 本目录 `server/` 三件套同步为 109064 / 85728 / 48144 bytes（`ebf682f8…` / `4e9247a5…` / `45d7ac04…`）。
+- **上游公告自动拉取改为服务端每小时一次（26.10.23 晚，用户要求「间隔改为 1 小时一次」）**：
+  - 之前只在控制台打开时按需拉（`last_pull` 超 300s），没人开控制台就不拉。现在 FastAPI `startup`
+    起 daemon 线程 `relay-auto-pull`，每 `REBILITERMINAL_RELAY_PULL_INTERVAL` 秒（默认 `3600`，
+    `0` 关闭）调一次 `_db_relay_refresh()`；启动时按 `relay_last_pull` 倒推等待，**重启不会额外多拉**；
+    从没拉过则 5s 后补；失败只 `logging.warning`（logger `rebiliterminal.relay`）+ 退避至多 10 分钟，
+    `last_pull` 不写脏。
+  - 等待时间抽成纯函数 `_relay_wait_seconds(last_pull, interval, now)`（下限 5s、上限一个周期），
+    `selftest.py` 新增 §22.9 五条断言钉边界；自测文件头设 `REBILITERMINAL_RELAY_PULL_INTERVAL=0`
+    关线程，避免 TestClient 进 startup 就联网。控制台 `RELAY_AUTO_PULL_AGE` 300→3600，只作兜底。
+  - 本机 E2E（临时脚本，已删）：`interval=3` + 假上游 → 线程随 startup 拉起、约 5s 后写入
+    `relay_state='pending'` 行、`meta.relay_last_pull` 落库，`calls=1`。
+  - **生产上线（26.10.23 21:38，控制台 v6）**：三件套上传 + `systemctl restart` → active。
+    白盒验证线程真的在跑：把 `meta.relay_last_pull` 拨到 3700s 前再重启，**8s 内自动拉取成功**
+    （`last_pull` 刷新为当前时刻），且拉取**不改写已有审核结论**（2 条 rejected 仍是 rejected，
+    未复活）。客户端 `get_list` 仍 4 行全 `local`（1 条待审 + 2 条已拒绝均未泄漏）；
+    `console.zsapp.asia` 登录流 303→200、`CONSOLE_VERSION = "v6 2026-10-23"`、`relay-panel` 在。
+    备份 `./backup.sh`（ok 20261023，8 表），旧文件 `.bak-20261023-213703-autopull`。
+    部署后生产 / 本机三件套 hash 一致：api `c82fac12…`（111718 bytes）、console `e0ce3d44…`（85884）、
+    selftest `789e00fa…`（49752）。
 - **验证（本机，26.10.23 已跑）**：
   - `.\gradlew.bat :app:assembleDebug --offline` → `BUILD SUCCESSFUL`（standard + coexist 两个 Debug 包）。
   - `:app:testStandardDebugUnitTest` 与 `:app:testCoexistDebugUnitTest` → 两 flavor 各 **815 例 / 0 失败 0 跳过**（`TerminalApiTest` 现 17 例：删掉 3 例「两路合并」并改为断言 `source`）。
-  - `server/`：`python -m py_compile` OK；`python server/selftest.py` → **201 项全通过**（含真上游冒烟；离线少 2 项）；本地 uvicorn 真服务 E2E 验证 approve 后客户端立即可见 `source=relay`、上游不可达时 `code=1`、登录后控制台含 relay 区块；`console.html` 的 script 块 `node --check` 通过。
+  - `server/`：`python -m py_compile` OK；`python server/selftest.py` → **206 项全通过**（含真上游冒烟；离线少 2 项）；本地 uvicorn 真服务 E2E 验证 approve 后客户端立即可见 `source=relay`、上游不可达时 `code=1`、登录后控制台含 relay 区块；定时拉取线程用临时脚本 E2E 通过（见上）；`console.html` 的 script 块 `node --check` 通过。
   - markdownlint：本次改动的 5 个 md 0 错误。
-- **未验证 / 待办**：① 生产上 3 条待审上游公告**未做 approve/reject 实操**（避免真实客户端看到未定内容；按用户要求「亲自选择是否透传」留给维护者在控制台点）；② 控制台页签切换、公告筛选、回复删除按钮**没在真实浏览器点过**（目前只有 curl 冒烟 + TestClient 断言）；③ 客户端未真机验证（列表只剩自建源、透传标注、待审不可见、差量弹窗只弹一次、断网不卡启动）；④ 上游长时间不可达时控制台每次打开页签会重试一次（无退避，属取舍）。
+- **未验证 / 待办**：① 生产上 3 条待审上游公告**未做 approve/reject 实操**（避免真实客户端看到未定内容；按用户要求「亲自选择是否透传」留给维护者在控制台点）；② 控制台页签切换、公告筛选、回复删除按钮**没在真实浏览器点过**（目前只有 curl 冒烟 + TestClient 断言）；③ 客户端未真机验证（列表只剩自建源、透传标注、待审不可见、差量弹窗只弹一次、断网不卡启动）；④ 控制台兜底补拉仍无退避（每小时最多一次，后端定时线程已有退避）。
 - **注意**：`server/` 整个目录在 `.gitignore` 里（既有约定，服务端代码不进版本库），所以本次服务端改动只存在于工作区与 HK 部署目录，不随客户端提交。
 
 ### 3.57 弹幕时间轴改由播放器位置驱动（彻底去掉周期性纠偏，26.10.22）
