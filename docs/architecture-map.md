@@ -446,9 +446,12 @@ CenterThreadPool.supplyAsyncWithLiveData { fetch...().getOrThrow() }
   `POST .../relay/refresh`（拉取并 upsert，已存在条目只更新正文/时间、保留审核结论；**上游失败回
   HTTP 200 + `{code:1,msg}`，不抛 500**）、`POST .../relay/decision` ← `{id, decision: approve|reject}`
   （reject 对已透传项即「停止透传」，再次 approve 可恢复；refresh 不会复活 rejected）。
-  控制台「公告」页签有「上游透传（原版哔哩终端）」区块，打开时若 `last_pull` 超过 300s 自动补拉一次。
-  `GET /admin/api/announcements` 仍只回 `source='local'` 的行。`server/selftest.py` §22 钉住可见性/幂等/
-  审核结论保持/失败降级/v3→v4 迁移。
+  控制台有独立页签「上游透传」（26.10.23 v5 起从公告页搬出，页签角标 = 待审条数），打开时若
+  `last_pull` 超过 300s 自动补拉一次。`GET /admin/api/announcements` 仍只回 `source='local'` 的行；
+  其中 `reply_feedback_id>0` 的定向回复不再显示在「公告」页（前端过滤），删除入口改到「反馈」对话的
+  开发者气泡旁（`POST /admin/api/feedback/reply/delete` ← `{id}`，只删 `reply_feedback_id>0` 的行，
+  回复气泡的数据里带内部 `ann_id` 供回传）。`server/selftest.py` §22 钉住可见性/幂等/审核结论保持/
+  失败降级/v3→v4 迁移，§16b 钉住回复删除与「回复删除接口不能删普通公告」。
   **上线口径（26.10.23）**：生产三件套原本停在 26.10.17 基线（比仓库工作副本多出 `/admin?token=` 303 →
   HttpOnly 会话 Cookie、控制台 UI 打磨等），本次把 relay 改动**合并进生产基线**后再部署；工作副本已同步为
   合并产物。以后改 `server/` 先 `ssh HK` 取生产文件再 diff，**别拿本地旧文件直接覆盖**。部署与冒烟记录见

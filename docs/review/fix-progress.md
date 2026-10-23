@@ -1220,12 +1220,20 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
   - 上传后 `systemctl restart rebiliterminal-api` → active，`/terminal/health` `code=0`；`PRAGMA user_version` 3→4，`announcements` 已加 `source/origin_id/relay_state` 三列、`meta` 表已建。
   - 上线冒烟：公网 `get_list` 正常（local 行带 `"source":"local"`）；未登录 `GET /admin/api/announcement/relay` 与 `POST …/relay/decision` 均 **403**；`https://console.zsapp.asia/` 200 且含 relay 区块（`CONSOLE_VERSION = "v4 2026-10-23"`）；带 token 真拉上游 → `added=3 total=3`，relay 列表 `pending=3 approved=0 rejected=0`；`from=1000000000` 差量返回 4 行且 `relay=0`（待审不泄漏）；本地公告管理接口 41 行且仅 local。
   - 部署后本目录 `server/` 三件套已同步为合并产物（106452 / 83457 / 45849 bytes）。
+- **控制台 v5 改版（26.10.23 21:23，已部署）**：
+  - 「上游透传」从公告页搬成**独立页签**：`data-tab="relay"`、待审角标 `c-relay`、hash 记 `#relay`、键盘 `1`-`5` 切页（footer 同步改 1-5）；页签打开时 `last_pull` 超 300s 仍自动补拉一次（初始化时不在 relay 页才预取，避免重复请求）。
+  - 「公告」页前端过滤 `reply_feedback_id>0` 的行（后端 `GET /admin/api/announcements` 仍返回这些行与 `reply_feedback_id`，脚本调用方不受影响），37 条定向回复不再混在正式公告里。
+  - 定向回复的删除入口挪到「反馈」对话里每条开发者气泡旁：新增 `POST /admin/api/feedback/reply/delete` ← `{id}`（内部公告 id；只删 `reply_feedback_id>0` 的行，不存在/非回复 404）；`_db_feedback_thread` 的 dev 消息多带内部 `ann_id` 供回传，客户端忽略该字段。
+  - `selftest.py` 增 `§3` 页签断言与 `§16b` 删除定向回复用例；当前 **201 项**全通过（离线少 2 项真上游冒烟）。
+  - 顺带修掉旧 `/admin` 兜底看板的 500：`crash_rows` 把第 11 列（`substr(stack,…)`）当 `ctime` 传给 `ts()`，库里有带堆栈的崩溃就 `int()` 失败、整页 500；改为 `ts(r[12])`，并在 §20.1 加回归断言「有崩溃堆栈时旧看板仍 200」。
+  - 部署：`./backup.sh` → `backups/data-20261023.db`（8 张表）；旧文件另存 `.bak-20261023-212226-v5`；上传后 restart active。冒烟：`/` 200 且 `CONSOLE_VERSION = "v5 2026-10-23"`、含 relay 页签与公告筛选代码；公网 `console.zsapp.asia` 200；旧 `/admin` 从 500 恢复 **200**；`relay pending=3 approved=0 rejected=0`；本地公告管理接口 41 行（37 条定向回复由前端隐藏）；客户端 `get_list` 仍 4 行、全部 `source=local`；未登录 relay/回复删除接口均 403。
+  - 本目录 `server/` 三件套同步为 109064 / 85728 / 48144 bytes（`ebf682f8…` / `4e9247a5…` / `45d7ac04…`）。
 - **验证（本机，26.10.23 已跑）**：
   - `.\gradlew.bat :app:assembleDebug --offline` → `BUILD SUCCESSFUL`（standard + coexist 两个 Debug 包）。
   - `:app:testStandardDebugUnitTest` 与 `:app:testCoexistDebugUnitTest` → 两 flavor 各 **815 例 / 0 失败 0 跳过**（`TerminalApiTest` 现 17 例：删掉 3 例「两路合并」并改为断言 `source`）。
-  - `server/`：`python -m py_compile` OK；`python server/selftest.py` → **187 项全通过**（含真上游冒烟；离线时 185 项）；本地 uvicorn 真服务 E2E 验证 approve 后客户端立即可见 `source=relay`、上游不可达时 `code=1`、登录后控制台含 relay 区块；`console.html` 的 script 块 `node --check` 通过。
+  - `server/`：`python -m py_compile` OK；`python server/selftest.py` → **201 项全通过**（含真上游冒烟；离线少 2 项）；本地 uvicorn 真服务 E2E 验证 approve 后客户端立即可见 `source=relay`、上游不可达时 `code=1`、登录后控制台含 relay 区块；`console.html` 的 script 块 `node --check` 通过。
   - markdownlint：本次改动的 5 个 md 0 错误。
-- **未验证 / 待办**：① 生产上 3 条待审上游公告**未做 approve/reject 实操**（避免真实客户端看到未定内容；按用户要求「亲自选择是否透传」留给维护者在控制台点）；② 控制台按钮**没在真实浏览器点过**；③ 客户端未真机验证（列表只剩自建源、透传标注、待审不可见、差量弹窗只弹一次、断网不卡启动）；④ 上游长时间不可达时控制台每次打开页签会重试一次（无退避，属取舍）。
+- **未验证 / 待办**：① 生产上 3 条待审上游公告**未做 approve/reject 实操**（避免真实客户端看到未定内容；按用户要求「亲自选择是否透传」留给维护者在控制台点）；② 控制台页签切换、公告筛选、回复删除按钮**没在真实浏览器点过**（目前只有 curl 冒烟 + TestClient 断言）；③ 客户端未真机验证（列表只剩自建源、透传标注、待审不可见、差量弹窗只弹一次、断网不卡启动）；④ 上游长时间不可达时控制台每次打开页签会重试一次（无退避，属取舍）。
 - **注意**：`server/` 整个目录在 `.gitignore` 里（既有约定，服务端代码不进版本库），所以本次服务端改动只存在于工作区与 HK 部署目录，不随客户端提交。
 
 ## 4. 历史章节索引
