@@ -1335,6 +1335,15 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
 - **P2 顺手修**：短视频 `onError` 未把 `isPlaying` 置 false（画面停住却一直挂着 `KEEP_SCREEN_ON`）；`isPlaying` 补 `@Volatile`（弹幕渲染线程读）；`format` 指定 `Locale.US`（默认 Locale 会把小数点写成逗号，结果再回填就解析不回来）；`DrawHandler` 的 SEEK_POS / RESUME 分支重置媒体时钟采样（避免暂停恢复后计时器前冲再回落）；长视频续播 seek 补 `markSeekTarget`；设置里的暗号不再**逐键**弹 toast（`TextWatcher` 每次击键都会触发）。
 - **未做（需单独决策）**：把 PR 拆成三份、`readme.md` 功能表补伪装条目之外的市场化描述、`excludeFromRecents`/图标（需真机确认最近任务卡片表现）、`setScreenOnWhilePlaying(true)` 对 TextureView 无效但仍保留（SurfaceView 路径可能有意义，改动收益不明确）。
 - **验证**：`:app:assembleCoexistDebug` 通过；`:app:testStandardDebugUnitTest` **79 类 / 840 例 / 0 失败**；模拟器实测 P0 与双击手势；markdownlint 31 文件 0 issue。
+- **第二轮审查的三条必修（26.10.23 晚，已修 + 已实测）**：
+  1. **双击伪装会无限自旋**：开关开启且本页没有 `R.id.top` 时，`BaseActivity` 用 `decorView.post` 无限重试——有 **11 个页面布局里本来就没有顶栏**（Download / Catch / Tutorial / TutorialPager / JumpToDialog / InputDialog / CaptchaWebView / QRLoginRegister / ConfirmDialog / Dialog / ListDialog），进这些页面会每帧投递一次、一直耗电到页面结束。改成「`postDelayed` + 封顶 20 次 × 50ms + `isFinishing/isDestroyed` 立刻停」，并在放弃时打一条 `XXX 没有 R.id.top，本页不安装双击伪装`。实测：进 `DownloadActivity` 只出现**一次**该日志。
+  2. **蓝牙伪装页轻点标题就自动退出**（伪装的致命伤）：`OnTouchListener` 对 `ACTION_DOWN` 返回 `false` → View 没成为触摸目标 → 系统不再派发 `UP`/`CANCEL` → `removeCallbacks` 永远执行不到 → 轻点一下、2 秒后窗口自己 `finish()`。改成**全部返回 true**（消费事件；标题本就没有点击行为）。实测（真实坐标 `[144,1623][2016,1763]`，2160×3840 屏）：轻点 1 次 + 等 4 秒**仍在伪装页**，连点 5 次 + 等 4 秒**仍在**；长按 2.5 秒 → 退出到推荐页，日志 `disguise>长按标题，退出伪装`。
+  3. **文案与覆盖不一致 / 关开关不摘手势**：`desc_setting_disguise_enabled` 与 FEATURES 从「任意页面」改成「**有顶栏的页面**」（并说明对话框/崩溃页/教程页没有该手势）；`PlayerActivity.onStart` 与短视频 `PageHolder.syncDisguiseGesture()`（`onBindViewHolder` 每次重算）都补上「关掉开关就 `detach`」，不再需要重进页面才失效。
+- **顺带修掉的真 bug（同批）**：
+  - **短视频页从来没给弹幕设过倍速**：全页只有 `playerBridge.setSpeed(...)`，`danmakuManager.setSpeed` 一处都没有 → 0.5~3.0x 下 `DrawHandler.mSpeed` 一直是 1.0，媒体时钟的倍速外推与步进补偿（§7.51）在短视频上完全没生效。新增 `applySpeedToPlayers(speed)` 一并设，三个调用点（`cycleSpeed` / `startSpeedBoost` / `endSpeedBoost`）与 `onPrepared` 全部改走它。
+  - **`setSpeed` 早于 DFM prepared 会被丢弃**：`DanmakuView.setSpeed` 有 `handler.isPrepared()` 守卫，而播放器 `onPrepared` 通常早于 DFM 的 `prepared()`（后者异步）→ 默认倍速非 1× 时那次调用等于没设。`DanmakuManager` 新增 `setSpeed()` 记 `pendingSpeed`，在 `prepared()` 回调里补设一次；`PlayerActivity` 的 5 处 `mDanmakuView?.setSpeed(...)` 全改走它。
+  - **`DrawHandler` 的 PREPARE ready 回调吞掉起播位置**：`ready()` 是后台解析完才回调的（异步），无条件 `pausedPosition = 0` 会把此前 `start(pos)` 设好的位置清零 → 续播/切页时弹幕时间轴从 0 重走一遍。新增 `mPendingStartPos`，`START` 时记录、`ready()` 时优先取它。
+  - P2 清扫：删掉计算器页空的 `onTouchEvent`、`DanmakuView.setMediaClock` 注释改成符合实现（只判 `handler != null`，不判 `isPrepared`）、圆屏 padding 抽成 `applyDisguiseRoundPadding`（两伪装页共用，蓝牙页也补上了）、设置分组文案与搜索索引改走 `strings.xml`（新增 `desc_setting_disguise_index`）。
 
 ## 4. 历史章节索引
 

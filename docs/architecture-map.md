@@ -1345,7 +1345,9 @@ CenterThreadPool.supplyAsyncWithLiveData { fetch...().getOrThrow() }
   - 单击 → `topBar.performClick()`、长按 → `topBar.performLongClick()`（返回 false 时回落 `performClick()`，与"长按无监听器时抬手变单击"的旧行为一致）、双击 → 打开伪装页。
   - **各页面自己的顶栏监听器一行都不用改**：`performClick()` 调的就是它们装的那个 `OnClickListener`，语义全保留（返回上一页 / 打开菜单 / 视频详情页关闭所有详情页）。
 - **代价**：单击要等一个双击判定窗口（约 300ms）。所以这个手势**只在开关打开时安装**，关闭时把触摸监听摘掉即可回到原状（单击/长按监听器从来没被摘过），`onStart` 每次按当前开关重新判断。
-- **三个接线点，少一个就有页面没手势**：`BaseActivity`（普通页，含 `asyncInflate` 页面——视图没 inflate 完时 `findViewById` 为 null，要 `decorView.post` 重试）、`PlayerActivity.onStart`（它**不继承** `BaseActivity`）、短视频 `PageHolder`（顶栏在分页 item 里，不在 Activity 的视图树上）。实现只有一份，在 `util/DisguiseGesture.kt`。
+- **三个接线点，少一个就有页面没手势**：`BaseActivity`（普通页）、`PlayerActivity.onStart`（它**不继承** `BaseActivity`）、短视频 `PageHolder.syncDisguiseGesture()`（顶栏在分页 item 里，且每次 `onBindViewHolder` 重算）。“关掉开关要 `detach`”三处都要做，否则已装上的触摸层不会自己消失。实现只有一份，在 `util/DisguiseGesture.kt`。
+- **延迟装载必须封顶**：`asyncInflate` 页面在 `onStart` 时 `findViewById(R.id.top)` 还是 null，需要重试；但**有 11 个页面布局里根本没有 `R.id.top`**（Download / Catch / Tutorial / TutorialPager / JumpToDialog / InputDialog / CaptchaWebView / QRLoginRegister / ConfirmDialog / Dialog / ListDialog），无上限 `post` 会在这些页面每帧投递一次、耗电到页面结束。现在封顶 20 次 × 50ms，并在放弃时打 `XXX 没有 R.id.top，本页不安装双击伪装`。
+- **`OnTouchListener` 里做长按计时，`ACTION_DOWN` 必须返回 `true`**（蓝牙伪装页的教训）：返回 `false` 时 View 没成为触摸目标，系统不再派发 `UP`/`CANCEL`，`removeCallbacks` 永远执行不到 → 轻点一下就会在 N 秒后自己触发退出。返回 `true` 时若要保留点击语义，得自己 `performClick()` 补发。
 - **别改成「在"单击监听器"里判断两次点击」**：第一次点击已经执行完了，那只会变成"退出两次"。
 
 ## 8. UI 基建速查（新增页面临摹用）

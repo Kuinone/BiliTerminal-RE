@@ -38,6 +38,7 @@ import com.RobinNotBad.BiliClient.model.ShortVideoItem
 import com.RobinNotBad.BiliClient.ui.widget.HighEnergyProgressBar
 import com.RobinNotBad.BiliClient.util.CenterThreadPool
 import com.RobinNotBad.BiliClient.util.DisguiseGesture
+import com.RobinNotBad.BiliClient.util.DisguisePrefs
 import com.RobinNotBad.BiliClient.util.Logu
 import com.RobinNotBad.BiliClient.util.MsgUtil
 import com.RobinNotBad.BiliClient.util.NetWorkUtil
@@ -304,6 +305,9 @@ class ShortVideoPagerAdapter(
         holder.boundPosition = position
         holder.bind(item, position)
         holders[position] = holder
+        // 顶栏在分页 item 里（不在 Activity 的视图树上），BaseActivity 那边装不到。
+        // 每次绑定时重算一次：用户可能在设置里把开关关掉了，已装上的触摸层不会自己消失。
+        holder.syncDisguiseGesture()
     }
 
     override fun onViewRecycled(holder: PageHolder) {
@@ -591,7 +595,8 @@ class ShortVideoPagerAdapter(
             }
             // 双击顶栏伪装：短视频的顶栏在分页 item 里（不在 Activity 的视图树上），
             // BaseActivity 那边找不到，必须在这里按 item 装。
-            DisguiseGesture.install(activity, top)
+            // 先装一次，之后每次 onBindViewHolder 由 [syncDisguiseGesture] 重算（开关可能被关掉）。
+            syncDisguiseGesture()
 
             initBottomButtons()
         }
@@ -643,8 +648,20 @@ class ShortVideoPagerAdapter(
             currentSpeedIndex = (currentSpeedIndex + 1) % speedOptions.size
             currentSpeed = speedOptions[currentSpeedIndex]
             buttonSpeed.text = "${currentSpeed}x"
-            
-            playerBridge.setSpeed(currentSpeed)
+
+            applySpeedToPlayers(currentSpeed)
+        }
+
+        /**
+         * 同时把倍速交给播放器与弹幕。
+         *
+         * **弹幕必须一起设**：`MediaClockSync` 用 `DrawHandler.mSpeed` 做时间外推与步进放大
+         * （见 `docs/architecture-map.md` §7.51）。只设播放器的话，2x 下媒体时间每秒推进 2000ms
+         * 而弹幕时钟按 1x 追，越播越落后；3x 更是完全追不上。
+         */
+        private fun applySpeedToPlayers(speed: Float) {
+            playerBridge.setSpeed(speed)
+            danmakuManager?.setSpeed(speed)
         }
 
         /**
@@ -656,7 +673,7 @@ class ShortVideoPagerAdapter(
         private fun startSpeedBoost() {
             if (speedBoosted || isScaling) return
             speedBoosted = true
-            playerBridge.setSpeed(boostSpeed)
+            applySpeedToPlayers(boostSpeed)
             buttonSpeed.text = "${boostSpeed}x"
 
             hideVolumeRunnable?.let { mainHandler.removeCallbacks(it) }
@@ -667,7 +684,7 @@ class ShortVideoPagerAdapter(
         private fun endSpeedBoost() {
             if (!speedBoosted) return
             speedBoosted = false
-            playerBridge.setSpeed(currentSpeed)
+            applySpeedToPlayers(currentSpeed)
             buttonSpeed.text = "${currentSpeed}x"
             speedBoostHint.visibility = View.GONE
         }
@@ -862,7 +879,7 @@ class ShortVideoPagerAdapter(
                     playIcon.visibility = View.GONE
 
                     adjustVideoSize(screenW, screenH)
-                    playerBridge.setSpeed(currentSpeed)
+                    applySpeedToPlayers(currentSpeed)
 
                     // 只有当前页面活跃时才自动播放，防止弱网延迟准备导致两个视频同时播放
                     if (isActive) {
@@ -1022,6 +1039,19 @@ class ShortVideoPagerAdapter(
                 it.gravity = Gravity.CENTER
                 textureView?.layoutParams = it
             }
+        }
+
+        /**
+         * 重算这一页顶栏的双击伪装手势：开着就装，关掉就摘。
+         *
+         * 短视频页的顶栏在 RecyclerView 的 item 里，`BaseActivity` 的 `findViewById(R.id.top)`
+         * 找不到它，所以这一页必须自己接。`DisguiseGesture.install` 内部会判开关，
+         * 但**已装上的触摸层不会自动消失**，所以关闭时还要显式 `detach`——
+         * 否则单击顶栏会一直多等一个双击判定窗口。
+         */
+        fun syncDisguiseGesture() {
+            if (DisguisePrefs.isEnabled()) DisguiseGesture.install(activity, top)
+            else DisguiseGesture.detach(top)
         }
 
         fun play() {

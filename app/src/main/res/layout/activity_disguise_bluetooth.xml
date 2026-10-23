@@ -7,6 +7,7 @@
   两个按钮都是假的：点了只改一行小字，不做任何真实操作。
 -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/disguise_bt_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/disguise_bt_scrim">

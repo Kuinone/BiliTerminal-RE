@@ -2299,8 +2299,9 @@
     <string name="btn_disguise_bt_cancel">取消</string>
     <!-- 设置分组与设置项 -->
     <string name="text_setting_disguise_group">伪装与安全</string>
+    <string name="desc_setting_disguise_index">双击顶栏切到伪装页（假计算器 / 假蓝牙提示），默认关闭</string>
     <string name="text_setting_disguise_enabled">双击顶栏伪装</string>
-    <string name="desc_setting_disguise_enabled">开启后双击任意页面顶栏，立刻切到伪装页（默认关）</string>
+    <string name="desc_setting_disguise_enabled">开启后双击有顶栏的页面顶部标题栏，立刻切到伪装页（默认关）</string>
     <string name="text_setting_disguise_style">伪装样式</string>
     <string name="desc_setting_disguise_style">伪装页显示成什么</string>
     <string name="text_setting_disguise_style_calculator">计算器（暗号退出）</string>

@@ -47,6 +47,15 @@ class DanmakuManager(
     private var mediaPosition: (() -> Long)? = null
     private var mediaPlaying: (() -> Boolean)? = null
 
+    /**
+     * 最近一次请求的倍速。
+     *
+     * 存下来是因为 [IDanmakuView.setSpeed] 只在 DFM 已经 prepared 时才吃进去，
+     * 而播放器 `onPrepared` 往往早于 DFM 的 `prepared()`（后者异步）——
+     * 那一次调用会被静默丢弃。`prepared()` 回调里会用它补设一次。
+     */
+    private var pendingSpeed: Float? = null
+
     private val _state = MutableStateFlow(DanmakuState())
     val state: StateFlow<DanmakuState> = _state.asStateFlow()
 
@@ -197,6 +206,11 @@ class DanmakuManager(
                 // 一旦异常逸出会打断该线程，表现就是"弹幕一条都不显示"且没有任何上层报错。
                 try {
                     _state.update { it.copy(isPrepared = true) }
+                    // 补设倍速：`DanmakuView.setSpeed` 有 `handler.isPrepared()` 守卫，
+                    // 播放器的 onPrepared 往往早于 DFM 的 prepared（DFM 是异步 prepare），
+                    // 那一次调用会被直接丢弃 → 弹幕时钟永远按 1.0x 走。
+                    // 3x 播放时 MediaClockSync 的步进补偿就失效了（见 §7.51）。
+                    pendingSpeed?.let { danmakuView.setSpeed(it) }
                     addDanmaku(UiText.of("弹幕准备完毕"), Color.WHITE)
                 } catch (e: Exception) {
                     Logu.e("弹幕", "prepared 回调异常: ${e.message}")
@@ -305,6 +319,18 @@ class DanmakuManager(
         } catch (e: Exception) {
             Logu.e("弹幕", "启动渲染循环失败: ${e.message}")
         }
+    }
+
+    /**
+     * 设置播放倍速。
+     *
+     * **不要直接调 `mDanmakuView.setSpeed(...)`**：DFM 未 prepared 时那次调用会被丢弃
+     * （`DanmakuView.setSpeed` 的 `handler.isPrepared()` 守卫），而播放器 `onPrepared`
+     * 通常在 DFM `prepared()` 之前。这里记下倍速，`prepared()` 回调会补设一次。
+     */
+    fun setSpeed(speed: Float) {
+        pendingSpeed = speed
+        try { danmakuView.setSpeed(speed) } catch (_: Exception) {}
     }
 
     fun seekTo(ms: Long) {

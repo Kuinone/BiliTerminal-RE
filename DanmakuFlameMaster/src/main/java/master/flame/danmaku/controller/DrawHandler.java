@@ -182,7 +182,8 @@ public class DrawHandler extends Handler {
                     sendEmptyMessageDelayed(PREPARE, 100);
                 } else {
                     prepare(() -> {
-                        pausedPosition = 0;
+                        // 异步 ready 期间的 start(pos) 不能被清零，见 mPendingStartPos 注释
+                        pausedPosition = mPendingStartPos >= 0 ? mPendingStartPos : 0;
                         mReady = true;
                         if (mCallback != null) {
                             mCallback.prepared();
@@ -219,6 +220,7 @@ public class DrawHandler extends Handler {
                 } else {
                     pausedPosition = 0;
                 }
+                mPendingStartPos = pausedPosition;
             case SEEK_POS:
                 if (what == SEEK_POS) {
                     quitFlag = true;
@@ -444,6 +446,16 @@ public class DrawHandler extends Handler {
     private MediaClock mMediaClock;
     private long mClockSamplePos = -1;
     private long mClockSampleAt;
+
+    /**
+     * 通过 `start(position)` 指定的起播位置；`-1` 表示没指定（从头）。
+     *
+     * 必须单独存：`prepare()` 的 ready 回调是**异步**的（`CacheManagingDrawTask` 在后台解析完
+     * 弹幕才回调），在那之前 `start(pos)` 就已经把 `pausedPosition` 设成 pos 了；
+     * 如果 ready 回调无条件 `pausedPosition = 0`，续播/切页传进来的起播位置就被吞掉，
+     * 时间轴会从 0 重新走一遍（用户看到弹幕先闪一下旧的再跳回来）。
+     */
+    private long mPendingStartPos = -1;
 
     public void setMediaClock(MediaClock clock) {
         mMediaClock = clock;

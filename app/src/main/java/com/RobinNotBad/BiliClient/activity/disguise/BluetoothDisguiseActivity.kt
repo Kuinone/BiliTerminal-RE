@@ -2,6 +2,7 @@ package com.RobinNotBad.BiliClient.activity.disguise
 
 import android.os.Bundle
 import android.view.KeyEvent
+import android.view.MotionEvent
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import com.RobinNotBad.BiliClient.R
@@ -33,6 +34,7 @@ class BluetoothDisguiseActivity : AppCompatActivity() {
         setContentView(R.layout.activity_disguise_bluetooth)
 
         body = findViewById(R.id.disguise_bt_body)
+        applyDisguiseRoundPadding(findViewById(R.id.disguise_bt_root))
 
         findViewById<TextView>(R.id.disguise_bt_retry).setOnClickListener {
             // 假的：只换一行字，1.5 秒后回到原样
@@ -54,6 +56,17 @@ class BluetoothDisguiseActivity : AppCompatActivity() {
      * 用 `postDelayed` 而不是系统的 `setOnLongClickListener`：手表上很多 ROM 的长按延迟被调过，
      * 这里要的是"够久、试不出来"，所以自己计时，并在 `ACTION_UP` / `ACTION_CANCEL` 时取消。
      */
+    /**
+     * 长按标题 2 秒退出伪装。
+     *
+     * 用 `postDelayed` 而不是系统的 `setOnLongClickListener`：手表上很多 ROM 的长按延迟被调过，
+     * 这里要的是"够久、试不出来"，所以自己计时，并在 `ACTION_UP` / `ACTION_CANCEL` 时取消。
+     *
+     * **`ACTION_DOWN` 必须返回 true**：返回 false 时这个 View 没有成为触摸目标，
+     * 系统不再给它派发后续的 `UP` / `CANCEL`，`removeCallbacks` 永远执行不到 ——
+     * 于是轻点一下标题、什么也不做，2 秒后窗口自己 `finish()`，伪装直接失效。
+     * 标题本身没有点击行为，消费掉这些事件不影响任何东西。
+     */
     private fun setupExitGesture() {
         val title = findViewById<TextView>(R.id.disguise_bt_title)
         val exit = Runnable {
@@ -63,13 +76,11 @@ class BluetoothDisguiseActivity : AppCompatActivity() {
         }
         title.setOnTouchListener { view, event ->
             when (event.actionMasked) {
-                android.view.MotionEvent.ACTION_DOWN -> view.postDelayed(exit, HOLD_TO_EXIT_MS)
-                android.view.MotionEvent.ACTION_UP,
-                android.view.MotionEvent.ACTION_CANCEL -> view.removeCallbacks(exit)
-
-                else -> return@setOnTouchListener false
+                MotionEvent.ACTION_DOWN -> view.postDelayed(exit, HOLD_TO_EXIT_MS)
+                MotionEvent.ACTION_UP,
+                MotionEvent.ACTION_CANCEL -> view.removeCallbacks(exit)
             }
-            false // 不消费事件：标题本身没有点击行为，交给系统照常处理
+            true
         }
     }
 

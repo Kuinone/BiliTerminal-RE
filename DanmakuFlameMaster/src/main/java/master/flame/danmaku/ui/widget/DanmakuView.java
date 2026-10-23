@@ -445,7 +445,9 @@ public class DanmakuView extends View implements IDanmakuView, IDanmakuViewContr
 
     @Override
     public void setMediaClock(DrawHandler.MediaClock clock) {
-        // 不判 isPrepared：绑定通常发生在 prepare 之前，handler 建好即转发（时钟空转无害）
+        // 只判 handler 是否已建出来（`prepare()` 之前就是 null），**不判 isPrepared**：
+        // 时钟在 DFM ready 之前空转无害，而调用方通常在本 Activity onCreate 里就绑定，
+        // 那时一定还没 prepared；多一个 isPrepared 守卫反而会让绑定被静默丢弃。
         if (handler != null) {
             handler.setMediaClock(clock);
         }

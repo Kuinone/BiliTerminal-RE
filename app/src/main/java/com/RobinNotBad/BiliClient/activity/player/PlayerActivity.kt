@@ -77,6 +77,7 @@ import com.RobinNotBad.BiliClient.ui.widget.HighEnergyProgressBar
 import com.RobinNotBad.BiliClient.ui.widget.recycler.CustomLinearManager
 import com.RobinNotBad.BiliClient.util.CenterThreadPool
 import com.RobinNotBad.BiliClient.util.DisguiseGesture
+import com.RobinNotBad.BiliClient.util.DisguisePrefs
 import com.RobinNotBad.BiliClient.util.LocalVideoProgress
 import com.RobinNotBad.BiliClient.util.Logu
 import com.RobinNotBad.BiliClient.util.MsgUtil
@@ -1020,7 +1021,7 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
                             onLongClick = false
                             val normalSpeed = speed_values[seekbar_speed.progress]
                             ijkPlayer?.setSpeed(normalSpeed)
-                            mDanmakuView?.setSpeed(normalSpeed)
+                            danmakuManager?.setSpeed(normalSpeed)
                             text_speed.text = speed_strs[seekbar_speed.progress]
                         }
                         if (gesture_moved) gesture_moved = false
@@ -1045,7 +1046,7 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
                     onLongClick = false
                     val normalSpeed = speed_values[seekbar_speed.progress]
                     ijkPlayer?.setSpeed(normalSpeed)
-                    mDanmakuView?.setSpeed(normalSpeed)
+                    danmakuManager?.setSpeed(normalSpeed)
                     text_speed.text = speed_strs[seekbar_speed.progress]
                 }
                 false
@@ -1061,7 +1062,7 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
                 if (!onLongClick && !gesture_click_disabled) {
                     hidecon.run()
                     ijkPlayer?.setSpeed(3.0F)
-                    mDanmakuView?.setSpeed(3.0f)
+                    danmakuManager?.setSpeed(3.0f)
                     text_speed.text = "x 3.0"
                     onLongClick = true
                     Logu.v("gesture", "longclick_down")
@@ -1614,7 +1615,7 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
         text_speed.text = speed_strs[index]
         text_newspeed.text = speed_strs[index]
         ijkPlayer?.setSpeed(speed_values[index])
-        mDanmakuView?.setSpeed(speed_values[index])
+        danmakuManager?.setSpeed(speed_values[index])
     }
 
     private fun changeVideoSize() {
@@ -2979,7 +2980,7 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
                     text_newspeed.text = speed_strs[position]
                     text_speed.text = speed_strs[position]
                     ijkPlayer?.setSpeed(speed_values[position])
-                    mDanmakuView?.setSpeed(speed_values[position])
+                    danmakuManager?.setSpeed(speed_values[position])
                     // 「播放默认值 → 倍速 = 沿用上次」的记录位：只有用户自己调过才算"上次用过的"。
                     SharedPreferencesUtil.putFloat(SettingsKeys.PLAYER_LAST_SPEED, speed_values[position])
                 }
@@ -3474,7 +3475,12 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
         }
         // 伪装的「双击顶栏」：本页不继承 BaseActivity（那边统一安装），必须自己接一次线。
         // 观看中是最需要一键遮屏的场景，所以播放页不能漏。
-        if (::layout_top.isInitialized) DisguiseGesture.install(this, layout_top)
+        // 关掉开关时要摘掉：install 只在开启时生效，但已装上的触摸层不会自己消失，
+        // 不摘的话单击顶栏会一直多等一个双击判定窗口。
+        if (::layout_top.isInitialized) {
+            if (DisguisePrefs.isEnabled()) DisguiseGesture.install(this, layout_top)
+            else DisguiseGesture.detach(layout_top)
+        }
     }
 
     @Subscribe(threadMode = ThreadMode.MAIN, sticky = true)

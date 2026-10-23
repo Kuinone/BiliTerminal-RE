@@ -175,8 +175,8 @@ class SettingMainActivity : InstanceActivity() {
     private fun buildDisguiseGroup() {
         addGroup(
             R.drawable.icon_person,
-            "伪装与安全",
-            "双击顶栏切到伪装页，默认关闭",
+            getString(R.string.text_setting_disguise_group),
+            getString(R.string.desc_setting_disguise_index),
             GROUP_DISGUISE
         )
     }
