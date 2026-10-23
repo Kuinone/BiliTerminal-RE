@@ -1,5 +1,8 @@
 package com.RobinNotBad.BiliClient.util
 
+import kotlin.math.abs
+import kotlin.math.floor
+
 /**
  * 伪装成计算器时用的四则运算求值（纯 Kotlin，无 Android 依赖，可直接 JVM 单测）。
  *
@@ -139,7 +142,7 @@ object CalculatorEngine {
     @JvmStatic
     fun format(value: Double): String {
         if (value.isNaN() || value.isInfinite()) return ERROR
-        if (value == Math.floor(value) && Math.abs(value) < 1e15) {
+        if (value == floor(value) && abs(value) < 1e15) {
             return value.toLong().toString()
         }
         // 必须指定 Locale：默认 Locale 会把小数点格式化成逗号（如 de-DE 的 0,5），
