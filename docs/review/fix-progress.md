@@ -1255,7 +1255,7 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
     selftest `789e00fa…`（49752）。
 - **验证（本机，26.10.23 已跑）**：
   - `.\gradlew.bat :app:assembleDebug --offline` → `BUILD SUCCESSFUL`（standard + coexist 两个 Debug 包）。
-  - `:app:testStandardDebugUnitTest` 与 `:app:testCoexistDebugUnitTest` → 两 flavor 各 **815 例 / 0 失败 0 跳过**（`TerminalApiTest` 现 17 例：删掉 3 例「两路合并」并改为断言 `source`）。
+  - `:app:testStandardDebugUnitTest` 与 `:app:testCoexistDebugUnitTest` → 两 flavor 各 **815 例 / 0 失败 0 跳过**（`TerminalApiTest` 现 17 例：删掉 3 例「两路合并」并改为断言 `source`）。这是上游在本 PR 之外的基线上测的；**合入本 PR 后全量基线为 79 类 / 840 例**（见 §1）。
   - `server/`：`python -m py_compile` OK；`python server/selftest.py` → **206 项全通过**（含真上游冒烟；离线少 2 项）；本地 uvicorn 真服务 E2E 验证 approve 后客户端立即可见 `source=relay`、上游不可达时 `code=1`、登录后控制台含 relay 区块；定时拉取线程用临时脚本 E2E 通过（见上）；`console.html` 的 script 块 `node --check` 通过。
   - markdownlint：本次改动的 5 个 md 0 错误。
 - **未验证 / 待办**：① 生产上 3 条待审上游公告**未做 approve/reject 实操**（避免真实客户端看到未定内容；按用户要求「亲自选择是否透传」留给维护者在控制台点）；② 控制台页签切换、公告筛选、回复删除按钮**没在真实浏览器点过**（目前只有 curl 冒烟 + TestClient 断言）；③ 客户端未真机验证（列表只剩自建源、透传标注、待审不可见、差量弹窗只弹一次、断网不卡启动）；④ 控制台兜底补拉仍无退避（每小时最多一次，后端定时线程已有退避）。
