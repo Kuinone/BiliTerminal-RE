@@ -43,17 +43,6 @@ public class LikeCoinFavApi {
         return result.getInt("code");
     }
 
-    public static int favorite(long aid, long fid) throws IOException, JSONException {
-        long mid = SharedPreferencesUtil.getLong("mid", 0);
-        String addFid = FavoriteApi.buildMediaId(fid, mid);
-        String url = "https://api.bilibili.com/medialist/gateway/coll/resource/deal";
-        String per = "rid=" + aid + "&type=2&add_media_ids=" + addFid + "&del_media_ids=&csrf=" + NetWorkUtil.currentCsrf();
-
-        JSONObject result = new JSONObject(Objects.requireNonNull(NetWorkUtil.post(url, per, NetWorkUtil.webHeaders).body()).string());
-        Log.e("debug-添加收藏", result.toString());
-        return result.getInt("code");
-    }
-
     public static ApiResult getVideoStats(VideoInfo videoInfo) {
         ApiResult apiResult = new ApiResult();
         if (SharedPreferencesUtil.getLong("mid", 0) == 0) return apiResult;

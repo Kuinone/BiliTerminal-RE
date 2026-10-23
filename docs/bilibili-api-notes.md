@@ -65,7 +65,7 @@
 | `bvc.bilivideo.com/pbp/data` | 高能进度条（`step_sec` + `events.default[]`） | 否 | 否 | 否 |
 | `x/v2/history/report` | 观看进度上报 | 是 | 否 | 否 |
 | `x/web-interface/archive/like`、`coin/add`、`like/triple` | 点赞 / 投币 / 一键三连 | 是（**且需 buvid3**） | 否 | **是** |
-| `x/v3/fav/resource/deal`、`medialist/gateway/coll/resource/deal` | 收藏 / 取消收藏 | 是 | 否 | **是** |
+| `x/v3/fav/resource/batch-deal` | 收藏 / 取消收藏（`resources` + `add_media_ids` / `del_media_ids`，26.10.23 起唯一写入口） | 是 | 否 | **是** |
 
 **列表 / 内容**
 
@@ -141,13 +141,16 @@
 - **但响应体很大**：上述 336 集那个 `view` 响应 **494 KB**。→ 收藏夹列表层逐条预取合集归属不可行（20 条最坏 ~10MB，手表弱网不能接受）。要探测就**按需探测**（用户主动要，或只对当前可见的几条懒加载）。
 - 本项目已有的解析可直接复用：`api/VideoInfoApi.java` 的 `analyzeUgcSeason` → `model/Collection`（`sections[].episodes[]`，`Collection.Episode` 有 `aid`/`cid`/`title`）。合集详情页入口见 `docs/architecture-map.md` §7.38。
 
-## 6. 收藏夹「视频上限」字段的两个坑（26.10.16 实测）
+## 6. 收藏夹：写接口代际、上限字段与默认夹识别（26.10.16 实测 / 26.10.23 迁移）
 
-**问题**：「我的收藏夹」页把自建收藏夹显示成 `22/999`，而实际上限是 1000——一个已经有 **1000 条**的收藏夹被显示成 `1000/999`，自相矛盾。
+**代际结论（26.10.23）**：收藏夹读写已整体迁到 `x/v3/fav/*`，老接口全部不再调用。
 
-用调试桥（`cmd http`，带应用登录态）实测定论：
+- 读收藏夹列表：`GET x/v3/fav/folder/created/list?up_mid=&pn=&ps=100`（自己/他人同一接口，按 `has_more` 分页）。每项 `id` 就是 media_id、`fid` 只是展示用的旧 id、`attr` bit0=1 私密 / bit1=0 默认、`cover` 直接给。
+- 读收藏夹内容：`GET x/v3/fav/resource/list?media_id=&platform=web&pn=&ps=20&order=`（`order` 取 `mtime`/`view`/`pubtime`）。
+- 写收藏/取消/多选删除：统一 `POST x/v3/fav/resource/batch-deal`，form `resources`（`{avid}:2` 逗号串）+ `add_media_ids` + `del_media_ids` + `csrf`（可同时加/删）。
+- 已弃用（本项目不再调用）：`space.bilibili.com/ajax/fav/getBoxList`、`x/space/fav/arc`、`medialist/gateway/coll/resource/deal`、`medialist/gateway/coll/resource/batch/del`、`x/v3/fav/resource/batch-del`、`x/v3/fav/resource/deal`。
+- 图文收藏：`x/polymer/web-dynamic/v1/opus/feed/fav`（`page_size=20&page=`，`items[].cover` 是对象 `{url}`），旧 `x/polymer/web-dynamic/v1/opus/favlist` 仅兜底。
 
-- `space.bilibili.com/ajax/fav/getBoxList?mid=<自己>` **返回 `max_count`**，但**自建收藏夹恒为 `999`**（比实际能装的 1000 少 1），**默认收藏夹那条是正确的 `50000`**。同响应里还有 `count`（已装数量）、`fav_box`（fid）、`ctime`、`state`、`videos[]`（仅封面用，最多 3 条）。
-- `x/v3/fav/folder/created/list-all` **不返回任何上限字段**（加收藏时的选择框走这条，所以它一直显示 1000 是对的）。
-- 结论：**同一个概念两条链给的值不一样**，`999` 是没有任何别的语义的历史值。统一走 `api/FavoriteApi.java` 的 `resolveMaxCount()`，别再把 `999` 直接当上限渲染。详见 `docs/architecture-map.md` §7.34。
-- 顺带：`getBoxList` 的 `list[0]` **就是默认收藏夹**（`fav_box` 非 0，但服务端把它排在第一），所以「默认收藏夹 = `index == 0`」的既有判据在这条链上成立。
+**上限字段的坑（26.10.16 历史，迁移后已不存在）**：老 `getBoxList` 对自建收藏夹恒返回 `max_count = 999`（实际上限 1000），「我的收藏夹」页因此显示过 `1000/999`；v3 系（`created/list`、`list-all`）**完全不返回上限**。现在上限按服务端约定本地算：默认收藏夹 50000、自建 1000（`FavoriteApi.maxCountOf()`）；默认收藏夹用 `attr & 2 == 0` 判断（不再用 `index == 0`，`index` 判据只对已删除的 `getBoxList` 成立）。详见 `docs/architecture-map.md` §7.34。
+
+**已知但未实现的收藏写接口**（上游 PiliPlus 有，本机待做，见 `docs/FEATURES.md` §8.5）：`x/v3/fav/resource/sort`（夹内手动排序）、`x/v3/fav/folder/sort`（收藏夹本身排序）、`x/v3/fav/resource/clean`（清理失效收藏）、`x/v3/fav/folder/info` + add/edit 的 `cover`/`privacy`（夹详情/封面/公开私密编辑）；前两个需 APP 签名（`appkey` + `ts` + `sign = md5(query + appsec)`）。

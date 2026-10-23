@@ -988,19 +988,21 @@ CenterThreadPool.supplyAsyncWithLiveData { fetch...().getOrThrow() }
 
 ### 7.24 收藏夹：排序 + 复制 / 移动（26.10.04 批次 7 的 C19）
 
-- **「收藏夹排序」= 收藏内容列表的排序，不是给收藏夹本身排序**：快照里没有这种接口；能做的是 `GET x/v3/fav/resource/list` 的 `order` 参数，取值 `mtime`（收藏时间）/`view`（播放量）/`pubtime`（投稿时间）。常量在 `api/FavoriteApi.java`：`ORDER_FAV_TIME`/`ORDER_VIEW`/`ORDER_PUBTIME`。
-- **老接口的收藏时间叫 `fav_time` 不叫 `mtime`**：`api/FavoriteApi.legacyOrder(order)` 负责映射（`mtime → fav_time`，其余原样）。`getFolderVideos`（老 `x/space/fav/arc`，只在没有 media_id 时兜底）与 `getFolderVideosNew`（新接口）各有一个带 `order` 的重载，旧签名保留并委托，调用点不用全改。
+- **「收藏夹排序」有两个层面，别混**：① **收藏内容列表**按服务端 `order` 参数重排（本项目已实现）；② **夹内手动拖拽排序**（上游 `POST x/v3/fav/resource/sort`，需 APP 签名）与**收藏夹本身排序**（上游 `POST x/v3/fav/folder/sort`，同样需 APP 签名）**本项目未实现**，已记入 `docs/FEATURES.md` §8.5 待做清单。`x/v3/fav/resource/list` 的 `order` 取值 `mtime`（收藏时间）/`view`（播放量）/`pubtime`（投稿时间）。常量在 `api/FavoriteApi.java`：`ORDER_FAV_TIME`/`ORDER_VIEW`/`ORDER_PUBTIME`。
+- **26.10.23 迁移删掉了整条老链路**：`x/space/fav/arc` 的 `getFolderVideos()`、`legacyOrder()`（老接口收藏时间叫 `fav_time`、新接口叫 `mtime` 的映射）都已不存在；唯一入口是 `getFolderVideosNew(mediaId, page, list, order)`，三参旧重载委托 `ORDER_FAV_TIME`。调用点不用再判「有没有 media_id 走哪条接口」。
 - **排序必须重发请求，筛选不用**：`sortBar` 切档 = `page = 1` + `bottom = false` + 清 `videoList` + 重拉第一页；这与 C18 的 `filterBar`（纯本地过滤、只 `notifyDataSetChanged`）是两种东西，别抄错。
 - **`sortBar` 也是 `res/layout/activity_simple_refresh.xml` 里默认 `gone` 的分组**（三个等宽 chip：`sortFavTime`/`sortView`/`sortPubtime`），只有 `FavoriteVideoListActivity` 会点亮，其它 `RefreshListActivity` 页面零影响。选中档位用 `ColorScheme.PRIMARY`，另两档用 `onCreate` 时从 chip 的 `currentTextColor` 抓到的默认色。
-- **自己的收藏夹现在也带 `media_id`**：`adapter/favorite/FavoriteFolderAdapter.kt` 点击时补传 `mediaId` 与 `readOnly=false`（`adapter/favorite/UserFavoriteFolderAdapter.kt` 传 `readOnly=true`）。页面判定：`readOnly = getBooleanExtra("readOnly", mediaId > 0)`（没带该 extra 的旧调用方按原逻辑兜底），`writable = !readOnly && mediaId > 0`。**`media_id` 来自 `FavoriteApi.getFavoriteFolders` 里 `fid → media_id` 的映射，拿不到就是 0**，此时退回老接口、不提供复制/移动，长按仍是原来的「连点两次长按删除」。
-- **复制 / 移动走 `POST x/v3/fav/resource/copy` ∥ `/move`**：参数 `src_media_id`/`tar_media_id`/`mid`/`resources`/`platform=web`/`csrf`。`resources` 格式是 `{avid}:2` 用逗号分隔（2 = 视频稿件），拼装用纯函数 `FavoriteApi.buildResources(cards)`（跳过 `aid <= 0`），错误码文案用 `FavoriteApi.resourceErrorMsg(code)`（含 `11010` 内容不存在）。**C20 的多选删除（`x/v3/fav/resource/batch-del`）复用同一套 `buildResources`/`resourceErrorMsg`**。
+- **收藏夹列表源已换**：`getFavoriteFolders` 改 `GET x/v3/fav/folder/created/list?up_mid=&pn=&ps=100`（`has_more` 分页拉全），一次请求就拿到 `id`（media_id）/`title`/`cover`/`attr`，不再「`getBoxList` + `list-all` 两次请求拼 media_id」；`getUserFavoriteFolders` 走同一接口并跳过 `attr & 1`（私密）的条目。
+- **media_id 直接来自服务端**：`FavoriteFolder.mediaId = id`，`FavoriteFolder.id = fid`（仅展示/兜底）。`adapter/favorite/FavoriteFolderAdapter.kt` 点击传 `mediaId` + `readOnly=false`（`UserFavoriteFolderAdapter.kt` 传 `readOnly=true`），不再传 `fid`。页面判定不变：`readOnly = getBooleanExtra("readOnly", mediaId > 0)`、`writable = !readOnly && mediaId > 0`；**`mediaId <= 0` 时 `fetch()` 直接返回 `-1`（按加载失败处理）**，老接口兜底分支与「连点两次长按删除」已一并删除。
+- **写操作统一走 `POST x/v3/fav/resource/batch-deal`**：form `resources`（`{avid}:2` 逗号串）+ `add_media_ids` + `del_media_ids` + `csrf`（可同时加/删），私有 `dealFavorites()` 收口；`addFavorite(aid, mediaId)` 只传 `add_media_ids`，`deleteFavorite(aid, mediaId)` 与多选删除 `batchDeleteResources(mediaId, cards)` 只传 `del_media_ids`（`mediaId <= 0` 或资源为空直接返回 `-400` 不发请求）。老 `medialist/gateway/coll/resource/deal`、`medialist/gateway/coll/resource/batch/del`、`x/v3/fav/resource/batch-del` 全部弃用。
+- **复制 / 移动仍走 `POST x/v3/fav/resource/copy` ∥ `/move`**：参数 `src_media_id`/`tar_media_id`/`mid`/`resources`/`platform=web`/`csrf`。`resources` 格式是 `{avid}:2`，拼装用纯函数 `FavoriteApi.buildResources(cards)`（跳过 `aid <= 0`），错误码文案用 `FavoriteApi.resourceErrorMsg(code)`（含 `11010` 内容不存在），多选删除复用同一套。
 - **长按弹菜单而不是直接删**：`writable` 时弹「复制到…」「移动到…」「取消收藏」；复制/移动的目标收藏夹从 `FavoriteApi.getFavoriteFolders(mid)` 里选并**排除当前这个**（`mediaId` 相同或 `mediaId <= 0` 的不列）。移动成功要把那一条从 `videoList` 移除（`removeItem` 走 `notifyItemRemoved` + `notifyItemRangeChanged`，删空则 `showEmptyView()`）。
 
 ---
 
 ### 7.25 收藏夹多选删除（26.10.04 批次 7 的 C20）
 
-- **接口**：`POST x/v3/fav/resource/batch-del`，参数 `resources`（C19 的 `buildResources()`，`{avid}:2` 逗号分隔）/`media_id`/`platform=web`/`csrf`；`api/FavoriteApi.batchDeleteResources(mediaId, cards)` 在 `mediaId <= 0` 或资源为空时**直接返回 `-400` 不发请求**（和 `copyResources`/`moveResources` 一样的前置校验），错误文案复用 `resourceErrorMsg()`。
+- **接口（26.10.23 迁移后）**：多选删除与单条取消收藏共用 `POST x/v3/fav/resource/batch-deal`，参数 `resources`（C19 的 `buildResources()`，`{avid}:2` 逗号分隔）+ `del_media_ids=<media_id>` + `csrf`；`api/FavoriteApi.batchDeleteResources(mediaId, cards)` 在 `mediaId <= 0` 或资源为空时**直接返回 `-400` 不发请求**（和 `copyResources`/`moveResources` 一样的前置校验），错误文案复用 `resourceErrorMsg()`。老 `x/v3/fav/resource/batch-del` 已弃用。
 - **`manageBar` 是 `res/layout/activity_simple_refresh.xml` 里第三个默认 `gone` 的分组**（前两个是 C18 的 `filterBar`、C19 的 `sortBar`）：两个等宽 chip `manageToggle`（「多选」/「退出多选」）与 `manageDelete`（「删除」/「删除(n)」）。只在 `writable`（自己的收藏夹且有 `media_id`）时点亮；没勾选任何条目时「删除」压暗到 `alpha=0.5`，点了只提示「先选几条吧~」。
 - **勾选状态在页面，不在 adapter**：页面持有 `LinkedHashSet<Long> selectedAids` 并把同一个引用交给 `VideoCardAdapter.selectedAids`；`VideoCardAdapter.selectionMode` 只影响 `onBindViewHolder` 末尾那次 `holder.applySelection(selectionMode, selectedAids.contains(aid))`。
 - **选中样式不动任何布局 id**：`adapter/video/VideoCardHolder.applySelection` 用「未选中条目 `itemView.alpha = 0.45f`」+「标题前加 2 字符前缀」（`TextUtils.concat`，选中 `"✓ "`、未选中 `"　 "` 全角空格对齐，加之前先 `subSequence(2, …)` 剥旧前缀）。**没有给 `cell_video_list.xml` 加 checkbox**——那里的 id 是跨包事实协议（见第 7 节开头），为画个勾不值得冒险。
@@ -1081,14 +1083,11 @@ CenterThreadPool.supplyAsyncWithLiveData { fetch...().getOrThrow() }
 ### 7.34 收藏夹上限与「默认收藏夹」的识别规则
 
 约定值（`api/FavoriteApi.java` 的 `MAX_COUNT_DEFAULT_FOLDER` / `MAX_COUNT_CUSTOM_FOLDER`）：**默认收藏夹 50000、用户自建 1000**；
-**默认收藏夹以 `index == 0` 识别**（与既有 `isDefault` 逻辑一致）。
+**默认收藏夹用 `attr & 2 == 0` 识别**（`api/FavoriteApi.isDefaultFolder(int)`）：v3 系的 `created/list` 与 `list-all` 都给 `attr`（bit0=1 私密、bit1=0 才是默认），比「`index == 0`」可靠——`index` 判据只对已废弃的 `getBoxList` 成立。线上自建收藏夹常见值是 `attr=22`（bit1 已置位）。
 
-**上限字段有没有，取决于走哪条链**——这是 26.10.16 踩过的坑（「我的收藏夹」把自建收藏夹显示成 `22/999`，而一个 1000 条的收藏夹被显示成 `1000/999`）：
+26.10.23 接口迁移后，上限**不再有任何服务端字段**可读：`x/v3/fav/folder/created/list`（我的收藏夹列表 / 移动目标列表）与 `x/v3/fav/folder/created/list-all`（加收藏时的选择框）**都不返回 `max_count`**，统一用 `FavoriteApi.maxCountOf(isDefault)` 本地算。
 
-- `x/v3/fav/folder/created/list-all`（`parseFavoriteState`，加收藏时的选择框）**不返回上限**，`maxCountList` 直接用约定值。
-- 老接口 `space.bilibili.com/ajax/fav/getBoxList`（`getFavoriteFolders`，我的收藏夹页 / 移动目标列表）**返回 `max_count`，但自建收藏夹恒为 `999`**（比实际能装的少 1）；默认收藏夹那条倒是正确的 `50000`。
-
-所以两处统一走 `FavoriteApi.resolveMaxCount(serverMaxCount, isDefault)`：**只有「非 999 且 > 0」的服务端值才被采信**，其余（999 / 字段缺失 / 非法）回落到约定值。别再把 `999` 当上限渲染，也别把「服务端一定不给上限」当事实（服务端将来放宽上限并同步字段时，这个函数会自动跟随）。实测数据见 `docs/bilibili-api-notes.md` §6。
+历史坑（26.10.16，已随老接口移除而消失）：老 `space.bilibili.com/ajax/fav/getBoxList` 对自建收藏夹恒返回 `max_count = 999`（实际上限 1000），「我的收藏夹」页因此把 1000 条的自建夹显示成 `1000/999`；当时用 `resolveMaxCount()` 过滤 999。现在 `getBoxList` 与 `resolveMaxCount()` 都已删除，别再按"服务端会给上限"写代码。
 
 ### 7.35 B 站 `playurl` 与签到类接口的接入常识（26.10.10 回迁）
 

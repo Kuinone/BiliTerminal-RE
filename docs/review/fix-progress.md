@@ -1356,6 +1356,15 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
 - **文档计数修正**：`architecture-map` 的测试清单从「80 个文件」改为「**79 个文件**（78 个 `*Test` + 1 个 `FakeSharedPreferences.kt`）、**79 个测试类**」（`CalculatorEngineTest.kt` 内有 `CalculatorEngineTest` 与 `DisguisePrefsTest` 两个类），用例数统一为 **841**。`strings.xml` / `themes.xml` 末尾多余空行已清。
 - **手表端验证口径（26.10.23）**：本 PR 涉及的弹幕时间轴、短视频亮屏、伪装功能**已由维护者人工在手表上实测通过**（维护者自述，非本会话 agent 复现，因此没有设备日志/截图入库）。仍未覆盖的是「极弱机上的媒体时钟收敛」「单击顶栏 0.3 秒延迟的手感」「圆屏蓝牙提示页布局」——这三项只能真机肉眼判断，已分别记在 §3.57 / §3.59 的对应条目里。
 
+### 3.61 收藏夹接口层整体迁移到 `x/v3/fav/*` 新族（26.10.23）
+
+- **缘起**：上游 PiliPlus 的收藏夹接口已全部换成 v3 新族（写操作 `x/v3/fav/resource/batch-deal`、收藏夹列表 `x/v3/fav/folder/created/list`、图文收藏 `x/polymer/web-dynamic/v1/opus/feed/fav`），本机还在用 `getBoxList` / `x/space/fav/arc` / `medialist/gateway/*` 一代。本轮只迁**接口层**，UI 与交互零改动；上游有而本机完全没有的 4 类能力（夹内手动排序、收藏夹本身排序、清理失效收藏、夹详情/封面/公开私密编辑）只登记到 `docs/FEATURES.md` §8.5「待实现」。
+- **`api/FavoriteApi.java` 重写**：`getFavoriteFolders` 从「`getBoxList` + `list-all` 两次请求手拼 media_id」改成 `x/v3/fav/folder/created/list`（`ps=100` + `has_more` 分页，一次拿 `id`/`title`/`cover`/`attr`）；删除 `getFolderVideos()`（`x/space/fav/arc`）、`legacyOrder()`、`buildMediaId()`、`resolveMaxCount()`、`LEGACY_CUSTOM_FOLDER_MAX_COUNT`；新增纯函数 `isDefaultFolder(attr)`（`attr & 2 == 0`，bit0 私密 / bit1=1 非默认）与 `maxCountOf(isDefault)`；写操作统一收口到私有 `dealFavorites()`（`POST x/v3/fav/resource/batch-deal`，`resources` + `add_media_ids` + `del_media_ids` + `csrf`），`addFavorite`/`deleteFavorite`/`batchDeleteResources` 改签名收 **media_id**；`deleteFolder` 补 `platform=web`；`getFavouriteOpus` 换 `opus/feed/fav`（`page_size=20`，封面兼容对象/字符串，`code != 0` 回退旧 `favlist`）；`getFavoriteState`/`parseFavoriteState` 增加 `mediaIdList` 出参。
+- **调用方**：`adapter/favorite/FolderChooseAdapter.kt` 的 `fidList` 换成 `mediaIdList`（点选写操作只认 media_id）；`activity/video/info/AddFavoriteActivity.kt` 收集并下传 `mediaIdList`；`activity/user/favorite/FavoriteVideoListActivity.kt` 删掉 `fid` extra 与老接口兜底分支（`mediaId <= 0` 直接按加载失败）、删掉「连点两次长按删除」（`confirmLegacyRemove()` 整段移除，长按统一走管理菜单/只读菜单）、两处 `deleteFavorite` 改传 `mediaId`；`adapter/favorite/FavoriteFolderAdapter.kt` 不再传 `fid`。`api/LikeCoinFavApi.favorite()`（手拼 media_id 的死路径）一并删除。
+- **单测**：`FavoriteApiTest.kt` 删 `resolveMaxCount`/`buildMediaId`/`legacyOrder` 三组用例，改成 `isDefaultFolder`/`maxCountOf` + `parseFavoriteState` 的 `mediaIdList`/默认夹按 attr 判定回归用例（测试数据用线上真实值：默认夹 `attr=0`、自建夹 `attr=22`）。
+- **验证**：`./gradlew.bat :app:assembleDebug :app:testStandardDebugUnitTest :app:testCoexistDebugUnitTest` 全绿；未上手表实测（接口层改动，UI 未动，按 `docs/agents/workflow.md` 的判据走构建 + 单测）。
+- **注意**：接口域名/路径变了但都还在 `bilibili.com` 白名单内，不需要动 `<domain-config>`；`getBoxList` 用的 `space.bilibili.com` 从此不再被收藏链路请求。
+
 ## 4. 历史章节索引
 
 > 完整正文在 `docs/archive/review/fix-progress-history.md`。**编号在历史上有重复**（`## 二十二` / `## 二十九` 各出现两次、`## 30.` 是阿拉伯数字写法，原为不打断既有交叉引用而保持不动），下表**以归档文件的物理行序为准**。

@@ -23,7 +23,7 @@ import java.io.IOException
 class FolderChooseAdapter(
     private val context: Context,
     private val folderList: ArrayList<String>,
-    private val fidList: ArrayList<Long>,
+    private val mediaIdList: ArrayList<Long>,
     private val chooseState: ArrayList<Boolean>,
     private val countList: ArrayList<Int>,
     private val maxCountList: ArrayList<Int>,
@@ -42,7 +42,7 @@ class FolderChooseAdapter(
     override fun onBindViewHolder(holder: FolderHolder, position: Int) {
         if (position < 0 || position >= folderList.size)
             return
-        if (position >= chooseState.size || position >= fidList.size)
+        if (position >= chooseState.size || position >= mediaIdList.size)
             return
         if (position >= countList.size || position >= maxCountList.size)
             return
@@ -54,7 +54,7 @@ class FolderChooseAdapter(
         setCardView(cardView, chooseState[position])
 
         holder.itemView.setOnClickListener {
-            if (!adding && position < chooseState.size && position < fidList.size) {
+            if (!adding && position < chooseState.size && position < mediaIdList.size) {
                 adding = true
                 cardView.strokeColor = ColorScheme.withPrimaryAlpha(0x99)
                 cardView.strokeWidth = ToolsUtil.dp2px(1f)
@@ -62,7 +62,7 @@ class FolderChooseAdapter(
                 if (chooseState[position]) {
                     CenterThreadPool.run {
                         try {
-                            val result = FavoriteApi.deleteFavorite(aid, fidList[position])
+                            val result = FavoriteApi.deleteFavorite(aid, mediaIdList[position])
                             adding = false
                             if (result == 0) {
                                 chooseState[position] = false
@@ -84,7 +84,7 @@ class FolderChooseAdapter(
                     cardView.strokeWidth = ToolsUtil.dp2px(0.1f)
                     CenterThreadPool.run {
                         try {
-                            val result = FavoriteApi.addFavorite(aid, fidList[position])
+                            val result = FavoriteApi.addFavorite(aid, mediaIdList[position])
                             adding = false
                             if (result == 0) {
                                 chooseState[position] = true
