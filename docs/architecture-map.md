@@ -202,8 +202,8 @@ SplashActivity（LAUNCHER，typewriter 动画）
              ├─ 未完成初始设置 → SetupUIActivity
              ├─ 已完成 → SharedPreferencesUtil.loadMenuEnabled().firstOrNull()
              │            → MenuActivity.btnNames[key].second  ← 用"第一个启用的菜单项"当首屏
-             └─ 异步：App token / Cookie 刷新、CookiesApi.checkCookies、AppInfoApi.check
-                       + TerminalApi.checkAnnouncement()（自建公告差量）
+             └─ 异步：App token / Cookie 刷新、CookiesApi.checkCookies、AppInfoApi.check（更新包清理等）
+                       + TerminalApi.checkAnnouncement()（公告差量；**客户端唯一的公告源**）
                        + TelemetryReporter.reportIfNeeded()（匿名日活，一天一次）
 ```
 
@@ -213,6 +213,7 @@ SplashActivity（LAUNCHER，typewriter 动画）
 - **`CatchActivity` 跑在 `:error_activity` 独立进程**（26.10.04 批次 3，`AndroidManifest.xml` 的 `android:process`）。主进程已崩溃时，同进程再启 Activity 容易被一起带走，所以崩溃页必须自给自足：它**不会**经过 `PerformanceManager.init`、`ErrorCatch.init`、未读轮询、更新检查。往 `CatchActivity` 加依赖前先确认那个依赖不要求这些初始化。判进程用 `BiliTerminal.currentProcessName()`（读 `/proc/self/cmdline`——`minSdk 19` 用不了 API 28 的 `Application.getProcessName()`）。
 - 首屏由**用户自定义菜单顺序**决定，不是硬编码 `RecommendActivity`。改导航时注意 `loadMenuEnabled()`。
 - `onActivityPreCreated` 的强制更新拦截会 **finish 掉任意 Activity**，调试时若被"莫名其妙踢到更新页"，检查 `force_update_required` 这个 SharedPreferences 键。
+- **公告只有一个源**：客户端已**不再直连上游** `api.biliterminal.cn` 的公告接口。上游公告改由自建服务端拉取、管理员在控制台**逐条**审核后透传（`source=relay`），启动差量弹窗与「公告列表」都只读 `TerminalApi.checkAnnouncement()` / `getOwnAnnouncementList()`。**别在客户端重新加回「两路合并」**（26.10.23 已整体删除）。
 
 ---
 
@@ -395,8 +396,11 @@ CenterThreadPool.supplyAsyncWithLiveData { fetch...().getOrThrow() }
 
 ### 6.5 自建反馈 / 公告 / 匿名统计（26.10.09 新增，动这一块之前必读）
 
-这条链路和上游 `api.biliterminal.cn` **完全独立**：域名、服务端、code 约定、已读计数都是分开的，
-两者并存、互不覆盖。
+这条链路和上游 `api.biliterminal.cn` 是两套服务器：域名、code 约定、已读计数都分开。
+
+**但公告只有一个源**（26.10.23 起）：客户端不再直连上游公告接口；上游公告由本服务端用
+标准库 `urllib.request` 拉取，管理员在控制台**逐条**审核后透传（`source=relay`），
+未审核 / 被拒绝的对客户端不可见。客户端侧因此没有「两路合并」，也不再有「部分公告源连不上」的提示。
 
 **服务端**（在本项目自己的 HK 服务器上，不在本仓库运行时里）
 
@@ -431,11 +435,32 @@ CenterThreadPool.supplyAsyncWithLiveData { fetch...().getOrThrow() }
   当日新增回退，那是数据失真，不是清理。
 - **设备视图**（26.10.14 加）：`GET /admin/api/devices[?coexist=&version=&brand=&q=&limit=&offset=]`。
   **按 `dev_key` 聚合，一行一台设备** —— 一台双版本手机在 `installs` 里是两行，平铺会被读成两台设备。
+- **上游公告透传**（26.10.23 加，`SCHEMA_VERSION=4`）：客户端不再直连上游公告，改由服务端用标准库
+  `urllib.request` 拉（`UPSTREAM_ANN_URL`，可用环境变量 `REBILITERMINAL_UPSTREAM_ANN_URL` 覆盖，
+  超时 10s，跑在 `run_in_threadpool` 里）。`announcements` 加 `source`（`local`/`relay`，缺省 `local`）、
+  `origin_id`（上游 id，仅 relay）、`relay_state`（`pending`/`approved`/`rejected`）；新增 `meta` 键值表存
+  `relay_last_pull`。`relay_state='approved'` 才进 `_VISIBLE_SQL`（pending / rejected 对客户端与 `from`
+  差量都不可见）；同一上游 `origin_id` 靠部分唯一索引
+  `idx_announcements_origin ... WHERE source='relay'` 去重（**不能写进 `SCHEMA`**，老库那时还没有该列）。
+  管理接口：`GET /admin/api/announcement/relay`（三组 + `last_pull`）、
+  `POST .../relay/refresh`（拉取并 upsert，已存在条目只更新正文/时间、保留审核结论；**上游失败回
+  HTTP 200 + `{code:1,msg}`，不抛 500**）、`POST .../relay/decision` ← `{id, decision: approve|reject}`
+  （reject 对已透传项即「停止透传」，再次 approve 可恢复；refresh 不会复活 rejected）。
+  控制台「公告」页签有「上游透传（原版哔哩终端）」区块，打开时若 `last_pull` 超过 300s 自动补拉一次。
+  `GET /admin/api/announcements` 仍只回 `source='local'` 的行。`server/selftest.py` §22 钉住可见性/幂等/
+  审核结论保持/失败降级/v3→v4 迁移。
+  **上线口径（26.10.23）**：生产三件套原本停在 26.10.17 基线（比仓库工作副本多出 `/admin?token=` 303 →
+  HttpOnly 会话 Cookie、控制台 UI 打磨等），本次把 relay 改动**合并进生产基线**后再部署；工作副本已同步为
+  合并产物。以后改 `server/` 先 `ssh HK` 取生产文件再 diff，**别拿本地旧文件直接覆盖**。部署与冒烟记录见
+  `docs/review/fix-progress.md` §3.56。
 - 接口（成功一律 `code=0`，HTTP 恒 2xx）：
   - `GET /terminal/health`
-  - `GET /terminal/announcement/get_list[?from=<id>]` → `{code:0,data:[{id,ctime,title,content}]}`。
-    `id` 是自增 id **+ 1000000000**，故意和上游公告 id 空间错开；
+  - `GET /terminal/announcement/get_list[?from=<id>]` → `{code:0,data:[{id,ctime,title,content,source}]}`。
+    `source` 是 `"local"`（本项目公告）或 `"relay"`（上游透传，缺省按 `local` 解析）。
+    `id` 是本地 `announcements` 自增 id **+ 1000000000**（本项公告与透传公告共用这一个 id 空间，
+    透传行另存 `origin_id` 去重，id 早已和上游 id 空间错开）；
     不带 `from` 是列表页（倒序），带 `from` 是启动弹窗的差量（只回 `id>from`，正序）。
+    **只返回 `relay_state='approved'` 的透传行**，pending / rejected 不可见；
     **会按 `X-Install-Id` 过滤定向公告**（公开公告人人可见）。
   - `POST /terminal/telemetry/ping` ← `{install_id, device_key, version_code, version_name, is_beta, sdk, brand, device, abi, is_coexist}`
   - `POST /terminal/feedback/submit` ← `{install_id, device_key, category, content, contact?, mid?, version_code, version_name, sdk, brand, device}`
@@ -460,8 +485,15 @@ CenterThreadPool.supplyAsyncWithLiveData { fetch...().getOrThrow() }
 
 - `api/TerminalApi.java` 是这条链路唯一的出口：`BASE_URL = https://rebiliterminal.zsapp.asia/terminal`。
   请求与解析分离——`buildPingPayload` / `buildFeedbackPayload` / `buildCrashPayload` /
-  `parseAnnouncements` / `mergeAnnouncements` 都是可在 JVM 上跑的纯函数，
+  `parseAnnouncements` 都是可在 JVM 上跑的纯函数，
   单测在 `app/src/test/java/com/RobinNotBad/BiliClient/api/TerminalApiTest.kt`。**改字段先改纯函数和测试。**
+- **公告客户端链路**（26.10.23 改为单源）：`TerminalApi.parseAnnouncements` 解析 `source`
+  （缺省 `local`）→ `model/Announcement.isRelayed()`；列表页 `activity/settings/AnnouncementsActivity.kt`
+  只调 `getOwnAnnouncementList()`；启动弹窗 `TerminalApi.checkAnnouncement()` 仍按
+  `SettingsKeys.TERMINAL_ANNOUNCEMENT_LAST` 做差量（两种公告共用该游标）。
+  透传公告点开后走 `MsgUtil.showText(title, content, relayed=true)` → `ShowTextActivity`
+  顶部多一行来源说明（`text_announcement_relay_source`「此公告来自原版哔哩终端」），
+  **只在正文页标注**，列表卡片不标。
 - `util/TelemetryReporter.kt`：启动时一天最多 ping 一次，**只有请求成功才写回日期**（断网启动不浪费当天机会）。
 - `util/CrashReporter.kt` + `util/CrashTrail.kt`：`ErrorCatch` 在崩溃瞬间把 `exception/message/thread/trail/uptime`
   塞进 Intent → `CatchActivity`（独立进程）在 `isCrashReportAutoEnabled()` 时自动上报，
@@ -604,6 +636,9 @@ CenterThreadPool.supplyAsyncWithLiveData { fetch...().getOrThrow() }
 7. **控制台前端不引任何外部资源**（无 CDN、无图表库），否则国内外网一抖后台就打不开；
    口令只出现在 `POST /console/login` 的表单里，会话 Cookie 是 `HttpOnly`，
    前端 JS 读不到、URL 里也不带。旧 `?token=` 入口保留但只作兜底。
+8. **公告只有一个源，别再引回上游直连**（26.10.23）：上游公告接口由服务端接、管理员逐条审核后
+   透传；客户端 `AppInfoApi` 里的公告方法与 `TerminalApi.mergeAnnouncements` 已全部删除。
+   改公告相关代码时**别恢复「两路合并」或「部分公告源连不上」的提示**，那是旧口径。
 
 ---
 
@@ -638,7 +673,7 @@ CenterThreadPool.supplyAsyncWithLiveData { fetch...().getOrThrow() }
 
 - **巨型类**：`activity/player/PlayerActivity.kt` 166 KB / 3628 行、`activity/video/ShortVideoPlayerActivity.kt` 43 KB / 1017 行（26.10.10 实测）。`service/DownloadService.kt` 曾是第二条 65 KB 的巨型类，26.10.04 批次 8（E2）已拆到 **1284 行**，实现分居 `service/download/` 的 4 个文件（见 §7.27）。改播放相关功能前先想清楚在哪个位置插入；改下载相关功能请先读 §7.27 的锁与状态契约。
 - **Application 静态状态已收敛为一套**：26.10.02 起只有 `BiliTerminal.context`（`BiliTerminal.kt:47-48`，伴生对象 `@JvmField`，静态字段）与 `instance`（`:53`，`private WeakReference<InstanceActivity>`，只能经 `setInstance()`(`:85`) / `getInstanceActivityOnTop()`(`:90`) 访问），`BiliTerminalApp` 已整文件删除。**新代码一律用 `BiliTerminal`**。
-- **测试覆盖仍偏低**：`app/src/test/` 80 个文件（79 个测试类 + 1 个共享假实现 `FakeSharedPreferences.kt`），共 **843 个用例**（26.10.23 合并上游后实测，两个 flavor 各 843、0 失败）。已有：`HotSearchApiTest`、`FavoriteApiTest`、`FollowApiTest`、`OpusApiTest`、`PrivateMsgApiTest`、`BangumiApiTest`、`DynamicApiTest`、`TopicApiTest`、`NoteApiTest`、`WatchLaterApiTest`、`PlayerApiPbpTest`、`ReplyApiTest`、`ReplyParseActionTest`、`ReplySortTest`、`NetWorkUtilTest`、`PerformanceManagerTest`、`BangumiUpdateCheckerTest`、`MsgNotifierTest`、`ApkVerifierTest`、`SettingsKeysTest`、`UpdateReleaseTest`、`MenuConfigTest`、`MySpaceConfigTest`、`ToolsUtilTest`、`StringUtilTest`（Java）、`HotSearchAdapterTest`、`TutorialDslTest`、`MediaClockSyncTest`（DFM 侧纯函数，源在 `DanmakuFlameMaster`）、`CalculatorEngineTest`、`DisguisePrefsTest`、`SkipCancelPolicyTest`、`PlayerDefaultsTest`、`ViewPointSkipTest`、`ColorSchemeTest`、`CornerStyleTest`、`FontStyleTest`、`AppearanceManagerTest`、`ViewCapabilityProbeTest`、`DownloadPathSpecTest`、`DownloadProgressMathTest`、`DownloadBatchStatsTest`。改动解析/配置/主题/能力探测逻辑时补纯 JVM 单测——注入 `SharedPreferencesUtil.sharedPreferences`，用 `util/FakeSharedPreferences.kt`（26.09.11 从 `NetWorkUtilTest` 的私有内部类提取为共享助手，别再抄一份）。
+- **测试覆盖仍偏低**：`app/src/test/` 80 个文件（79 个测试类 + 1 个共享假实现 `FakeSharedPreferences.kt`），共 **840 个用例**（26.10.23 合并上游后实测，两个 flavor 各 840、0 失败）。已有：`HotSearchApiTest`、`FavoriteApiTest`、`FollowApiTest`、`OpusApiTest`、`PrivateMsgApiTest`、`BangumiApiTest`、`DynamicApiTest`、`TopicApiTest`、`NoteApiTest`、`WatchLaterApiTest`、`PlayerApiPbpTest`、`ReplyApiTest`、`ReplyParseActionTest`、`ReplySortTest`、`NetWorkUtilTest`、`PerformanceManagerTest`、`BangumiUpdateCheckerTest`、`MsgNotifierTest`、`ApkVerifierTest`、`SettingsKeysTest`、`UpdateReleaseTest`、`MenuConfigTest`、`MySpaceConfigTest`、`ToolsUtilTest`、`StringUtilTest`（Java）、`HotSearchAdapterTest`、`TutorialDslTest`、`MediaClockSyncTest`（DFM 侧纯函数，源在 `DanmakuFlameMaster`）、`CalculatorEngineTest`、`DisguisePrefsTest`、`SkipCancelPolicyTest`、`PlayerDefaultsTest`、`ViewPointSkipTest`、`ColorSchemeTest`、`CornerStyleTest`、`FontStyleTest`、`AppearanceManagerTest`、`ViewCapabilityProbeTest`、`DownloadPathSpecTest`、`DownloadProgressMathTest`、`DownloadBatchStatsTest`。改动解析/配置/主题/能力探测逻辑时补纯 JVM 单测——注入 `SharedPreferencesUtil.sharedPreferences`，用 `util/FakeSharedPreferences.kt`（26.09.11 从 `NetWorkUtilTest` 的私有内部类提取为共享助手，别再抄一份）。
 - **主题色表带缓存，失效点只有一处**：`ColorScheme.getCurrentTheme()`（26.09.11 起）缓存当前色表，**只由 `AppearanceManager.setTheme()` 经 `ColorScheme.invalidateCache()` 置空**。这是刻意的——36 个属性 getter 全走它，而列表滚动时一个 item 要调多次，此前每次都重读 SharedPreferences（热路径重复 IO）。**若将来给主题 key 增加第二个写入路径（比如直接 `SharedPreferencesUtil.putString(SettingsKeys.THEME, …)`），必须同步调用 `ColorScheme.invalidateCache()`，否则改主题后色表不跟着变且在 `onResume` 重建后依然错**。守卫测试：`ColorSchemeTest.themeCache_isInvalidatedOnEverySetTheme`、`colorGetters_doNotTouchSharedPreferencesAfterFirstRead`。
 - **主题体系有 3 个"裸 Activity"不参与**：`SplashActivity`、`GetIntentActivity` 不继承 `BaseActivity`（开屏/外链恒定 B站粉），`PlayerActivity` 自己 `setTheme` 但**不调 `applyWindowTheme`、也不参与 `onResume` 主题检测**。改主题相关行为时别以为全局都生效了。
 - **文案硬编码**：遗留页面标题/Toast 直接写中文字符串（Manifest 里 `android:label` 也是中文），只有设置页用 `desc_*` 资源。改文案按现有风格来，别顺手抽 `strings.xml`。
@@ -1295,7 +1330,7 @@ CenterThreadPool.supplyAsyncWithLiveData { fetch...().getOrThrow() }
 
 ### 7.53 顶栏双击：必须自己接管触摸，用 `performClick()` 回放原动作（26.10.22，issue #22）
 
-- **场景**：双击顶栏一键切到伪装页（假计算器 / 假「蓝牙已断开」，见 `docs/FEATURES.md` §19 与 `docs/review/fix-progress.md` §3.58）。
+- **场景**：双击顶栏一键切到伪装页（假计算器 / 假「蓝牙已断开」，见 `docs/FEATURES.md` §19 与 `docs/review/fix-progress.md` §3.59）。
 - **为什么不能只加一个 `OnDoubleTapListener`**：顶栏单击的语义是「返回上一页 / 打开菜单」，长按是「打开菜单列表」。双击的**第一次抬手已经是一次完整 click** —— 若还让 View 自己发 click，页面先被 `finish()`，第二次点击根本落不到同一个 View 上。
 - **正确做法**（`BaseActivity.setupTopbarDoubleTapDisguise`）：
   - `OnTouchListener` 返回 `true` 消费全部触摸（View 不再自己发 click/longclick），事件喂给 `GestureDetector`；
@@ -1727,8 +1762,8 @@ TTF/OTF/TTC，应用把它**拷进私有目录**（`filesDir/custom_font/custom_
 | `CookieRefreshApi` | Web Cookie 刷新 | `cookieInfo`、`getCorrespondPath`、`refreshCookie` |
 | `AppTokenRefreshApi` | access_token 续期 | `refreshAppToken` |
 | `ConfInfoApi` | **WBI 签名**（全 api 层依赖） | `signWBI`、`getWBIMixinKey`、`sortUrlParams` |
-| `AppInfoApi` | 公告/崩溃上报/赞助/检查更新 | `check`、`getAnnouncementList`、`uploadStack`、`getSponsors` |
-| `TerminalApi` | **自建**服务器：公告/反馈/匿名统计/崩溃上报（26.10.09 新增，见 §6.5） | `ping`、`submitFeedback`、`uploadCrash`、`checkAnnouncement`、`getOwnAnnouncementList`、`loadMergedAnnouncements` |
+| `AppInfoApi` | 上游服务器的崩溃上报 / 赞助 / 检查更新（公告接口已于 26.10.23 移除） | `check`、`uploadStack`、`getSponsors` |
+| `TerminalApi` | **自建**服务器：公告（含上游逐条审核透传）/反馈/匿名统计/崩溃上报（见 §6.5） | `ping`、`submitFeedback`、`uploadCrash`、`checkAnnouncement`、`getOwnAnnouncementList` |
 | `BilibiliIDConverter` | av/bv 互转（纯函数） | ~~`bvtoaid`、`aidtobv`~~ **26.09.11 已删除**（全工程 0 调用） |
 
 ### 网络出口的 3 个例外
@@ -1748,7 +1783,7 @@ TTF/OTF/TTC，应用把它**拷进私有目录**（`filesDir/custom_font/custom_
 
 **不可单测**（内部发网络 / 依赖 Context / 弹 UI）：`DynamicApi.analyzeDynamic`、`MessageApi` 全部解析（SpannableString）、`PrivateMsgApi.getPrivateMsgList`、`LikeCoinFavApi.getVideoStats`。
 
-**测试覆盖现状（26.10.23 合并上游后实测）**：`app/src/test/` 79 个测试类 / 843 个用例（两个 flavor 各 843、0 失败）；api 层只有 10 个类的解析函数被覆盖（`HotSearchApiTest`、`FavoriteApiTest`、`FollowApiTest`、`OpusApiTest`、`PrivateMsgApiTest`、`BangumiApiTest`、`DynamicApiTest`、`TopicApiTest`、`NoteApiTest`、`WatchLaterApiTest`，另有 `PlayerApiPbpTest`、`ReplyApiTest`、`ReplySortTest` 覆盖部分纯逻辑）；`ui/appearance/` 下有 4 个测试类——`ColorSchemeTest` 覆盖 7 套主题的 `key → style` / `key → 色表` / 中文显示名映射、无 key 时的默认值、以及色表缓存的失效与读取次数；`CornerStyleTest` 覆盖圆角两档与「档位 → 覆盖样式」映射；`FontStyleTest` 覆盖字体文件头校验（含 WOFF 专门拒绝）与「未配置不加载」的性能约定；`AppearanceManagerTest` 覆盖外观版本号与唯一写入入口；`PerformanceManagerTest` 覆盖档位换算与图片/分页参数（见 §7.10）；`ApkVerifierTest` 覆盖更新包校验的判定规则（见 §7.11）；`SettingsKeysTest` 把 `player`/`play_qn`/`bangumi_update_notify_enable` 三个磁盘键名钉死（见 §7.12）；`PrivateMsgApiTest` 另覆盖会话列表解析（含 `top_ts`）、`opTypeForTop` 的 0/1 映射（见 §7.13）与图片消息 content 的字段/单位换算（见 §7.14）；`MsgNotifierTest` 覆盖新消息通知的提醒判据与正文拼装（见 §7.15）以及追番更新的文案；`BangumiApiTest` 覆盖追番列表解析（见 §7.16）；`BangumiUpdateCheckerTest` 覆盖追番快照序列化与更新判定（见 §7.16）。
+**测试覆盖现状（26.10.23 合并上游后实测）**：`app/src/test/` 79 个测试类 / 840 个用例（两个 flavor 各 840、0 失败）；api 层只有 10 个类的解析函数被覆盖（`HotSearchApiTest`、`FavoriteApiTest`、`FollowApiTest`、`OpusApiTest`、`PrivateMsgApiTest`、`BangumiApiTest`、`DynamicApiTest`、`TopicApiTest`、`NoteApiTest`、`WatchLaterApiTest`，另有 `PlayerApiPbpTest`、`ReplyApiTest`、`ReplySortTest` 覆盖部分纯逻辑）；`ui/appearance/` 下有 4 个测试类——`ColorSchemeTest` 覆盖 7 套主题的 `key → style` / `key → 色表` / 中文显示名映射、无 key 时的默认值、以及色表缓存的失效与读取次数；`CornerStyleTest` 覆盖圆角两档与「档位 → 覆盖样式」映射；`FontStyleTest` 覆盖字体文件头校验（含 WOFF 专门拒绝）与「未配置不加载」的性能约定；`AppearanceManagerTest` 覆盖外观版本号与唯一写入入口；`PerformanceManagerTest` 覆盖档位换算与图片/分页参数（见 §7.10）；`ApkVerifierTest` 覆盖更新包校验的判定规则（见 §7.11）；`SettingsKeysTest` 把 `player`/`play_qn`/`bangumi_update_notify_enable` 三个磁盘键名钉死（见 §7.12）；`PrivateMsgApiTest` 另覆盖会话列表解析（含 `top_ts`）、`opTypeForTop` 的 0/1 映射（见 §7.13）与图片消息 content 的字段/单位换算（见 §7.14）；`MsgNotifierTest` 覆盖新消息通知的提醒判据与正文拼装（见 §7.15）以及追番更新的文案；`BangumiApiTest` 覆盖追番列表解析（见 §7.16）；`BangumiUpdateCheckerTest` 覆盖追番快照序列化与更新判定（见 §7.16）。
 
 ### API 层的坑
 

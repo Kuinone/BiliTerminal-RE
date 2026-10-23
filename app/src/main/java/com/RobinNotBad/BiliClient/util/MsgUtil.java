@@ -259,12 +259,21 @@ public class MsgUtil {
     }
 
     public static void showText(String title, String text) {
+        showText(title, text, false);
+    }
+
+    /**
+     * @param relayed true 表示这是从上游（原版哔哩终端）审核透传的公告，
+     *                正文页顶部会多一行来源说明
+     */
+    public static void showText(String title, String text, boolean relayed) {
         Context context = BiliTerminal.context;
         if (context != null) {
             Intent testIntent = new Intent()
                     .setClass(context, ShowTextActivity.class)
                     .putExtra("title", title)
                     .putExtra("content", text)
+                    .putExtra("relay_source", relayed)
                     .setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             context.startActivity(testIntent);
         }

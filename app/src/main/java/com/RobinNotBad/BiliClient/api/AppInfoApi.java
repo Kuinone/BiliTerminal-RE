@@ -10,7 +10,6 @@ import android.text.TextUtils;
 import com.RobinNotBad.BiliClient.BiliTerminal;
 import com.RobinNotBad.BiliClient.BuildConfig;
 import com.RobinNotBad.BiliClient.R;
-import com.RobinNotBad.BiliClient.model.Announcement;
 import com.RobinNotBad.BiliClient.model.ApiResult;
 import com.RobinNotBad.BiliClient.model.UserInfo;
 import com.RobinNotBad.BiliClient.util.Logu;
@@ -72,8 +71,6 @@ public class AppInfoApi {
             int version = BiliTerminal.getVersion();
             int curr = ConfInfoApi.getDateCurr();
 
-            checkAnnouncement();
-
             int last_ver = SharedPreferencesUtil.getInt("app_version_last", 0);
             if (last_ver < version) {
                 String update_apk = SharedPreferencesUtil.getString("terminal_update_pkg", "");
@@ -100,8 +97,6 @@ public class AppInfoApi {
                 Logu.e("检查更新");
                 SharedPreferencesUtil.putInt("app_version_check", curr);
             }
-        } catch (IOException e) {
-            MsgUtil.showMsg("无法连接到终端公告接口\n也许是服务器宕机了？\n（对软件内容无影响）");
         } catch (Exception e) {
             Logu.e(e.toString());
             MsgUtil.err(UiText.of("终端接口出现问题（不影响软件内容）"), e);
@@ -139,45 +134,6 @@ public class AppInfoApi {
             MsgUtil.showMsg("设备信息json生成出错\n无影响，正常情况下你应该不会遇到");
         }
     }};
-
-    public static void checkAnnouncement() throws Exception {
-        String url = "https://api.biliterminal.cn/terminal/announcement/get_list?from=" + SharedPreferencesUtil.getInt("app_announcement_last", -1);
-        JSONObject result = NetWorkUtil.getJson(url, customHeaders);
-
-        if (result.getInt("code") != 0) throw new Exception("错误：" + result.getString("msg"));
-        JSONArray data = result.getJSONArray("data");
-        for (int i = 0; i < data.length(); i++) {
-            JSONObject item = data.getJSONObject(i);
-
-            int id = item.getInt("id");
-
-            if (SharedPreferencesUtil.getInt("app_announcement_last", 0) < id)
-                SharedPreferencesUtil.putInt("app_announcement_last", id);
-            String title = item.getString("title");
-            String content = item.getString("content");
-            MsgUtil.showText(title, content);
-        }
-    }
-
-    public static ArrayList<Announcement> getAnnouncementList() throws Exception {
-        String url = "https://api.biliterminal.cn/terminal/announcement/get_list";
-        JSONObject result = NetWorkUtil.getJson(url, customHeaders);
-
-        if (result.getInt("code") != 0) throw new Exception("错误：" + result.getString("msg"));
-        JSONArray data = result.getJSONArray("data");
-
-        ArrayList<Announcement> list = new ArrayList<>();
-        for (int i = 0; i < data.length(); i++) {
-            JSONObject section = data.getJSONObject(i);
-            Announcement announcement = new Announcement();
-            announcement.id = section.getInt("id");
-            announcement.ctime = TimeUtil.formatDate(section.getLong("ctime") * 1000);
-            announcement.title = section.getString("title");
-            announcement.content = section.getString("content");
-            list.add(announcement);
-        }
-        return list;
-    }
 
     public static ApiResult uploadStack(String stack, Context context) {
         //上传崩溃堆栈

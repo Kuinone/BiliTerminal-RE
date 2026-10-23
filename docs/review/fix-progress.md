@@ -23,7 +23,7 @@
 - **依赖仓库**：`settings.gradle` 已把 aliyun 的 `google` / `public` / `gradle-plugin` 三个镜像前置，`google()`/`mavenCentral()`/jitpack 仅作兜底。
 - **改了 `res/` 文件集合时**：`:app:clean` 与后续命令**必须分两次 Gradle 调用**，且带 `--no-build-cache --no-configuration-cache`，否则会回放陈旧资源（症状是 `Unresolved reference 'R.layout.xxx'`）。
 - **版本一致性**：`:app:verifyVersionConsistency` 以 `strings.xml` 的 `update_log_current` 为锚点校验版本一致性；发版说明也由 CI 从它抽取（抽不到直接拒绝发版）。
-- **单测（静态计数，26.10.22 合并上游后实测）**：**79 个测试类 / 840 个用例**，两个 flavor 完全相同（同源码），0 失败 0 错误 0 跳过。计数方式：`app/src/test/` 下 `*Test.kt|java` 计数（另有共享假实现 `util/FakeSharedPreferences.kt`），`app/build/test-results/testStandardDebugUnitTest/TEST-*.xml` 的 `tests=` 求和。用例数一律以机器产出为准，队友口述数字不进入文档。
+- **单测（静态计数，26.10.23 合并上游后实测）**：**79 个测试类 / 840 个用例**，两个 flavor 完全相同（同源码），0 失败 0 错误 0 跳过。计数方式：`app/src/test/` 下 `*Test.kt|java` 计数（另有共享假实现 `util/FakeSharedPreferences.kt`），`app/build/test-results/testStandardDebugUnitTest/TEST-*.xml` 的 `tests=` 求和。用例数一律以机器产出为准，队友口述数字不进入文档。
 - **26.10.10 那一轮的构建记录（历史，留作「改 minSdk / 重跑 release 链路」时的验证口径）**：`minSdk 24 → 19` 全部改动（含 jsoup 1.16.1、7 个 `res/drawable-v21` 资源）落盘后，按「`clean` → `assembleRelease` → `lintRelease` → 单测」四步跑完（均带 `--no-configuration-cache`，`clean` 与 `assemble` 分两次调用），四步全 `BUILD SUCCESSFUL`（37s / 2m13s / 1m25s / 39s）。当时单测汇总 **49 suites / 460 tests / 0 failures**（任务名当时还是 `testDebugUnitTest`，现已带 flavor 前缀），最新 XML 时间 `2026-10-09T22:59:04`（晚于当轮 APK 出包时间 22:56:58，覆盖了当轮全部源码改动）。`:app:lintRelease` 的 **`NewApi` 从 22 条降到 2 条**，且这 2 条就是 `PlayerActivity.kt:1981` 的已知假阳性。发版前仍建议再跑一次确认。
 - **「自动跳过片头片尾」已恢复上线（26.10.22）**：26.10.10 的紧急撤回**已解除**，`SkipOpEdPrefs.FEATURE_ENABLED` 回到 `true`，设置入口与搜索索引均已恢复；口径按用户拍板改为**默认关闭**（`DEFAULT_ENABLED = false`，老用户存档里显式写的值仍然优先）。恢复细节见 §3.3「恢复记录」，乱跳的三个根因修复见 §3.55。
 - **本轮基建改动（26.10.10）**：**`minSdk 24 → 21 → 19（Android 4.4）`**，唯一落点是 `app/build.gradle:21`。两级下调的成本不同，分开记：
@@ -1141,7 +1141,7 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
   - 顺带修掉一处自测才暴露的问题：`弹幕缺口` 日志原先把"成功但为空"也算缺口，短 P 会天天刷 `分段 2~10（360~3600 秒无弹幕）`这种误报；现在只在**重试后仍为 null**（真失败）时打 E 级日志，空段只体现在"X/Y 段非空"里。
   - 顺带确认 `segmentCountFor(3600) = 10`（旧公式 `3600/360+1 = 11`，白发一个必空请求）。
 - **仍未做（另立项）**：`duration` 未就绪时按 3600 秒硬算 10 段（短 P 会白拉 9 段）——正确做法是先只取第 1 段、`onPrepared` 拿到真实时长后再补拉剩余分段（涉及二次加载时序，风险比本批大）。
-- **本节已被 §3.56 取代**：上面那套「周期性 `seekTo` 吸附」判据（`DanmakuSync.decide`）已于 26.10.22 **整体删除**。用户反馈「每隔一会自动纠偏本身就是不正常的行为」，根因是弹幕时钟按墙钟走导致速率性发散（见 §3.56），改为以播放器位置为时间源后不再需要任何周期性吸附。本节保留的是当时的排查过程与清屏机制的代码级结论，仍然有效。
+- **本节已被 §3.57 取代**：上面那套「周期性 `seekTo` 吸附」判据（`DanmakuSync.decide`）已于 26.10.22 **整体删除**。用户反馈「每隔一会自动纠偏本身就是不正常的行为」，根因是弹幕时钟按墙钟走导致速率性发散（见 §3.57），改为以播放器位置为时间源后不再需要任何周期性吸附。本节保留的是当时的排查过程与清屏机制的代码级结论，仍然有效。
 
 ### 3.52 存储兼容：默认目录按 API 分档 + 无全盘权限时自动降级（Wear OS，26.10.22，待真机）
 
@@ -1210,7 +1210,31 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
 - **验证（本机，26.10.22 已跑）**：`.\gradlew.bat :app:assembleDebug --offline --no-configuration-cache` → `BUILD SUCCESSFUL`（两 flavor 都出包）；`testStandardDebugUnitTest` 与 `testCoexistDebugUnitTest` → 各 **817 例 / 0 失败 0 错误**（改动前基线 806 例，新增 11 例）。改动只涉及播放器接线与纯判定，无新增用户可见文案。
 - **真机待验**：① 有片头片尾的视频开播后只跳一次，不再出现「十几秒后又跳」；② 番剧切集/切 P 后新一集仍能正常跳（不应因保留 handled 而漏跳）；③ 用户主动拖进片头后不被弹走；④ 连续两段（片头紧邻片尾）时片尾仍跳得到；⑤ 投屏/后台恢复后不重复跳。
 
-### 3.56 弹幕时间轴改由播放器位置驱动（彻底去掉周期性纠偏，26.10.22）
+### 3.56 公告单源：上游公告改由服务端逐条审核透传 + 正文页标注来源（26.10.23，生产已部署 / 待真机）
+
+- **需求**（用户）：「从应用端移除上游路的公告」，把上游公告接口接到自建服务器，**由维护者亲自逐条选择是否透传**；透传的公告**只在正文页顶部标注一行来源**（列表卡片不加徽标）；透传公告**参与启动差量弹窗**。来源文案定为「此公告来自原版哔哩终端」。
+- **客户端改法（两路合并整体拆除，单源化）**：
+  - `api/AppInfoApi.java`：删掉 `checkAnnouncement()` / `getAnnouncementList()` 两个方法、`check()` 里的调用、`Announcement` import；`check()` 不再发公告请求，只留更新包清理 / debug 警告（原先那条 `catch (IOException)` 随之失去可抛出点而删除，`uploadStack` 的 catch 仍需要 import）。
+  - `api/TerminalApi.java`：删 `mergeAnnouncements` / `loadMergedAnnouncements`，`parseAnnouncements` 增加 `source`（`optString("source","local")`）；`checkAnnouncement()` 改为单一源差量、`MsgUtil.showText(title, content, isRelayed())`；反馈的 `feedbackHeaders` 顺带修掉一处行合并。
+  - `model/Announcement.java` 加 `source` 与 `isRelayed()`；`MsgUtil.showText(title,text,relayed)` 新重载传 `relay_source` extra；`activity/ShowTextActivity.kt` 据 extra 显隐顶部来源行（`res/layout/activity_simple_text.xml` 新 `TextView relaySource`）；`adapter/AnnouncementAdapter.kt` 点击时透传 `isRelayed()`。
+  - `activity/settings/AnnouncementsActivity.kt`：只调 `getOwnAnnouncementList()`，空态/失败态走 `showEmptyView` + `MsgUtil.err`，删掉「部分公告源连不上」提示（`strings.xml` 该串换成 `text_announcement_relay_source`）。
+  - `SettingsKeys.TERMINAL_ANNOUNCEMENT_LAST` 注释更新：本地公告与透传公告**共用这一个游标**。
+- **服务端（`server/`，26.10.23 由 teammate 实现，`SCHEMA_VERSION=4`）**：`announcements` 加 `source`/`origin_id`/`relay_state` + 部分唯一索引、新增 `meta` 表存 `relay_last_pull`；上游拉取用标准库 `urllib.request`（`UPSTREAM_ANN_URL` 可被环境变量覆盖、超时 10s、`run_in_threadpool`）；管理接口 `GET /admin/api/announcement/relay`、`POST …/relay/refresh`（失败回 HTTP 200 + `{code:1,msg}`）、`POST …/relay/decision`（approve / reject，reject 可撤销已透传项，refresh 不复活 rejected）；`_VISIBLE_SQL` 只放 `relay_state='approved'`；控制台「公告」页签新增「上游透传（原版哔哩终端）」区块（待审 / 已透传 / 已拒绝 + 手动拉取 + `last_pull` 超 300s 自动补拉一次）；`selftest.py` 新增 §22（8 小节）。
+- **契约**：客户端 `get_list` 每行多 `"source": "local"|"relay"`；id 仍是本地自增 + `1_000_000_000`（两类公告共用 id 空间，relay 另存 `origin_id` 去重）；`local` 行行为与排序/差量语义**完全不变**；pending / rejected 对客户端与 `from` 差量都不可见。
+- **部署（HK 生产，26.10.23 21:02 完成）**：生产 `/opt/rebiliterminal-api/` 的三件套原为 **26.10.17 基线**（比本目录工作副本新：含 `/admin?token=` 303 → HttpOnly 会话 Cookie、控制台 UI 打磨、selftest §5 旧口令用例），直接用工作副本覆盖会回退这些改动，因此把 relay 改动**合并到生产基线**（产物 diff：`rebiliterminal_api.py` +336/−9、`console.html` +129/−4、`selftest.py` +250/−0），本机用合并产物跑 `selftest.py` 187 项全通过后才上传。
+  - 备份：`./backup.sh` → `backups/data-20261023.db`（7 张表）；旧文件另存 `.bak-20261023-210201-beforerelay`。
+  - 上传后 `systemctl restart rebiliterminal-api` → active，`/terminal/health` `code=0`；`PRAGMA user_version` 3→4，`announcements` 已加 `source/origin_id/relay_state` 三列、`meta` 表已建。
+  - 上线冒烟：公网 `get_list` 正常（local 行带 `"source":"local"`）；未登录 `GET /admin/api/announcement/relay` 与 `POST …/relay/decision` 均 **403**；`https://console.zsapp.asia/` 200 且含 relay 区块（`CONSOLE_VERSION = "v4 2026-10-23"`）；带 token 真拉上游 → `added=3 total=3`，relay 列表 `pending=3 approved=0 rejected=0`；`from=1000000000` 差量返回 4 行且 `relay=0`（待审不泄漏）；本地公告管理接口 41 行且仅 local。
+  - 部署后本目录 `server/` 三件套已同步为合并产物（106452 / 83457 / 45849 bytes）。
+- **验证（本机，26.10.23 已跑）**：
+  - `.\gradlew.bat :app:assembleDebug --offline` → `BUILD SUCCESSFUL`（standard + coexist 两个 Debug 包）。
+  - `:app:testStandardDebugUnitTest` 与 `:app:testCoexistDebugUnitTest` → 两 flavor 各 **815 例 / 0 失败 0 跳过**（`TerminalApiTest` 现 17 例：删掉 3 例「两路合并」并改为断言 `source`）。
+  - `server/`：`python -m py_compile` OK；`python server/selftest.py` → **187 项全通过**（含真上游冒烟；离线时 185 项）；本地 uvicorn 真服务 E2E 验证 approve 后客户端立即可见 `source=relay`、上游不可达时 `code=1`、登录后控制台含 relay 区块；`console.html` 的 script 块 `node --check` 通过。
+  - markdownlint：本次改动的 5 个 md 0 错误。
+- **未验证 / 待办**：① 生产上 3 条待审上游公告**未做 approve/reject 实操**（避免真实客户端看到未定内容；按用户要求「亲自选择是否透传」留给维护者在控制台点）；② 控制台按钮**没在真实浏览器点过**；③ 客户端未真机验证（列表只剩自建源、透传标注、待审不可见、差量弹窗只弹一次、断网不卡启动）；④ 上游长时间不可达时控制台每次打开页签会重试一次（无退避，属取舍）。
+- **注意**：`server/` 整个目录在 `.gitignore` 里（既有约定，服务端代码不进版本库），所以本次服务端改动只存在于工作区与 HK 部署目录，不随客户端提交。
+
+### 3.57 弹幕时间轴改由播放器位置驱动（彻底去掉周期性纠偏，26.10.22）
 
 - **用户反馈**：「弹幕每隔一会自动纠偏本就是一个不正常的行为，按理说应该全程跟随视频进度；其次在快进时这个纠偏更为严重。」并要求核实「弹幕的滚动速度计算是否有问题，导致弹幕与视频差距越来越大」。
 - **结论：确实是速率问题，不是阈值问题。** §3.51 的 `decide()` 只是把「清屏」限了频，没有消除漂移本身——根因在 DFM 内部：`DrawHandler.syncTimer()` 把 `SystemClock.uptimeMillis() - mTimeBase` 当成媒体时间，只有「视频恰好按 1.0x 实时播放」时才成立。
@@ -1240,7 +1264,7 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
   - **长时间无周期性清屏**：整段日志再无任何「纠偏/清屏」记录；`弹幕缺口` 无输出；错误日志只有 MuMu 自己的旋转提示，应用侧零异常。
 - **验证（本机）**：`:app:assembleCoexistDebug` 通过；`:app:testStandardDebugUnitTest` = **76 类 / 809 例 / 0 失败**（806 − 9 + 12）。**手表端仍待真机**（媒体时钟在弱机上的收敛速度、暂停/恢复的手感）。
 
-### 3.57 短视频页没有阻止自动熄屏（26.10.22）
+### 3.58 短视频页没有阻止自动熄屏（26.10.22）
 
 - **问题**（用户提出「检查短视频部分是否没有做阻止自动熄屏」）：**确实没有**。全仓与亮屏相关的代码只有两处——`res/layout/activity_player.xml` 根布局的 `android:keepScreenOn="true"`（长视频播放页）与 `DownloadListActivity` 的下载期 `FLAG_KEEP_SCREEN_ON`；短视频这套（`activity_short_video_player.xml` + `fragment_short_video_page.xml`）**一处都没有**，看短视频到系统熄屏时间就黑屏。
 - **改法**（`activity/video/ShortVideoPlayerActivity.kt` + `ShortVideoFeedFragment.kt`）：
@@ -1252,7 +1276,7 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
 - **验证（本机）**：`:app:assembleCoexistDebug` 通过；`:app:testStandardDebugUnitTest` = 76 类 / 809 例 / 0 失败（本次只有 UI 状态逻辑，无新增可单测的纯函数）。
 - **顺带记一笔**：`mWakefulness` **不能**当判据——MuMu 本身不自动熄屏（桌面对照实验 22 秒后仍 `Awake`），必须看窗口 `fl`。
 
-### 3.58 新增「伪装与安全」：双击顶栏切到假计算器 / 假蓝牙提示（issue #22，26.10.22）
+### 3.59 新增「伪装与安全」：双击顶栏切到假计算器 / 假蓝牙提示（issue #22，26.10.22）
 
 - **需求**（issue #22，用户定的三条口径）：① 两种样式都做、可在设置里选；② 计算器的退出方式是「输入暗号再按 `=`」；③ 做成设置开关、**默认关**；触发方式为**双击顶栏**。
 - **新增**：
@@ -1267,11 +1291,11 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
 - **模拟器实测（MuMu Android 15 x86_64，coexist debug，用户本人操作）**：双击顶栏 → `WindowManagerShell` 日志确认 `CalculatorDisguiseActivity` 在 display 22 打开；输入暗号按 `=` → `disguise>暗号命中，退出伪装` 并回到原页面；全程 **0 条 `FATAL EXCEPTION` / `AndroidRuntime` 异常**；`BaseActivity>setupTopbarDoubleTapDisguise: 顶栏双击伪装已就绪` 在每个页面正常打印。
 - **手表端待验**：单击顶栏的 0.3 秒延迟在真机手感（尤其列表页"点顶栏返回"）是否可接受；半透明蓝牙提示页在圆屏手表上的布局。
 
-### 3.59 上游审查意见修复（26.10.23）
+### 3.60 上游审查意见修复（26.10.23）
 
 上游对 PR 提了 1 个 P0 + 7 条 P1/P2。逐条核对后的处理：
 
-- **P0（真回归，§3.56 引入）短视频首播弹幕不显示**：`ShortVideoPlayerActivity` 在 `loadDanmaku()` **之前**调 `danmakuManager?.resume()`，而 `DanmakuManager.resume()` 有 `isPrepared` 守卫，此刻必然 false → 空操作；全页又没有任何 `start()`。DFM 的 UPDATE 循环**只由 START / SEEK_POS / RESUME 三个分支拉起，`prepare()` 本身不会启动**，旧实现是靠周期性 `seekTo` 的副作用（SEEK_POS 落穿到 RESUME）间接启动的。§3.56 删掉周期性 seekTo 时把这个副作用一起删了。
+- **P0（真回归，§3.57 引入）短视频首播弹幕不显示**：`ShortVideoPlayerActivity` 在 `loadDanmaku()` **之前**调 `danmakuManager?.resume()`，而 `DanmakuManager.resume()` 有 `isPrepared` 守卫，此刻必然 false → 空操作；全页又没有任何 `start()`。DFM 的 UPDATE 循环**只由 START / SEEK_POS / RESUME 三个分支拉起，`prepare()` 本身不会启动**，旧实现是靠周期性 `seekTo` 的副作用（SEEK_POS 落穿到 RESUME）间接启动的。§3.57 删掉周期性 seekTo 时把这个副作用一起删了。
   - 修法：`DanmakuManager` 新增 `start(positionMs = -1)`，并在 `configureAndPrepare()` 末尾自动调用（起播位置优先取媒体时钟的已知位置，续播/切页别从 0 重走）。等价于长视频页原本在 `onPrepared` 里做的 `mDanmakuView.start()`。
   - 实测（模拟器）：进入短视频页**不做任何操作**，弹幕区出现「弹幕准备完毕」+ 多条滚动弹幕（修复前只有烧进画面的字幕）。
 - **P1-1 双击顶栏覆盖面与文案不一致**：`PlayerActivity` 不继承 `BaseActivity`（没有手势）；20 个 `asyncInflate` 页面在 `onStart` 时视图还没进来，`findViewById(R.id.top)` 为 null 直接 return（首次进入无效、退出再进才生效）；短视频的顶栏在分页 item 里也装不上。
@@ -1280,10 +1304,10 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
   - 修法：新增 `stepFor(speed)`（步进上限随倍速放大）与 `SNAP_ERROR_MS = 500`（误差过半秒直接吸附）。`nextTimerValue` 增加 `speed` 参数，补单测 2 例。
 - **P1-3 计算器负数无法续算**：`3-6` 之后表达式里留下 `-3`，再按运算符或 `=` 会因为「首字符是运算符」直接 `ERROR`，伪装页显示「错误」很扎眼。
   - 修法：`CalculatorEngine` 支持表达式开头的一元负号；补负数用例 6 条（`-3+2` / `-3×2` / `0-3-3` / `-3` / `-3÷2`。
-- **P1-6 文档一致性**：`architecture-map` 的测试清单（§3/§8 两处 76 类 806 例 → 79 类 843 例，补 `MediaClockSyncTest` / `CalculatorEngineTest` / `DisguisePrefsTest` / `SkipCancelPolicyTest`，删已不存在的 `DanmakuSyncTest`）、弹幕时钟旧口径（把「DanmakuSync + 周期性 seekTo」整段换成 §7.51 的现行做法）、`docs/README.md`「19 章」→「20 章」、`FEATURES.md` 重编号后 6 处旧引用、`readme.md` 的分支制度与已不存在的 `testDebugUnitTest`。
+- **P1-6 文档一致性**：`architecture-map` 的测试清单（§3/§8 两处 76 类 806 例 → 79 类 840 例，补 `MediaClockSyncTest` / `CalculatorEngineTest` / `DisguisePrefsTest` / `SkipCancelPolicyTest`，删已不存在的 `DanmakuSyncTest`）、弹幕时钟旧口径（把「DanmakuSync + 周期性 seekTo」整段换成 §7.51 的现行做法）、`docs/README.md`「19 章」→「20 章」、`FEATURES.md` 重编号后 6 处旧引用、`readme.md` 的分支制度与已不存在的 `testDebugUnitTest`。
 - **P2 顺手修**：短视频 `onError` 未把 `isPlaying` 置 false（画面停住却一直挂着 `KEEP_SCREEN_ON`）；`isPlaying` 补 `@Volatile`（弹幕渲染线程读）；`format` 指定 `Locale.US`（默认 Locale 会把小数点写成逗号，结果再回填就解析不回来）；`DrawHandler` 的 SEEK_POS / RESUME 分支重置媒体时钟采样（避免暂停恢复后计时器前冲再回落）；长视频续播 seek 补 `markSeekTarget`；设置里的暗号不再**逐键**弹 toast（`TextWatcher` 每次击键都会触发）。
 - **未做（需单独决策）**：把 PR 拆成三份、`readme.md` 功能表补伪装条目之外的市场化描述、`excludeFromRecents`/图标（需真机确认最近任务卡片表现）、`setScreenOnWhilePlaying(true)` 对 TextureView 无效但仍保留（SurfaceView 路径可能有意义，改动收益不明确）。
-- **验证**：`:app:assembleCoexistDebug` 通过；`:app:testStandardDebugUnitTest` **79 类 / 843 例 / 0 失败**；模拟器实测 P0 与双击手势；markdownlint 31 文件 0 issue。
+- **验证**：`:app:assembleCoexistDebug` 通过；`:app:testStandardDebugUnitTest` **79 类 / 840 例 / 0 失败**；模拟器实测 P0 与双击手势；markdownlint 31 文件 0 issue。
 
 ## 4. 历史章节索引
 

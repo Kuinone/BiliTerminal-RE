@@ -37,7 +37,9 @@ class AnnouncementAdapter(
             if (extra_start == -1) announcement.content else announcement.content!!.substring(0, extra_start) + "[附加内容]"
         holder.info.text = "ID:" + announcement.id + " | " + announcement.ctime
 
-        holder.cardView.setOnClickListener { MsgUtil.showText(announcement.title, announcement.content) }
+        holder.cardView.setOnClickListener {
+            MsgUtil.showText(announcement.title, announcement.content, announcement.isRelayed())
+        }
     }
 
     override fun getItemCount(): Int {

@@ -820,7 +820,7 @@
     <string name="pagename_settingqualityactivity_001">请选择清晰度</string>
     <string name="msg_settingsearchactivity_001">已重置为默认设置</string>
     <string name="pagename_announcementsactivity_001">公告列表</string>
-    <string name="msg_announcementsactivity_001">部分公告源连不上，已显示能取到的内容</string>
+    <string name="text_announcement_relay_source">此公告来自原版哔哩终端</string>
     <string name="msg_searchsortactivity_001">长按拖动以排序（视频始终在第一位）</string>
     <string name="msg_searchsortactivity_002">排序已保存</string>
     <string name="pagename_sponsoractivity_001">捐赠列表</string>

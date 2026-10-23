@@ -1,6 +1,5 @@
 package com.RobinNotBad.BiliClient.api
 
-import com.RobinNotBad.BiliClient.model.Announcement
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
@@ -195,7 +194,7 @@ class TerminalApiTest {
     fun parseAnnouncements_parsesSecondsAndSkipsIdlessItems() {
         val json = """
             [
-              {"id":1000000002,"ctime":1700000000,"title":"第二条","content":"内容二"},
+              {"id":1000000002,"ctime":1700000000,"title":"第二条","content":"内容二","source":"relay"},
               {"id":1000000001,"ctime":1690000000,"title":"第一条","content":"内容一"},
               {"ctime":1600000000,"title":"没有 id","content":"应被跳过"}
             ]
@@ -205,6 +204,8 @@ class TerminalApiTest {
         assertEquals(1000000002, list[0].id)
         assertEquals("第二条", list[0].title)
         assertEquals("内容一", list[1].content)
+        assertTrue("source=relay 应识别为透传公告", list[0].isRelayed())
+        assertFalse("缺省 source 应按本项目公告处理", list[1].isRelayed())
         assertFalse("ctime 秒应被换算成可读日期", list[0].ctime.isEmpty())
         assertTrue("应格式化为 yyyy-MM-dd", list[0].ctime.matches(Regex("\\d{4}-\\d{2}-\\d{2}")))
         // 秒当毫秒用会得到 1970 年，只断形状抓不到这个错，必须断年份区间：
@@ -217,45 +218,6 @@ class TerminalApiTest {
     fun parseAnnouncements_nullArrayYieldsEmptyList() {
         assertTrue(TerminalApi.parseAnnouncements(null).isEmpty())
         assertTrue(TerminalApi.parseAnnouncements(JSONArray()).isEmpty())
-    }
-
-    // ---------- 两路合并 ----------
-
-    private fun announcement(id: Int): Announcement {
-        val item = Announcement()
-        item.id = id
-        item.title = "t$id"
-        item.content = "c$id"
-        item.ctime = "2024-01-01"
-        return item
-    }
-
-    @Test
-    fun mergeAnnouncements_sortsByIdDescending() {
-        val upstream = arrayListOf(announcement(3), announcement(1))
-        val own = arrayListOf(announcement(1000000002), announcement(2))
-        val merged = TerminalApi.mergeAnnouncements(upstream, own)
-        assertEquals(4, merged.size)
-        assertEquals("自建源 id 带 10 亿偏移，应排在最前", 1000000002, merged[0].id)
-        assertEquals(3, merged[1].id)
-        assertEquals(2, merged[2].id)
-        assertEquals(1, merged[3].id)
-    }
-
-    @Test
-    fun mergeAnnouncements_deduplicatesById() {
-        val merged = TerminalApi.mergeAnnouncements(
-            arrayListOf(announcement(1), announcement(2)),
-            arrayListOf(announcement(2), announcement(3))
-        )
-        assertEquals("重复 id 只应保留一条", 3, merged.size)
-    }
-
-    @Test
-    fun mergeAnnouncements_toleratesOneSourceFailing() {
-        assertEquals("上游挂掉时应仍能展示自建源", 1, TerminalApi.mergeAnnouncements(null, arrayListOf(announcement(1))).size)
-        assertEquals("自建源挂掉时应仍能展示上游", 1, TerminalApi.mergeAnnouncements(arrayListOf(announcement(1)), null).size)
-        assertTrue("两路都挂掉时应为空而不是崩溃", TerminalApi.mergeAnnouncements(null, null).isEmpty())
     }
 
     // ---------- 日期键 ----------
