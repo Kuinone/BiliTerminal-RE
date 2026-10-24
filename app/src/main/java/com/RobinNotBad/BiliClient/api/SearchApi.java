@@ -54,13 +54,22 @@ public class SearchApi {
         String url = "https://api.bilibili.com/x/web-interface/wbi/search/all/v2?";
         url += "page=" + page +
                 "&keyword=" + URLEncoder.encode(keyword, "UTF-8") + "&seid=" + getSeid(keyword);
+        String legacyUrl = legacySearchAllUrl(keyword, page);
 
-        JSONObject all = NetWorkUtil.getJson(ConfInfoApi.signWBI(url)); // 得到一整个json
+        JSONObject all;
+        try {
+            all = NetWorkUtil.getJson(ConfInfoApi.signWBI(url)); // 得到一整个json
+        } catch (IOException | JSONException e) {
+            // 风控有时直接回一张 HTML 拦截页，请求层就失败了（见 #fallbackToLegacy），
+            // 这时同样要兜一次旧接口，不能把"被风控"报成"网络错误"
+            Object legacyResult = fallbackToLegacy(keyword, legacyUrl, e);
+            return legacyResult == null ? null : (JSONArray) legacyResult;
+        }
 
         if (shouldFallback(all)) {
             // 风控只拦 wbi 那条，退到旧接口（不带签名）再试一次。
             // 用 getJsonOnce：已经确认处在风控态，再走通用重试（5 次）只会把限流拖得更久。
-            Object legacyResult = resultOrThrow(keyword, NetWorkUtil.getJsonOnce(legacySearchAllUrl(keyword, page)));
+            Object legacyResult = fallbackToLegacy(keyword, legacyUrl, null);
             return legacyResult == null ? null : (JSONArray) legacyResult;
         }
 
@@ -99,13 +108,20 @@ public class SearchApi {
         url += "page=" + page +
                 "&keyword=" + URLEncoder.encode(keyword, "UTF-8") + "&search_type=" + type + "&seid=" + getSeid(keyword);
         if (order != null && !order.isEmpty()) url += "&order=" + order;
+        String legacyUrl = legacySearchTypeUrl(keyword, page, type, order);
 
-        JSONObject all = NetWorkUtil.getJson(ConfInfoApi.signWBI(url)); // 得到一整个json
+        JSONObject all;
+        try {
+            all = NetWorkUtil.getJson(ConfInfoApi.signWBI(url)); // 得到一整个json
+        } catch (IOException | JSONException e) {
+            // 同 search()：风控直接回 HTML 时请求层就失败了，也要兜一次旧接口
+            return fallbackToLegacy(keyword, legacyUrl, e);
+        }
 
         if (shouldFallback(all)) {
             // 风控只拦 wbi 那条，退到旧接口（不带签名）再试一次。
             // 用 getJsonOnce：已经确认处在风控态，再走通用重试（5 次）只会把限流拖得更久。
-            return resultOrThrow(keyword, NetWorkUtil.getJsonOnce(legacySearchTypeUrl(keyword, page, type, order)));
+            return fallbackToLegacy(keyword, legacyUrl, null);
         }
 
         throwIfServerError(all);
@@ -119,6 +135,37 @@ public class SearchApi {
             return data.get("result"); // 其实这还不是我们要的结果，下面的函数对它进行再次拆解 这里做了判空
         else
             return null;
+    }
+
+    /**
+     * 被风控挡下后改打旧接口（不带 wbi 签名）。
+     *
+     * <h3>为什么请求层失败也算风控</h3>
+     * 风控不只表现为「合法的 JSON 空壳」——B 站被拦时还可能直接回一张 **HTML 拦截页**，
+     * 那会让 {@link NetWorkUtil#getJson} 的 doctype 重试耗尽后抛 {@code IOException}，
+     * 或者内容不是 JSON 而抛 {@code JSONException}。旧实现里这两种情况在 {@code shouldFallback}
+     * 之前就抛出去了，页面只会显示「网络错误」、排序按钮也进不了风控态
+     * （26.10.25 审查指出；实测响应记录见 `docs/review/agent-test-guide.md`）。
+     *
+     * <h3>两边都失败时报什么</h3>
+     * 主链路是**网络层失败**（真断网）→ 如实上抛它的异常，别诬陷成风控；
+     * 主链路是**合法 JSON 的风控降级**（{@code primary == null}）→ 抛
+     * {@link RiskControlException}，让用户看到「过一会儿再试」并拿到重试入口。
+     *
+     * @param primary 主链路的失败原因；{@code null} 表示主链路请求成功、只是响应是被风控降级的空壳
+     */
+    private static Object fallbackToLegacy(String keyword, String legacyUrl, Exception primary)
+            throws IOException, JSONException {
+        try {
+            return resultOrThrow(keyword, NetWorkUtil.getJsonOnce(legacyUrl));
+        } catch (SearchException e) {
+            // 旧接口已经给出明确结论（风控 / 服务端错误码），比网络层异常更有信息量
+            throw e;
+        } catch (IOException | JSONException e) {
+            if (primary instanceof IOException) throw (IOException) primary;
+            if (primary instanceof JSONException) throw (JSONException) primary;
+            throw new RiskControlException(ApiErrorText.searchRejected());
+        }
     }
 
     /** 旧接口（非 wbi 签名）。风控只拦 wbi 那条，退到这里一般还能拿到结果——26.10.24 实测。 */
@@ -167,15 +214,11 @@ public class SearchApi {
     }
 
     /**
-     * 旧接口的响应清洗：仍然给风控挡下（旧接口也回了 `v_voucher`）就抛出去，
-     * 让页面把「搜索被B站风控了，过一会儿再试」告诉用户，而不是给一个空列表。
-     */
-    /**
      * 旧接口的响应清洗：风控（`-412`/`-352`/`v_voucher`）抛 {@link RiskControlException}，
      * 其它非零 `code` 抛 {@link SearchException}（带服务端错误码，别伪装成"没有结果"），
-     * 只有 `code == 0` 且拿不到 `result` 才返回 null。
+     * 只有 `code == 0` 且拿不到 `result` 才返回 null——那才是真的"没有匹配结果"。
      *
-     * 26.10.24 审查指出：以前其它错误码也返回 null，页面会显示成「啥都木有」。
+     * <p>26.10.24 审查指出：以前其它错误码也返回 null，页面会显示成「啥都木有」。
      */
     private static Object resultOrThrow(String keyword, JSONObject all) throws JSONException, SearchException {
         if (all == null) return null;

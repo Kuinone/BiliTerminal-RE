@@ -252,11 +252,16 @@ public class NetWorkUtil {
     }
 
     /**
-     * 不跑风控重试的 JSON 请求：只发**一次**，`-352` / `-412` 原样返回，由调用方自己决定怎么处理。
+     * 不跑任何重试的 JSON 请求：只发**一次**，`-352` / `-412` 原样返回，由调用方自己决定怎么处理。
      *
      * 给「已经确定处在风控状态」的场景用：搜索在 wbi 接口被拦后要回退旧接口，那次回退再走
      * 通用重试的话两条接口各重试 5 次 = 一次搜索最多 10 个请求，只会把限流拖得更久
      * （26.10.24 审查指出）。默认的 {@link #getJson(String)} 行为不变。
+     *
+     * **连 doctype 重试也一并跳过**：`get()` 走 {@link #executeWithDoctypeRetry}，会把
+     * `<!doctype html>` 响应当成风控拦截再重试 5 次——风控页恰恰就是一张 HTML，兜底链路上
+     * 再重试 5 次等于没省（26.10.25 审查指出）。这里直连一次：拿到 HTML 就按「不是 JSON」
+     * 在解析处失败，由调用方决定要不要回退 / 上抛。
      */
     public static JSONObject getJsonOnce(String url) throws IOException, JSONException {
         return executeJsonOnce(url, webHeaders);
@@ -328,10 +333,18 @@ public class NetWorkUtil {
     }
 
     /**
-     * 只发一次，不对 `-352` / `-412` 重试（见 {@link #getJsonOnce(String)}）。
+     * {@link #getJsonOnce(String)} 的实现：**单次直连**，不经过 {@link #executeWithDoctypeRetry}。
+     *
+     * 直接用 OkHttp 发一次，是为了让风控回退链路真的只产生一个请求（见 {@link #getJsonOnce}）。
      */
     private static JSONObject executeJsonOnce(String url, ArrayList<String> headers) throws IOException, JSONException {
-        try (ResponseBody body = get(url, headers).body()) {
+        Logu.d("get-url", url);
+        Request.Builder requestBuilder = new Request.Builder().url(url).get();
+        for (int i = 0; i < headers.size(); i += 2)
+            requestBuilder.addHeader(headers.get(i), headers.get(i + 1));
+        try (Response response = getOkHttpInstance().newCall(requestBuilder.build()).execute()) {
+            saveCookiesFromResponse(response);
+            ResponseBody body = response.body();
             if (body == null) throw new JSONException("在访问" + url + "时返回内容为空");
             return new JSONObject(body.string());
         }

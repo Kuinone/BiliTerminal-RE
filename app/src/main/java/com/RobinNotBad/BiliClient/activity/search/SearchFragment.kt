@@ -20,7 +20,6 @@ import com.RobinNotBad.BiliClient.api.SearchApi
 import com.RobinNotBad.BiliClient.listener.OnLoadMoreListener
 import com.RobinNotBad.BiliClient.ui.widget.recycler.CustomGridManager
 import com.RobinNotBad.BiliClient.ui.widget.recycler.CustomLinearManager
-import com.RobinNotBad.BiliClient.ui.appearance.ColorScheme
 import com.RobinNotBad.BiliClient.util.MsgUtil
 import com.RobinNotBad.BiliClient.util.CenterThreadPool
 import com.RobinNotBad.BiliClient.util.SharedPreferencesUtil

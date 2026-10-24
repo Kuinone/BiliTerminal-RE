@@ -381,9 +381,10 @@ CenterThreadPool.supplyAsyncWithLiveData { fetch...().getOrThrow() }
 2. **`AndroidManifest.xml` 不再全局开 `usesCleartextTraffic`**，改走
    `res/xml/network_security_config.xml`：`base-config` 禁止明文，只对 `bilibili.com` /
    `hdslb.com` / `bilivideo.com` / `afdiancdn.com` 放行。之所以不能一刀切禁明文，是因为解析层
-   仍有若干 `"http:" + url` 的拼接（`LiveCardAdapter` 直播封面、`SearchApi` 封面/头像、
-   `OpusParagraph` 图片）。**若要把这些也改成 https，必须先在真机验证对应 CDN 节点支持 https，
-   再考虑把域名从白名单移除。** 新增需要明文的域名要显式加进白名单并说明原因。
+   仍有若干 `"http:" + url` 的拼接（`LiveCardAdapter` 直播封面、`OpusParagraph` 图片）。
+   `SearchApi` 的封面/头像已于 26.10.24 统一改走 `httpsUrl()`（`//` 开头才补 `https:`，已是绝对地址的原样保留），
+   不再是"拼 http 再用白名单兜"的那一类。**若要把剩下的也改成 https，必须先在真机验证对应 CDN
+   节点支持 https，再把域名从白名单移除。** 新增需要明文的域名要显式加进白名单并说明原因。
 3. **登录凭据不得随备份外流**。所有 Cookie / 账号态存在 SharedPreferences，
    故 `android:allowBackup="false"`，并用 `res/xml/backup_rules.xml`（API ≤30）与
    `res/xml/data_extraction_rules.xml`（API 31+）排除 `sharedpref` 与 `database` 两个 domain。

@@ -593,7 +593,8 @@ class SearchActivity : InstanceActivity() {
      * [applyTopChrome]——它和搜索框共用一条动画，两边各自跑就会错位。
      *
      * 被风控挡下（`SearchApi.RiskControlException`，wbi 与旧接口都没结果）时按钮改成
-     * 「因B站风控不可用」，点它只提示「请稍候再试」——此时切排序也拿不到结果。
+     * 「因B站风控不可用」，点它会提示「请稍候再试」**并真的重拉一次**（[SearchFragment.retry]）：
+     * 风控态下下拉刷新是关的、同关键词再搜也会短路，不给一条真正的重试路径按钮就永久锁死了。
      */
     private fun refreshSortBar() {
         if (isFinishing || isDestroyed) return
