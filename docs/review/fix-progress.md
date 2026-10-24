@@ -1410,6 +1410,9 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
   - **旧接口的其它错误码被伪装成空结果**：`resultOrThrow` 以前对所有非风控情况返回 null，`-400` 之类会显示成「啥都木有」。现在非零 `code` 抛 `SearchApi.SearchException`（`ApiErrorText.opFailed`），页面把错误码弹出来；`SearchFragment.report()` 改成认 `SearchException` 基类，风控与其它错误码都按自己的文案显示。
   - **测试补上判据**：`SearchApi.shouldFallback` / `isRiskControl` 提成 public static 供单测，新增 2 例钉住两种风控形态与「真没结果不算风控」。合并上游前的基线 **79 类 / 847 例 / 0 失败**；合并上游（v3 收藏夹等 15 个提交）后 **87 类 / 941 例 / 0 失败**。
 - **合并上游后的回归（26.10.24，本机 MuMu Android 15 x86_64 / coexist debug）**：合入 upstream 15 个提交（收藏夹 v3 迁移、无极调音、安全加固等）后重装包，搜索页排序链路仍正常——「排序：综合」→ 弹窗选「播放量」→ 797.2万 → 501.8万 → 443.9万 → 412.9万 严格降序；`logcat` 无 `FATAL EXCEPTION`（崩溃缓冲里那条是 `uiautomator` 自己的，与本应用无关）。构建与单测见上。
+- **用户反馈修复（26.10.24 当天，两处）**：① 「排序按钮消失和出现的时机、动画没跟随搜索框」——旧实现是搜索框 `translationY` 滑 300ms、按钮自己瞬间 GONE，且 `ViewPager` 锚在按钮下面（按钮 GONE 那一下列表整块往下跳）。现在两者由**同一条 `ValueAnimator` 按同一进度收放真实高度**（`SearchActivity.applyTopChrome`，`CHROME_ANIM_MS = 200`），列表跟着平滑补位；自然高度只在 `wrap_content` 时采样并缓存，避免把动画中间值记成自然高度。② 「第二次点搜索框时按钮没消失，挡住候选词」——历史 / 建议浮层与按钮占的是同一条（都锚在 `searchbar` 下方），按钮是 MaterialButton 带海拔，画在浮层上面。现在浮层一律走 `showHistoryDropdown()` / `showSuggestionsDropdown()` / `hideDropdowns()` 三个入口，浮层开着时按钮置 `INVISIBLE`（**让画面不让位置**，列表不整体上移，浮层正好盖住它）。
+  - **模拟器实测**：点搜索框 → 候选词第一行完整可见、按钮不再压在上面；滚动 → 搜索框与排序条同时收缩（把时长临时调到 1500ms 抓过中间帧，两者同比例变形）、结束时列表紧贴顶栏；回滚 → 一起展开；切到「番剧」分类按钮消失、切回「视频」恢复；`logcat` 0 条 `FATAL EXCEPTION`。
+  - **验证**：`:app:assembleDebug`（coexist）通过；两 flavor 单测各 **87 套 / 941 例 / 0 失败**（纯 UI 改动，未新增用例）；markdownlint 40 文件 0 issue。
 - **未做**：用户 / 直播的排序（它们的 `order` 是另一套键：`fans`/`level`、`online`/`live_time`），以及「最多弹幕 / 最多评论」两档（手表屏上弹窗列表已经够长）。
 
 ## 4. 历史章节索引

@@ -2,7 +2,9 @@ package com.RobinNotBad.BiliClient.activity.search
 
 import com.RobinNotBad.BiliClient.util.UiText
 
-import android.animation.ObjectAnimator
+import android.animation.Animator
+import android.animation.AnimatorListenerAdapter
+import android.animation.ValueAnimator
 import android.annotation.SuppressLint
 import android.content.Context
 import android.os.Bundle
@@ -12,6 +14,7 @@ import android.text.TextWatcher
 import android.util.Log
 import android.view.KeyEvent
 import android.view.View
+import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.widget.Button
@@ -38,7 +41,6 @@ import com.RobinNotBad.BiliClient.util.JsonUtil
 import com.RobinNotBad.BiliClient.util.LinkUrlUtil
 import com.RobinNotBad.BiliClient.util.MsgUtil
 import com.RobinNotBad.BiliClient.util.SharedPreferencesUtil
-import com.RobinNotBad.BiliClient.util.ToolsUtil
 
 import org.json.JSONArray
 import org.json.JSONException
@@ -54,6 +56,8 @@ class SearchActivity : InstanceActivity() {
     lateinit var viewPager: ViewPager2
     lateinit var keywordInput: EditText
     private lateinit var searchBar: ConstraintLayout
+
+    /** 顶部 chrome（搜索框 + 排序条）是否展开。滚动收起时两者永远一起收，见 [applyTopChrome]。 */
     private var searchBarVisible = true
 
     // 搜索结果排序按钮（视频 / 专栏）。控件在本页而不是 fragment 里：fragment 的 ViewPager 只对齐到
@@ -62,6 +66,21 @@ class SearchActivity : InstanceActivity() {
 
     /** 至少搜过一次才显示排序按钮：还没搜索时页面上是历史记录，给「排序」没有意义。 */
     private var hasSearched = false
+
+    /** 当前分类支持排序（视频 / 专栏）且已搜过——只决定「要不要占位」，这里不看滚动与候选词浮层。 */
+    private var sortBarEligible = false
+
+    /** 搜索历史 / 建议浮层是否盖在列表上。浮层开着时排序条必须让位，否则压在候选词上面。 */
+    private var dropdownVisible = false
+
+    /** 顶部 chrome 的收缩/展开动画。两条 chrome 由它统一驱动，谁的时机都不许自己算。 */
+    private var chromeAnimator: ValueAnimator? = null
+
+    /** 控件「完整展开时」的高度：收起后量不到，第一次量到就缓存（与 RefreshListActivity 同一套做法）。 */
+    private val naturalHeights = HashMap<View, Int>()
+
+    /** 布局还没完成时量不到自然高度，此时重投一次；上限防止自旋。 */
+    private var chromeRetry = 0
     private var refreshing = false
     private var animate_last: Long = 0
     lateinit var handler: Handler
@@ -140,19 +159,15 @@ class SearchActivity : InstanceActivity() {
                     // 只有「输入框有内容 且 确实拿到了建议」才显示建议列表，
                     // 否则会出现建议列表空白、历史记录又看不见的情况
                     if (keyword.isEmpty() || !suggestionsEnabled || searchSuggestions.isEmpty()) {
-                        historyRecyclerview.visibility = View.VISIBLE
-                        suggestionsRecyclerview.visibility = View.GONE
+                        showHistoryDropdown()
                     } else {
-                        historyRecyclerview.visibility = View.GONE
-                        suggestionsRecyclerview.visibility = View.VISIBLE
+                        showSuggestionsDropdown()
                     }
                 } else {
-                    historyRecyclerview.visibility = View.GONE
-                    suggestionsRecyclerview.visibility = View.GONE
+                    hideDropdowns()
                 }
             }
-            historyRecyclerview.visibility = View.VISIBLE
-            suggestionsRecyclerview.visibility = View.GONE
+            showHistoryDropdown()
             // 动态适配器：根据用户设置决定显示的搜索类别和顺序
             val vpfAdapter: FragmentStateAdapter = object : FragmentStateAdapter(this) {
                 override fun getItemCount(): Int {
@@ -274,8 +289,7 @@ class SearchActivity : InstanceActivity() {
                         if (keyword.isEmpty()) {
                             runOnUiThread {
                                 if (keywordInput.hasFocus()) {
-                                    historyRecyclerview.visibility = View.VISIBLE
-                                    suggestionsRecyclerview.visibility = View.GONE
+                                    showHistoryDropdown()
                                 }
                             }
                         } else {
@@ -294,11 +308,9 @@ class SearchActivity : InstanceActivity() {
                                             searchSuggestionsAdapter.notifyDataSetChanged()
 
                                             if (suggestions.isNotEmpty()) {
-                                                historyRecyclerview.visibility = View.GONE
-                                                suggestionsRecyclerview.visibility = View.VISIBLE
+                                                showSuggestionsDropdown()
                                             } else {
-                                                historyRecyclerview.visibility = View.VISIBLE
-                                                suggestionsRecyclerview.visibility = View.GONE
+                                                showHistoryDropdown()
                                             }
                                         }
                                     } catch (e: Exception) {
@@ -480,7 +492,7 @@ class SearchActivity : InstanceActivity() {
             // 否则那个请求返回后会把建议卡片重新盖在搜索结果上
             suggestionGeneration++
             if (suggestionRunnable != null) handler.removeCallbacks(suggestionRunnable!!)
-            runOnUiThread { suggestionsRecyclerview.visibility = View.GONE }
+            runOnUiThread { hideDropdowns() }
 
             if (keyword.isEmpty()) {
                 if (defaultSearchContentEnabled && defaultSearchContent != null && defaultSearchContent!!.isNotEmpty()) {
@@ -497,14 +509,14 @@ class SearchActivity : InstanceActivity() {
             if (Objects.equals(lastKeyword, keyword)) {
                 runOnUiThread {
                     keywordInput.clearFocus()
-                    historyRecyclerview.visibility = View.GONE
+                    hideDropdowns()
                 }
             } else {
                 refreshing = true
                 lastKeyword = keyword
 
                 runOnUiThread {
-                    historyRecyclerview.visibility = View.GONE
+                    hideDropdowns()
                     keywordInput.clearFocus()
                 }
 
@@ -575,10 +587,10 @@ class SearchActivity : InstanceActivity() {
     }
 
     /**
-     * 按当前分类刷新排序按钮：支持排序的分类（视频 / 专栏）显示，其余隐藏。
+     * 按当前分类刷新排序按钮：支持排序的分类（视频 / 专栏）且已搜过才占位，其余不占。
      *
-     * 没搜过的时候不显示——那时页面上是搜索历史，摆一个「排序」没有意义。
-     * 搜索框被滚走时也一起收起：它们是同一层顶部 chrome，只收一半会让列表顶上留个洞。
+     * 这里只决定「该不该有这条 chrome」和它的文案；什么时候画出来、怎么动，一律交给
+     * [applyTopChrome]——它和搜索框共用一条动画，两边各自跑就会错位。
      *
      * 被风控挡下（`SearchApi.RiskControlException`，wbi 与旧接口都没结果）时按钮改成
      * 「因B站风控不可用」，点它只提示「请稍候再试」——此时切排序也拿不到结果。
@@ -588,8 +600,10 @@ class SearchActivity : InstanceActivity() {
         if (!::sortButton.isInitialized) return
         val fragment = supportFragmentManager.findFragmentByTag("f" + viewPager.currentItem) as? SearchFragment
         val options = fragment?.sortOptions().orEmpty()
-        if (fragment == null || !hasSearched || options.isEmpty() || !searchBarVisible) {
-            sortButton.visibility = View.GONE
+        val eligibleBefore = sortBarEligible
+        sortBarEligible = fragment != null && hasSearched && options.isNotEmpty()
+        if (fragment == null || !sortBarEligible) {
+            if (eligibleBefore || chromeAnimator == null) applyTopChrome(false)
             return
         }
 
@@ -604,14 +618,179 @@ class SearchActivity : InstanceActivity() {
                 // 不给一条真正的重试路径的话按钮就永久锁死了（26.10.24 审查发现）
                 fragment.retry()
             }
-            sortButton.visibility = View.VISIBLE
+        } else {
+            val current = options.firstOrNull { it.order == fragment.currentSortOrder() } ?: options[0]
+            sortButton.text = getString(R.string.text_search_sort_button, getString(current.labelRes))
+            sortButton.setOnClickListener { showSortDialog(fragment, options, current.order) }
+        }
+        // 只有「占位与否」变了才需要重排布局：文案变化不影响高度，而此刻若正跑着滚动动画，
+        // 瞬间落定会把动画掐断（翻页时 onPageSelected 紧跟 onPageScrolled 就是这种时序）
+        if (eligibleBefore != sortBarEligible || chromeAnimator == null) applyTopChrome(false)
+    }
+
+    /** 历史 / 建议浮层统一从这里开关：浮层盖在列表上时排序条必须让位，否则会压在候选词上面。 */
+    private fun showHistoryDropdown() {
+        historyRecyclerview.visibility = View.VISIBLE
+        suggestionsRecyclerview.visibility = View.GONE
+        setDropdownVisible(true)
+    }
+
+    private fun showSuggestionsDropdown() {
+        historyRecyclerview.visibility = View.GONE
+        suggestionsRecyclerview.visibility = View.VISIBLE
+        setDropdownVisible(true)
+    }
+
+    private fun hideDropdowns() {
+        historyRecyclerview.visibility = View.GONE
+        suggestionsRecyclerview.visibility = View.GONE
+        setDropdownVisible(false)
+    }
+
+    private fun setDropdownVisible(visible: Boolean) {
+        if (dropdownVisible == visible) return
+        dropdownVisible = visible
+        applyTopChrome(false)
+    }
+
+    /**
+     * 顶部 chrome（搜索框 + 排序条）的唯一显隐入口。
+     *
+     * 三条硬约定：
+     * 1. **两者共用一条 [ValueAnimator]**、按同一个进度收敛。26.10.24 用户反馈「排序按钮消失/
+     *    出现的时机和动画没跟随搜索框」，根因就是搜索框滑它的、按钮自己瞬间 GONE。
+     * 2. **收的是真实高度，不是 `translationY`**：`ViewPager` 锚在排序条下面，translation 不参与
+     *    布局，收起后列表不会补位，只会在动画结束后「啪」地跳一截。
+     * 3. **浮层（历史 / 建议）开着时排序条只让出画面、不让出位置**（`INVISIBLE` 而非 `GONE`）：
+     *    浮层正好盖在这条上，保持占位可以避免候选词一出现列表就整体上移。
+     *
+     * @param animate 滚动触发的收起 / 展开传 `true`；切分类、换关键词、浮层开关这类本身就瞬间
+     *                发生（同帧还有列表重画）的传 `false`，动画反而会跟它们打架。
+     */
+    private fun applyTopChrome(animate: Boolean) {
+        if (isFinishing || isDestroyed) return
+        if (!::sortButton.isInitialized) return
+
+        val expanded = searchBarVisible
+        val sortSlot = sortBarEligible && expanded // 排序条在布局里是否占位
+        val sortDrawn = sortSlot && !dropdownVisible // 是否真的画出来
+
+        if (!animate) {
+            val running = chromeAnimator
+            chromeAnimator = null
+            running?.cancel()
+            searchBar.alpha = 1f
+            sortButton.alpha = 1f
+            resetViewHeight(searchBar)
+            resetViewHeight(sortButton)
+            searchBar.visibility = if (expanded) View.VISIBLE else View.GONE
+            sortButton.visibility = when {
+                !sortSlot -> View.GONE
+                sortDrawn -> View.VISIBLE
+                else -> View.INVISIBLE
+            }
             return
         }
 
-        val current = options.firstOrNull { it.order == fragment.currentSortOrder() } ?: options[0]
-        sortButton.text = getString(R.string.text_search_sort_button, getString(current.labelRes))
-        sortButton.setOnClickListener { showSortDialog(fragment, options, current.order) }
-        sortButton.visibility = View.VISIBLE
+        val searchNatural = naturalHeightOf(searchBar)
+        if (searchNatural <= 0) {
+            // 布局还没完成、量不到自然高度：下一帧再来（有次数上限，不会自旋）
+            if (chromeRetry++ < 3) searchBar.post { applyTopChrome(true) }
+            return
+        }
+        chromeRetry = 0
+        // 注意：这里按「是否支持排序」取自然高度，而不是按 `sortSlot`——收起时 `expanded` 已经是
+        // false，用 sortSlot 判断会让排序条无法参与动画，只能在动画结束那一刻直接消失。
+        val sortNatural = if (sortBarEligible) naturalHeightOf(sortButton) else 0
+        val animateSort = sortNatural > 0
+
+        val running = chromeAnimator
+        chromeAnimator = null
+        running?.cancel()
+
+        // 起点必须在改可见性/高度**之前**读：`View.getHeight()` 是上一次布局的结果，
+        // 先 set 再读会拿到旧值，动画就成了「原地不动」。
+        val searchFrom = if (searchBar.visibility == View.VISIBLE) searchBar.height else 0
+        val sortFrom = if (sortButton.visibility != View.GONE) sortButton.height else 0
+        val searchTo = if (expanded) searchNatural else 0
+        val sortTo = if (sortSlot) sortNatural else 0
+
+        // 展开时先把要出现的那个摆成「可见 + 起点高度 + 透明」，否则会从 GONE 直接跳到满高
+        if (expanded && searchBar.visibility != View.VISIBLE) {
+            searchBar.visibility = View.VISIBLE
+            searchBar.alpha = 0f
+        }
+        setViewHeight(searchBar, searchFrom)
+        if (animateSort) {
+            if (sortTo > 0 && sortButton.visibility != View.VISIBLE) {
+                sortButton.visibility = View.VISIBLE
+                sortButton.alpha = 0f
+            }
+            setViewHeight(sortButton, sortFrom)
+        }
+
+        val animator = ValueAnimator.ofFloat(0f, 1f)
+        animator.duration = CHROME_ANIM_MS
+        animator.addUpdateListener { animation ->
+            val fraction = animation.animatedFraction
+            val shown = (searchFrom + (searchTo - searchFrom) * fraction).toInt()
+            setViewHeight(searchBar, shown)
+            searchBar.alpha = (shown.toFloat() / searchNatural).coerceIn(0f, 1f)
+            if (animateSort) {
+                val sortShown = (sortFrom + (sortTo - sortFrom) * fraction).toInt()
+                setViewHeight(sortButton, sortShown)
+                sortButton.alpha = (sortShown.toFloat() / sortNatural).coerceIn(0f, 1f)
+            }
+        }
+        animator.addListener(object : AnimatorListenerAdapter() {
+            override fun onAnimationEnd(animation: Animator) {
+                // 被新手势取消掉的旧动画不要收尾，否则会把新状态改回旧的
+                if (chromeAnimator !== animation) return
+                chromeAnimator = null
+                searchBar.alpha = 1f
+                sortButton.alpha = 1f
+                resetViewHeight(searchBar)
+                resetViewHeight(sortButton)
+                searchBar.visibility = if (expanded) View.VISIBLE else View.GONE
+                sortButton.visibility = when {
+                    !sortSlot -> View.GONE
+                    sortDrawn -> View.VISIBLE
+                    else -> View.INVISIBLE
+                }
+            }
+        })
+        chromeAnimator = animator
+        animator.start()
+    }
+
+    /** 把控件高度改成指定值（保留其它 LayoutParams）。 */
+    private fun setViewHeight(view: View, height: Int) {
+        val lp = view.layoutParams ?: return
+        if (lp.height == height) return
+        lp.height = height
+        view.layoutParams = lp
+    }
+
+    /** 还原成 `wrap_content` + 完全不透明。 */
+    private fun resetViewHeight(view: View) {
+        val lp = view.layoutParams ?: return
+        if (lp.height != ViewGroup.LayoutParams.WRAP_CONTENT) {
+            lp.height = ViewGroup.LayoutParams.WRAP_CONTENT
+            view.layoutParams = lp
+        }
+    }
+
+    /**
+     * 控件「完整展开时」的高度。收起后量不到，所以第一次量到就缓存；只在
+     * `wrap_content`（没被动画压过）时采信，避免把动画中途的中间值记成自然高度。
+     */
+    private fun naturalHeightOf(view: View): Int {
+        val cached = naturalHeights[view]
+        if (cached != null && cached > 0) return cached
+        if (view.layoutParams?.height != ViewGroup.LayoutParams.WRAP_CONTENT) return 0
+        val measured = if (view.height > 0) view.height else view.measuredHeight
+        if (measured > 0) naturalHeights[view] = measured
+        return measured
     }
 
     /**
@@ -641,27 +820,16 @@ class SearchActivity : InstanceActivity() {
     }
 
     fun onScrolled(dy: Int) {
-        val height = searchBar.height + ToolsUtil.dp2px(2f)
-
         if (System.currentTimeMillis() - animate_last > 200) {
             if (dy > 0 && searchBarVisible) {
                 animate_last = System.currentTimeMillis()
-                this.searchBarVisible = false
-                @SuppressLint("ObjectAnimatorBinding")
-                val animator = ObjectAnimator.ofFloat(searchBar, "translationY", 0f, (-height).toFloat())
-                animator.start()
-                handler.postDelayed({ searchBar.visibility = View.GONE }, 200)
-                // 排序条是同一层顶部 chrome，跟着一起收；晚 200ms 收会和搜索框错位
-                refreshSortBar()
+                searchBarVisible = false
+                applyTopChrome(true)
             }
             if (dy < -1 && !searchBarVisible) {
                 animate_last = System.currentTimeMillis()
-                this.searchBarVisible = true
-                searchBar.visibility = View.VISIBLE
-                @SuppressLint("ObjectAnimatorBinding")
-                val animator_show = ObjectAnimator.ofFloat(searchBar, "translationY", (-height).toFloat(), 0f)
-                animator_show.start()
-                refreshSortBar()
+                searchBarVisible = true
+                applyTopChrome(true)
             }
         }
 
@@ -683,5 +851,13 @@ class SearchActivity : InstanceActivity() {
                 recyclerView.requestFocus()
             }
         }
+    }
+
+    private companion object {
+        /**
+         * 顶部 chrome 收起 / 展开的时长。与旧实现里「200ms 后置 GONE」对齐，
+         * 手表上再长就会觉得「按了没反应」。
+         */
+        const val CHROME_ANIM_MS = 200L
     }
 }

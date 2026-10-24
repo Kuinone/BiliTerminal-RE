@@ -1693,7 +1693,7 @@ TTF/OTF/TTC，应用把它**拷进私有目录**（`filesDir/custom_font/custom_
 这些地方**当前是正确的**，只是可能显得「旧」或「不统一」。别在顺手重构/统一化的过程中改坏它们：
 
 - `util/AnimationUtils.java:43-45` 的 `crossFade`（100ms）与各详情页的 `crossFade` 用法 —— 加载态到内容态的过渡，删了就是「内容突然砸出来」。
-- 搜索框滚动隐藏逻辑（`SearchActivity.kt:495-518`）—— 唯一缺的是动画 `duration`，机制本身没问题。
+- 搜索框滚动隐藏逻辑（`SearchActivity.applyTopChrome`，26.10.24 起搜索框与排序条共用一条高度动画）—— 这一层收起的机制是「动真实高度、结束才 GONE」，别改回 `translationY`：列表锚在它下面，translation 不参与布局，收起后不补位。
 - 二维码三档缩放（`QRLoginFragment.kt:124-160`）—— 注意 `Guideline` 改 percent 后**必须 `requestLayout()`**（见 §8.5 第 8 条），这套缩放是踩坑后的产物。
 - 圆屏适配（`BaseActivity.kt:143-181`）与 `RotaryRecyclerView` / `RotaryScrollView` 的滚轮输入支持 —— 三件套的差异是刻意保留的（见 §8.4b 末注）。
 - `ThemeManager` 集中配色的**设计意图**：7 套主题 41 个字段的抽象是对的，问题只是「另有两套并行表」（见 §8.7）。
