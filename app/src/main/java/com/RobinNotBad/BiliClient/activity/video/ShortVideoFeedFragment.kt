@@ -59,6 +59,30 @@ class ShortVideoFeedFragment : Fragment() {
     /** 当前活跃那页是否真的在播放；宿主据此决定要不要保持亮屏。 */
     fun isCurrentPlaying(): Boolean = feedAdapter?.isCurrentPlaying() == true
 
+    /** 本次暂停是否由「外壳横滑」触发，避免把用户自己按的暂停又恢复回来。 */
+    private var pausedByShellSwipe = false
+
+    /**
+     * 外壳 pager 判出横向、开始横滑时调用。
+     *
+     * 横滑期间本页与右侧详情页会同时绘制，视频继续解码/出帧会把每帧成本抬高；
+     * 普通视频详情页翻页时没有视频在播，这里对齐该状态。
+     */
+    fun pauseForShellSwipe() {
+        val adapter = feedAdapter ?: return
+        if (adapter.isCurrentPlaying()) {
+            pausedByShellSwipe = true
+            adapter.pauseCurrent()
+        }
+    }
+
+    /** 横滑结束仍停在第 0 页（或手势取消）时恢复；翻到详情页则交给生命周期暂停。 */
+    fun resumeAfterShellSwipe() {
+        if (!pausedByShellSwipe) return
+        pausedByShellSwipe = false
+        feedAdapter?.resumeCurrent()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         audioManager = requireContext().getSystemService(android.content.Context.AUDIO_SERVICE) as AudioManager
@@ -79,10 +103,10 @@ class ShortVideoFeedFragment : Fragment() {
         loadingText = view.findViewById(R.id.loadingText)
         errorText = view.findViewById(R.id.errorText)
 
-        // 横滑交给本页根布局判方向：满足「明确横向」才驱动外壳 pager 的 fakeDrag，
-        // 竖向刷视频/斜滑都放给里面的竖向 pager
+        // 本页是外壳第 0 页：横向翻页交给外壳的经典 ViewPager 自己处理，
+        // 这里根布局只负责「停在第 0 页时右滑退出本页」这一条边缘手势。
         (view as? SwipePageLayout)?.apply {
-            pagerProvider = { host.shellPager() }
+            edgeExitCheck = { host.currentShellPage() == 0 }
             onSwipe = { direction -> host.handleSwipe(direction) }
         }
 

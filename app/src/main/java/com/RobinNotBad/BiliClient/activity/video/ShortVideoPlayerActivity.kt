@@ -28,14 +28,15 @@ import android.widget.ProgressBar
 import android.widget.SeekBar
 import android.widget.TextView
 import androidx.fragment.app.Fragment
-import androidx.viewpager2.adapter.FragmentStateAdapter
-import androidx.viewpager2.widget.ViewPager2
+import androidx.fragment.app.FragmentPagerAdapter
+import androidx.viewpager.widget.ViewPager
 import com.RobinNotBad.BiliClient.R
 import com.RobinNotBad.BiliClient.activity.base.InstanceActivity
 import com.RobinNotBad.BiliClient.api.DanmakuApi
 import com.RobinNotBad.BiliClient.api.ShortVideoFeedApi
 import com.RobinNotBad.BiliClient.model.ShortVideoItem
 import com.RobinNotBad.BiliClient.ui.widget.HighEnergyProgressBar
+import com.RobinNotBad.BiliClient.ui.widget.SwipePageLayout
 import com.RobinNotBad.BiliClient.util.CenterThreadPool
 import com.RobinNotBad.BiliClient.util.DisguiseGesture
 import com.RobinNotBad.BiliClient.util.DisguisePrefs
@@ -68,8 +69,16 @@ class ShortVideoPlayerActivity : InstanceActivity() {
     override val forceNoSwipeTheme: Boolean
         get() = true
 
-    /** 外壳横向 pager：第 0 页短视频流，第 1~3 页详情/评论/相关推荐（与手机版一致）。 */
-    private lateinit var pager: ViewPager2
+    /**
+     * 外壳横向 pager：第 0 页短视频流，第 1~3 页详情/评论/相关推荐（与手机版一致）。
+     *
+     * 用经典 `ViewPager` 而不是 `ViewPager2`：横向翻页交给它原生处理，滚动走
+     * `scrollTo`，不经过「自定义手势 → fakeDrag → RecyclerView」这条链路。
+     * 26.10.24 真机上 `ViewPager2 + fakeDrag` 的跟手/吸附始终有一顿一顿的残留，
+     * 且 fakeDrag 状态不配对时会直接崩溃，故整体换回与普通视频详情页同款的
+     * `ViewPager + ViewPagerFragmentAdapter` 方案（右滑退出由第 0 页根布局单独判）。
+     */
+    private lateinit var pager: ViewPager
     private lateinit var shellAdapter: ShortVideoShellAdapter
 
     var screenWidth = 0
@@ -95,16 +104,20 @@ class ShortVideoPlayerActivity : InstanceActivity() {
             relatedEnabled = SharedPreferencesUtil.getBoolean(SettingsKeys.RELATED_ENABLE, true)
         )
         pager.adapter = shellAdapter
-        // 横向翻页不再让 pager 自己抢手势：它判定「横向」的阈值太松，竖向刷短视频时
-        // 手指稍微一斜就被它拦成翻页。改由每一页根布局 SwipePageLayout 判方向后驱动
-        // fakeDrag（见该类注释），pager 只负责承载页面与吸附。
-        pager.isUserInputEnabled = false
         // 详情/评论/相关推荐三页常驻：滑过去是纯横向动画，不用等它们现建
-        pager.offscreenPageLimit = shellAdapter.itemCount
-        pager.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
+        pager.offscreenPageLimit = shellAdapter.count
+        pager.addOnPageChangeListener(object : ViewPager.SimpleOnPageChangeListener() {
             override fun onPageSelected(position: Int) {
-                // 从详情页滑回短视频时，当前条可能已经变了（例如播完自动接下一条）
-                if (position == 0) onFeedAnchorChanged()
+                if (position == 0) {
+                    // 从详情页滑回短视频时，当前条可能已经变了（例如播完自动接下一条）
+                    onFeedAnchorChanged()
+                    // 横滑去详情页时暂停了信息流播放，滑回第 0 页（含中途取消）恢复
+                    shellAdapter.activeFeedFragment?.resumeAfterShellSwipe()
+                } else {
+                    // 滑去详情页时信息流整页还在屏幕上，视频继续解码会让两页同时出帧，
+                    // 真机上明显加重横滑负担；先暂停，滑回来再恢复。
+                    shellAdapter.activeFeedFragment?.pauseForShellSwipe()
+                }
             }
         })
 
@@ -141,24 +154,17 @@ class ShortVideoPlayerActivity : InstanceActivity() {
         super.onBackPressed()
     }
 
-    /** 供页面根布局驱动 fakeDrag；页面还没建好时返回 null。 */
-    internal fun shellPager(): ViewPager2? = if (::pager.isInitialized) pager else null
+    /** 外壳当前页号（0 = 信息流，1~3 = 详情/评论/相关推荐）；页面还没建好时按 0。 */
+    internal fun currentShellPage(): Int = if (::pager.isInitialized) pager.currentItem else 0
 
     /**
-     * 页面根布局判出「明确横向」后回调（见 [com.RobinNotBad.BiliClient.ui.widget.SwipePageLayout]）。
-     *
-     * @param direction -1 = 手指向左（翻到下一页），+1 = 手指向右（翻回上一页）
+     * 短视频首页根布局判出「右滑越过阈值」后的回调（系统右滑返回已在本页关闭，
+     * 由 [SwipePageLayout] 自己跟手预览并触发退出）。
      */
     internal fun handleSwipe(direction: Int) {
-        val pager = shellPager() ?: return
         if (isFinishing) return
-        val target = if (direction < 0) pager.currentItem + 1 else pager.currentItem - 1
-        if (target < 0) {
-            // 短视频首页再向右滑就是退出本页（系统右滑返回已在本页关闭）
-            finish()
-            return
-        }
-        if (target < shellAdapter.itemCount) pager.setCurrentItem(target, true)
+        // 只有第 0 页会触发；右滑即退出本页
+        if (direction > 0) finish()
     }
 
     /**
@@ -222,10 +228,14 @@ class ShortVideoPlayerActivity : InstanceActivity() {
  * 再 `notifyItemRangeChanged`，旧 Fragment 的视图被摘掉后新视图挂不回来，整页只剩背景色。
  * 现在 id 恒等于页码，换视频时由 [refreshDetailPages] 直接通知三个页面壳自己换内容。
  */
+@Suppress("DEPRECATION")
 class ShortVideoShellAdapter(
     activity: ShortVideoPlayerActivity,
     private val relatedEnabled: Boolean
-) : FragmentStateAdapter(activity) {
+) : FragmentPagerAdapter(
+    activity.supportFragmentManager,
+    BEHAVIOR_RESUME_ONLY_CURRENT_FRAGMENT
+) {
 
     /** 右侧详情三页当前的锚点 aid；0 表示短视频还没加载出来。 */
     var detailAid: Long = 0L
@@ -235,8 +245,8 @@ class ShortVideoShellAdapter(
     var detailBvid: String? = null
         private set
 
-    /** 已经创建出来的详情页壳，换视频时逐个热更新内容。 */
-    private val detailFragments = mutableMapOf<Int, ShortVideoDetailPageFragment>()
+    /** 页码 -> 页面壳。页面壳自己持有渲染节流，换视频只通知它换内容，不换 Fragment 实例。 */
+    private val shells = HashMap<Int, Fragment>()
 
     /** 短视频流那页；外壳从这里取「当前这条视频」并转交播放完成回调。 */
     var feedFragment: ShortVideoFeedFragment? = null
@@ -246,36 +256,33 @@ class ShortVideoShellAdapter(
     val activeFeedFragment: ShortVideoFeedFragment?
         get() = feedFragment?.takeIf { it.isAdded }
 
-    override fun getItemCount(): Int = if (relatedEnabled) 4 else 3
+    override fun getCount(): Int = if (relatedEnabled) 4 else 3
 
-    override fun createFragment(position: Int): Fragment {
+    override fun getItem(position: Int): Fragment = shells.getOrPut(position) {
         if (position == 0) {
-            val fragment = ShortVideoFeedFragment()
-            feedFragment = fragment
-            return fragment
+            ShortVideoFeedFragment().also { feedFragment = it }
+        } else {
+            ShortVideoDetailPageFragment.newInstance(position, detailAid, detailBvid)
         }
-        val fragment = ShortVideoDetailPageFragment.newInstance(position, detailAid, detailBvid)
-        detailFragments[position] = fragment
-        return fragment
     }
 
+    /** 页码与实例都保持稳定：换视频不走重建，避免滑到一半整页被移除再挂回来。 */
+    override fun getItemPosition(obj: Any): Int = POSITION_UNCHANGED
+
     /**
-     * 当前短视频换了：把右侧三页的内容换成新 aid 对应的视频。
+     * 当前短视频换了：把右侧三页的页面壳热更新到新 aid。
      *
-     * 不碰 ViewPager2 的 item 与 id，只让页面壳自己重建子 Fragment，
-     * 这样屏幕上的页面不会经历「移除 → 重建」的中间态。
+     * 不调用 `notifyDataSetChanged`：页面壳自己会节流重建子 Fragment，屏幕上的页面
+     * 不会经历「移除 → 重建」的中间态。
      */
     fun refreshDetailPages(aid: Long, bvid: String?) {
         if (aid == detailAid && bvid == detailBvid) return
         detailAid = aid
         detailBvid = bvid
-        val iterator = detailFragments.iterator()
-        while (iterator.hasNext()) {
-            val (page, fragment) = iterator.next()
+        for ((position, fragment) in shells) {
+            if (position == 0) continue
             if (fragment.isAdded) {
-                fragment.updateItem(aid, bvid)
-            } else {
-                iterator.remove() // 已销毁的页面壳不再持有
+                (fragment as ShortVideoDetailPageFragment).updateItem(aid, bvid)
             }
         }
     }
