@@ -1,13 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  短视频页外壳：一个横向 ViewPager2，把「短视频流 → 视频详情 → 评论 → 相关推荐」串成一条线。
+  短视频页外壳：一个横向 ViewPager，把「短视频流 → 视频详情 → 评论 → 相关推荐」串成一条线。
 
   - 第 0 页：fragment_short_video_feed（竖向短视频流，懒加载、循环续接都在这里）
   - 第 1 页：视频详情（复用 VideoInfoFragment）
   - 第 2 页：评论（复用 ReplyFragment）
   - 第 3 页：相关推荐（复用 VideoRcmdFragment；设置里关掉相关推荐时没有这一页）
 
-  外壳只负责横向翻页与「当前这条视频是谁」的同步，短视频的播放逻辑全在 feed fragment 里。
+  用经典 ViewPager（与普通视频详情页同款）而不是 ViewPager2：横向翻页交给它原生处理，
+  不经过「自定义手势 → fakeDrag → RecyclerView」链路，跟手/吸附更稳；右滑退出只由
+  第 0 页根布局 SwipePageLayout 单独判断。
 -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/short_video_root"
@@ -15,10 +17,9 @@
     android:layout_height="match_parent"
     android:background="@android:color/black">
 
-    <androidx.viewpager2.widget.ViewPager2
+    <androidx.viewpager.widget.ViewPager
         android:id="@+id/pager"
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:orientation="horizontal" />
+        android:layout_height="match_parent" />
 
 </FrameLayout>
