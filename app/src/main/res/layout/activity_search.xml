@@ -16,7 +16,74 @@
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/top" />
+        app:layout_constraintTop_toBottomOf="@+id/searchSortBar" />
+
+    <!-- 搜索结果排序条：只有支持 order 参数分类（视频 / 专栏）且已经搜过一次时才显示。
+         必须放在这里而不是 fragment 里——fragment 的 ViewPager 只对齐到顶栏下方，
+         搜索框是压在 fragment 上方的，条放进 fragment 会被搜索框盖住（26.10.24 实测）。
+         4 格固定宽度均分，不做横向滚动：手表右滑返回是窗口层 windowSwipeToDismiss 处理的，
+         横向滚动一划就退出页面。 -->
+    <LinearLayout
+        android:id="@+id/searchSortBar"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:paddingHorizontal="@dimen/activity_padding_horizontal"
+        android:visibility="gone"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/searchbar"
+        tools:visibility="visible">
+
+        <TextView
+            android:id="@+id/sortOption1"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:minHeight="36dp"
+            android:paddingVertical="4dp"
+            android:background="?attr/selectableItemBackground"
+            android:textSize="12sp"
+            android:textColor="?android:attr/textColorSecondary" />
+
+        <TextView
+            android:id="@+id/sortOption2"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:minHeight="36dp"
+            android:paddingVertical="4dp"
+            android:background="?attr/selectableItemBackground"
+            android:textSize="12sp"
+            android:textColor="?android:attr/textColorSecondary" />
+
+        <TextView
+            android:id="@+id/sortOption3"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:minHeight="36dp"
+            android:paddingVertical="4dp"
+            android:background="?attr/selectableItemBackground"
+            android:textSize="12sp"
+            android:textColor="?android:attr/textColorSecondary" />
+
+        <TextView
+            android:id="@+id/sortOption4"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:minHeight="36dp"
+            android:paddingVertical="4dp"
+            android:background="?attr/selectableItemBackground"
+            android:textSize="12sp"
+            android:textColor="?android:attr/textColorSecondary" />
+
+    </LinearLayout>
 
     <com.RobinNotBad.BiliClient.ui.widget.RotaryRecyclerView
         android:id="@+id/history_recyclerview"

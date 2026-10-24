@@ -26,6 +26,12 @@ class SearchVideoFragment : SearchFragment() {
         super.onCreate(savedInstanceState)
     }
 
+    override fun sortOptions(): List<SearchSortOption> = SearchSortOptions.VIDEO
+
+    override fun onSortChanged(order: String) {
+        refreshInternal()
+    }
+
     override fun onViewCreated(@NonNull view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
@@ -39,22 +45,31 @@ class SearchVideoFragment : SearchFragment() {
 
     private fun continueLoading(page: Int) {
         CenterThreadPool.run {
+            // 请求发出时先记下排序：网络慢的时候用户可能已经切了档位，
+            // 那这批结果属于旧排序，不能再往新列表里追加（否则排序会串）。
+            val orderAtRequest = sortOrder
             try {
-                val result = SearchApi.search(keyword, page)
-                if (result != null) {
-                    if (page == 1) showEmptyView(false)
-                    val list = ArrayList<VideoCard>()
-                    SearchApi.getVideosFromSearchResult(result, list, page == 1)
-                    if (list.size == 0) bottom = true
-                    else CenterThreadPool.runOnUiThread {
-                        if (!isAdded || view == null) return@runOnUiThread
-                        // 26.10.04 批次 3（B5）：起点写成了 lastSize + 1，第 2 页起会多算 1 格，
-                        // RecyclerView 直接抛 IndexOutOfBoundsException。正确起点就是插入前的 size。
-                        val lastSize = videoCardList.size
-                        videoCardList.addAll(list)
-                        videoCardAdapter!!.notifyItemRangeInserted(lastSize, list.size)
-                    }
-                } else bottom = true
+                val list = ArrayList<VideoCard>()
+                if (orderAtRequest == SearchSortOptions.TOTALRANK) {
+                    // 综合排序走聚合搜索：它会把番剧结果混进第一页，且这条接口不支持 order
+                    val result = SearchApi.search(keyword, page)
+                    if (result != null) SearchApi.getVideosFromSearchResult(result, list, page == 1)
+                } else {
+                    val result = SearchApi.searchType(keyword, page, "video", orderAtRequest) as JSONArray?
+                    SearchApi.getVideosFromTypeResult(result, list)
+                }
+                if (orderAtRequest != sortOrder) return@run // 已切换排序，这批结果作废
+
+                if (page == 1) showEmptyView(false)
+                if (list.size == 0) bottom = true
+                else CenterThreadPool.runOnUiThread {
+                    if (!isAdded || view == null) return@runOnUiThread
+                    // 26.10.04 批次 3（B5）：起点写成了 lastSize + 1，第 2 页起会多算 1 格，
+                    // RecyclerView 直接抛 IndexOutOfBoundsException。正确起点就是插入前的 size。
+                    val lastSize = videoCardList.size
+                    videoCardList.addAll(list)
+                    videoCardAdapter!!.notifyItemRangeInserted(lastSize, list.size)
+                }
             } catch (e: Exception) {
                 e.printStackTrace()
                 loadFail(e)

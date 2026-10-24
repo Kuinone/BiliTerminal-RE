@@ -23,7 +23,7 @@
 - **依赖仓库**：`settings.gradle` 已把 aliyun 的 `google` / `public` / `gradle-plugin` 三个镜像前置，`google()`/`mavenCentral()`/jitpack 仅作兜底。
 - **改了 `res/` 文件集合时**：`:app:clean` 与后续命令**必须分两次 Gradle 调用**，且带 `--no-build-cache --no-configuration-cache`，否则会回放陈旧资源（症状是 `Unresolved reference 'R.layout.xxx'`）。
 - **版本一致性**：`:app:verifyVersionConsistency` 以 `strings.xml` 的 `update_log_current` 为锚点校验版本一致性；发版说明也由 CI 从它抽取（抽不到直接拒绝发版）。
-- **单测（静态计数，26.10.23 合并上游后实测）**：**79 个测试类 / 841 个用例**，两个 flavor 完全相同（同源码），0 失败 0 错误 0 跳过。计数方式：`app/src/test/` 下 `*Test.kt|java` 计数（另有共享假实现 `util/FakeSharedPreferences.kt`），`app/build/test-results/testStandardDebugUnitTest/TEST-*.xml` 的 `tests=` 求和。用例数一律以机器产出为准，队友口述数字不进入文档。
+- **单测（静态计数，26.10.24 加搜索排序后实测）**：**79 个测试类 / 845 个用例**，两个 flavor 完全相同（同源码），0 失败 0 错误 0 跳过。计数方式：`app/src/test/` 下 `*Test.kt|java` 计数（另有共享假实现 `util/FakeSharedPreferences.kt`），`app/build/test-results/testStandardDebugUnitTest/TEST-*.xml` 的 `tests=` 求和。用例数一律以机器产出为准，队友口述数字不进入文档。
 - **26.10.10 那一轮的构建记录（历史，留作「改 minSdk / 重跑 release 链路」时的验证口径）**：`minSdk 24 → 19` 全部改动（含 jsoup 1.16.1、7 个 `res/drawable-v21` 资源）落盘后，按「`clean` → `assembleRelease` → `lintRelease` → 单测」四步跑完（均带 `--no-configuration-cache`，`clean` 与 `assemble` 分两次调用），四步全 `BUILD SUCCESSFUL`（37s / 2m13s / 1m25s / 39s）。当时单测汇总 **49 suites / 460 tests / 0 failures**（任务名当时还是 `testDebugUnitTest`，现已带 flavor 前缀），最新 XML 时间 `2026-10-09T22:59:04`（晚于当轮 APK 出包时间 22:56:58，覆盖了当轮全部源码改动）。`:app:lintRelease` 的 **`NewApi` 从 22 条降到 2 条**，且这 2 条就是 `PlayerActivity.kt:1981` 的已知假阳性。发版前仍建议再跑一次确认。
 - **「自动跳过片头片尾」已恢复上线（26.10.22）**：26.10.10 的紧急撤回**已解除**，`SkipOpEdPrefs.FEATURE_ENABLED` 回到 `true`，设置入口与搜索索引均已恢复；口径按用户拍板改为**默认关闭**（`DEFAULT_ENABLED = false`，老用户存档里显式写的值仍然优先）。恢复细节见 §3.3「恢复记录」，乱跳的三个根因修复见 §3.55。
 - **本轮基建改动（26.10.10）**：**`minSdk 24 → 21 → 19（Android 4.4）`**，唯一落点是 `app/build.gradle:21`。两级下调的成本不同，分开记：
@@ -1356,6 +1356,28 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
   - `CalculatorEngine.ERROR` 保留中文常量，KDoc 写明「纯函数跑在 JVM 单测里没有 Context，故意不读资源」（AGENTS.md 已有该例外条款）。
 - **文档计数修正**：`architecture-map` 的测试清单从「80 个文件」改为「**79 个文件**（78 个 `*Test` + 1 个 `FakeSharedPreferences.kt`）、**79 个测试类**」（`CalculatorEngineTest.kt` 内有 `CalculatorEngineTest` 与 `DisguisePrefsTest` 两个类），用例数统一为 **841**。`strings.xml` / `themes.xml` 末尾多余空行已清。
 - **手表端验证口径（26.10.23）**：本 PR 涉及的弹幕时间轴、短视频亮屏、伪装功能**已由维护者人工在手表上实测通过**（维护者自述，非本会话 agent 复现，因此没有设备日志/截图入库）。仍未覆盖的是「极弱机上的媒体时钟收敛」「单击顶栏 0.3 秒延迟的手感」「圆屏蓝牙提示页布局」——这三项只能真机肉眼判断，已分别记在 §3.57 / §3.59 的对应条目里。
+
+### 3.61 搜索结果加排序条：综合 / 播放量 / 最新 / 收藏（26.10.24，用户反馈）
+
+- **需求来源**：用户反馈原文「希望可以在搜索里加一个最多播放 最多点赞 最新播放之类的分类」。与用户确认的口径：① 入口做成**视频 tab 顶部一条常驻排序行**（不是设置项、不是长按弹菜单）；② 四档 **综合 / 最多播放 / 最新发布 / 最多收藏**；③ 覆盖**视频 + 专栏**两个 tab。
+- **接口事实**（已并入 `docs/bilibili-api-notes.md` §3.13）：`all/v2` 只吃 `keyword`，`order` 是 `search/type` 的参数；视频搜索**没有「最多点赞」**（只有 `click`/`pubdate`/`dm`/`stow`/`scores`）。所以**视频分类选「综合」时仍走 `all/v2`**（保留它把番剧混进第一页的既有行为），选其余档位改走 `search/type?search_type=video&order=…`（不混番剧）。
+- **为什么排序条不能放进 fragment**：`activity_search.xml` 里 `ViewPager` 只对齐到 `@id/top` 下方，`searchbar` 与它同起点、后声明（画在上层）。第一版把条加进 `fragment_simple_refresh` 顶部，模拟器实测**四个档位正好压在搜索框里**（截图见本轮验证记录）。最终把控件放在 `activity_search.xml` 的 `searchSortBar`（锚 `searchbar` 下方），`SearchFragment` 只暴露 `sortOptions()` / `currentSortOrder()` / `selectSort()`，`SearchActivity.refreshSortBar()` 负责文案、高亮与显隐。
+- **几个刻意的取舍**：
+  - **没搜过不显示**（`hasSearched`）——那时页面上是搜索历史，摆一条「排序」没有意义；搜索框被滚走时排序条**一起收**（两层 chrome 只收一半会在列表顶上留个洞）。
+  - **排序不持久化**：每次进搜索页都是「综合」。少一个存储键，也少一类「我什么时候设过排序」的困惑。
+  - **排序条不做横向滚动**：手表右滑返回是窗口层 `windowSwipeToDismiss` 处理的，横向滚动一划就退出页面；4 格固定宽度，文案压到 2~3 个字（`text_search_sort_*`）。
+  - **`sortOrder` 是 `@Volatile`**：点击在主线程写、`continueLoading` 在 `CenterThreadPool` 线程读（与 `bottom` 同一类可见性问题）。
+  - **切换排序时在途结果作废**：请求发出前抓一份 `orderAtRequest`，回包后发现排序已变就整批丢弃，否则会把旧排序的第 2 页追加到新列表里。
+- **顺带修的**：`SearchApi` 里三处封面/头像用 `"http:" +` 拼协议（违反「只走 https」），统一改成 `httpsUrl()`（`//` 开头才补 `https:`，已是绝对地址的原样保留）；视频条目解析抽成 `parseVideoEntry`，聚合搜索与分类搜索共用一份。
+- **单测**：`SearchApiTest` 从 6 例补到 **10 例**（分类搜索视频解析、非 video 条目跳过、null 输入、聚合分支与分类分支共用同一解析与封面规则）。全量基线 **79 类 / 845 例 / 0 失败**。
+- **模拟器实测（MuMu Android 15 x86_64，coexist debug，`displayId` 会跳动，`screencap -p -d <physicalId>` + `input -d <displayId>`）**：
+  - 搜 `linux` → 排序条出现在搜索框下方，`综合` 高亮；列表首项 797.1 万播放。
+  - 点「播放量」→ `signWBI: keyword=linux&order=click&page=1&search_type=video&seid=…`，结果按播放量**降序**（797.1万 → 501.7万 → 443.9万 → 412.9万）。
+  - 点「最新」→ `order=pubdate&search_type=video`，首屏全是个位数播放量的新视频（1/163/187/229 观看），`最新` 高亮。
+  - 切到**专栏** → 排序条变成「综合 / 阅读量 / 最新 / 收藏」，专栏卡片正常（2674 阅读等）；切到**用户**、**番剧** → 排序条消失。
+  - 列表下滑 → 搜索框与排序条一起收起、列表顶到顶栏下；回滑恢复。
+  - 全程 `logcat` 里 `FATAL EXCEPTION` / `AndroidRuntime` **0 条**。
+- **未做**：用户 / 直播的排序（它们的 `order` 是另一套键：`fans`/`level`、`online`/`live_time`），以及「最多弹幕 / 最多评论」两档（手表 4 格放不下）。
 
 ## 4. 历史章节索引
 

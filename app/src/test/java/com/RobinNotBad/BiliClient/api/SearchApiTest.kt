@@ -108,4 +108,75 @@ class SearchApiTest {
         assertEquals(999L, card.aid)
         assertEquals("media_bangumi", card.type)
     }
+
+    private fun typeResult(input: JSONArray?): List<VideoCard> {
+        val list = ArrayList<VideoCard>()
+        SearchApi.getVideosFromTypeResult(input, list)
+        return list
+    }
+
+    /**
+     * `search_type=video` 的 `data.result` 直接就是视频条目数组（外面没有 result_type 那一层）。
+     * 26.10.24 加搜索排序后视频分类改走这条接口，解析与聚合搜索共用 [SearchApi.parseVideoEntry]。
+     */
+    @Test
+    fun typeSearch_video_parsesEveryField() {
+        val cards = typeResult(
+            JSONArray(
+                """[{"type":"video","title":"<em class=\"keyword\">原神</em>攻略","pic":"//i0.hdslb.com/e.jpg",
+                    "author":"某个UP","play":12345,"aid":111,"bvid":"BV1xx411c7mD"}]"""
+            )
+        )
+
+        assertEquals(1, cards.size)
+        val card = cards[0]
+        assertEquals("原神攻略", card.title)
+        assertEquals("某个UP", card.upName)
+        // toWan 之后拼中文单位，这里只钉住"播放量被读到了"与后缀
+        assertTrue(card.view.endsWith("观看"))
+        assertEquals("https://i0.hdslb.com/e.jpg", card.cover)
+        assertEquals(111L, card.aid)
+        assertEquals("BV1xx411c7mD", card.bvid)
+        assertEquals("video", card.type)
+    }
+
+    @Test
+    fun typeSearch_video_skipsNonVideoEntries() {
+        // 阿B会把直播间放进视频结果里（聚合与分类搜索都可能），非 video 条目要跳过
+        val cards = typeResult(
+            JSONArray(
+                """[{"type":"live_room","title":"直播间","pic":"//i0.hdslb.com/f.jpg","author":"主播",
+                    "play":1,"aid":1,"bvid":"x"},
+                   {"type":"video","title":"真视频","pic":"//i0.hdslb.com/g.jpg","author":"UP",
+                    "play":2,"aid":2,"bvid":"BV1"}]"""
+            )
+        )
+
+        assertEquals(1, cards.size)
+        assertEquals("真视频", cards[0].title)
+    }
+
+    @Test
+    fun typeSearch_video_toleratesNullInputAndNullEntries() {
+        assertTrue(typeResult(null).isEmpty())
+        assertTrue(typeResult(JSONArray("""[null]""")).isEmpty())
+        assertTrue(typeResult(JSONArray("[]")).isEmpty())
+    }
+
+    @Test
+    fun aggregateSearch_videoBranchUsesTheSameEntryParser() {
+        val cards = aggregate(
+            JSONArray(
+                """[{"result_type":"video","data":[
+                    {"type":"video","title":"聚合里的视频","pic":"//i0.hdslb.com/h.jpg","author":"UP",
+                     "play":3,"aid":3,"bvid":"BV3"}]}]"""
+            )
+        )
+
+        assertEquals(1, cards.size)
+        assertEquals("聚合里的视频", cards[0].title)
+        // 与分类搜索同一份封面规则：协议相对地址一律补 https
+        assertEquals("https://i0.hdslb.com/h.jpg", cards[0].cover)
+        assertEquals("video", cards[0].type)
+    }
 }

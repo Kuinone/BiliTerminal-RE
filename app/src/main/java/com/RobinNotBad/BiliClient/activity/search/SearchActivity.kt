@@ -32,6 +32,7 @@ import com.RobinNotBad.BiliClient.adapter.SearchHistoryAdapter
 import com.RobinNotBad.BiliClient.adapter.SearchSuggestionsAdapter
 import com.RobinNotBad.BiliClient.api.SearchApi
 import com.RobinNotBad.BiliClient.ui.widget.recycler.CustomLinearManager
+import com.RobinNotBad.BiliClient.ui.appearance.ColorScheme
 import com.RobinNotBad.BiliClient.util.JsonUtil
 import com.RobinNotBad.BiliClient.util.LinkUrlUtil
 import com.RobinNotBad.BiliClient.util.MsgUtil
@@ -53,6 +54,15 @@ class SearchActivity : InstanceActivity() {
     lateinit var keywordInput: EditText
     private lateinit var searchBar: ConstraintLayout
     private var searchBarVisible = true
+
+    // 搜索结果排序条（视频 / 专栏）。控件在本页而不是 fragment 里：fragment 的 ViewPager 只对齐到
+    // 顶栏下方、搜索框压在 fragment 上面，条放进去会被搜索框盖住（26.10.24 模拟器实测）。
+    private lateinit var sortBar: View
+    private var sortSlots: List<TextView> = emptyList()
+    private var unselectedSortColor = 0
+
+    /** 至少搜过一次才显示排序条：还没搜索时页面上是历史记录，给「排序」没有意义。 */
+    private var hasSearched = false
     private var refreshing = false
     private var animate_last: Long = 0
     lateinit var handler: Handler
@@ -182,8 +192,11 @@ class SearchActivity : InstanceActivity() {
                     if (fragmentCurr != null) {
                         (fragmentCurr as SearchFragment).refresh()
                     }
+                    refreshSortBar()
                 }
             })
+
+            setupSortBar()
 
             searchBtn.setOnClickListener { searchKeyword(keywordInput.text.toString()) }
             searchBtn.setOnLongClickListener { jumpToTargetId(it) }
@@ -479,6 +492,9 @@ class SearchActivity : InstanceActivity() {
                 }
             }
 
+            hasSearched = true
+            runOnUiThread { refreshSortBar() }
+
             if (Objects.equals(lastKeyword, keyword)) {
                 runOnUiThread {
                     keywordInput.clearFocus()
@@ -551,6 +567,54 @@ class SearchActivity : InstanceActivity() {
         }
     }
 
+    /**
+     * 绑定排序条控件。文案与点击行为按当前分类在 [refreshSortBar] 里填。
+     */
+    private fun setupSortBar() {
+        sortBar = findViewById(R.id.searchSortBar)
+        val slotIds = intArrayOf(
+            R.id.sortOption1, R.id.sortOption2, R.id.sortOption3, R.id.sortOption4
+        )
+        sortSlots = slotIds.map { findViewById<TextView>(it) }
+        // 未选中色取布局里声明的次要文字色，别在代码里写死色值（配色跟随主题）
+        unselectedSortColor = sortSlots[0].currentTextColor
+        refreshSortBar()
+    }
+
+    /**
+     * 按当前分类刷新排序条：支持排序的分类（视频 / 专栏）显示，其余隐藏。
+     *
+     * 没搜过的时候不显示——那时页面上是搜索历史，摆一条「排序」没有意义。
+     * 搜索框被滚走时也一起收起：它们是同一层顶部 chrome，只收一半会让列表顶上留个洞。
+     */
+    private fun refreshSortBar() {
+        if (!::sortBar.isInitialized) return
+        val fragment = supportFragmentManager.findFragmentByTag("f" + viewPager.currentItem) as? SearchFragment
+        val options = fragment?.sortOptions().orEmpty()
+        if (!hasSearched || options.isEmpty() || !searchBarVisible) {
+            sortBar.visibility = View.GONE
+            return
+        }
+
+        val current = fragment?.currentSortOrder()
+        sortSlots.forEachIndexed { i, slot ->
+            val option = options.getOrNull(i)
+            if (option == null) {
+                slot.visibility = View.INVISIBLE
+                slot.setOnClickListener(null)
+            } else {
+                slot.visibility = View.VISIBLE
+                slot.text = getString(option.labelRes)
+                slot.setTextColor(if (option.order == current) ColorScheme.PRIMARY else unselectedSortColor)
+                slot.setOnClickListener {
+                    fragment?.selectSort(option.order)
+                    refreshSortBar()
+                }
+            }
+        }
+        sortBar.visibility = View.VISIBLE
+    }
+
     fun onScrolled(dy: Int) {
         val height = searchBar.height + ToolsUtil.dp2px(2f)
 
@@ -562,6 +626,8 @@ class SearchActivity : InstanceActivity() {
                 val animator = ObjectAnimator.ofFloat(searchBar, "translationY", 0f, (-height).toFloat())
                 animator.start()
                 handler.postDelayed({ searchBar.visibility = View.GONE }, 200)
+                // 排序条是同一层顶部 chrome，跟着一起收；晚 200ms 收会和搜索框错位
+                refreshSortBar()
             }
             if (dy < -1 && !searchBarVisible) {
                 animate_last = System.currentTimeMillis()
@@ -570,6 +636,7 @@ class SearchActivity : InstanceActivity() {
                 @SuppressLint("ObjectAnimatorBinding")
                 val animator_show = ObjectAnimator.ofFloat(searchBar, "translationY", (-height).toFloat(), 0f)
                 animator_show.start()
+                refreshSortBar()
             }
         }
 

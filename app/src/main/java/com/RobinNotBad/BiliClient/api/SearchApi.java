@@ -71,9 +71,25 @@ public class SearchApi {
     }
 
     public static Object searchType(String keyword, int page, String type) throws IOException, JSONException {
+        return searchType(keyword, page, type, null);
+    }
+
+    /**
+     * 分类搜索（带排序）。
+     * <p>
+     * 排序参数只在这条接口上有——聚合搜索（{@link #search}）的 {@code all/v2} 只接受 keyword，
+     * 所以视频分类一旦选了「综合」以外的排序就必须改走这里。
+     *
+     * @param order 结果排序方式，null 或空表示用服务端默认（综合 totalrank）。视频与专栏可用
+     *              totalrank / click / pubdate / dm / stow / scores（专栏另有 attention）；
+     *              取值定义见 {@code bilibili-API/docs/search/search_request.md}「分类搜索」一节。
+     */
+    public static Object searchType(String keyword, int page, String type, String order)
+            throws IOException, JSONException {
         String url = "https://api.bilibili.com/x/web-interface/wbi/search/type?";
         url += "page=" + page +
                 "&keyword=" + URLEncoder.encode(keyword, "UTF-8") + "&search_type=" + type + "&seid=" + getSeid(keyword);
+        if (order != null && !order.isEmpty()) url += "&order=" + order;
 
         JSONObject all = NetWorkUtil.getJson(ConfInfoApi.signWBI(url)); // 得到一整个json
 
@@ -97,24 +113,7 @@ public class SearchApi {
             if (type.equals("video")) {
                 JSONArray data = typecard.getJSONArray("data"); // 把这个列表提出来，接着拆
                 for (int j = 0; j < data.length(); j++) {
-                    JSONObject card = data.getJSONObject(j); // 获得视频卡片
-                    if (!card.getString("type").equals("video"))
-                        continue; // 警惕虚假视频卡片（阿B为什么要把直播间放进视频结果里）
-
-                    String title = card.getString("title");
-                    title = title.replace("<em class=\"keyword\">", "").replace("</em>", "");
-                    // 标题里的红字，知道怎么显示但因为懒所以直接删（//显示方式可以用imagespan，参照表情包那部分程序（EmoteUtil），期待后人补齐（
-                    title = StringUtil.htmlToString(title);
-
-                    String bvid = card.getString("bvid");
-                    long aid = card.getLong("aid");
-                    String cover = "http:" + card.getString("pic"); // 离谱了嗷，前面甚至不肯加个http:
-                    String upName = card.getString("author");
-
-                    long play = card.getLong("play");
-                    String playTimesStr = StringUtil.toWan(play) + "观看";
-
-                    videoCardList.add(new VideoCard(title, upName, playTimesStr, cover, aid, bvid, type));
+                    parseVideoEntry(data.getJSONObject(j), videoCardList);
                 }
             } else if (type.equals("media_bangumi") && first) {
                 // 聚合搜索里的番剧条目与 search_type=media_bangumi 的 data.result 同构，
@@ -124,6 +123,57 @@ public class SearchApi {
                 getBangumiFromSearchResult(data, videoCardList);
             }
         }
+    }
+
+    /**
+     * 解析分类搜索（{@code search_type=video}）的视频结果。
+     * <p>
+     * 与 {@link #getVideosFromSearchResult} 的区别只在输入形状：分类搜索返回的 {@code data.result}
+     * 直接就是视频条目数组，外面没有 {@code result_type} 那一层，也不会混入番剧。
+     * 条目字段与聚合搜索里的视频条目同构，故共用 {@link #parseVideoEntry}。
+     */
+    public static void getVideosFromTypeResult(JSONArray input, ArrayList<VideoCard> videoCardList)
+            throws JSONException {
+        if (input == null) return;
+        for (int i = 0; i < input.length(); i++) {
+            JSONObject card = input.optJSONObject(i);
+            if (card != null) parseVideoEntry(card, videoCardList);
+        }
+    }
+
+    /**
+     * 单条视频搜索结果 → VideoCard。聚合搜索与分类搜索共用这一份，改字段只改这里。
+     */
+    private static void parseVideoEntry(JSONObject card, ArrayList<VideoCard> videoCardList) throws JSONException {
+        if (!card.optString("type", "").equals("video"))
+            return; // 警惕虚假视频卡片（阿B为什么要把直播间放进视频结果里）
+
+        String title = card.getString("title");
+        title = title.replace("<em class=\"keyword\">", "").replace("</em>", "");
+        // 标题里的红字，知道怎么显示但因为懒所以直接删（//显示方式可以用imagespan，参照表情包那部分程序（EmoteUtil），期待后人补齐（
+        title = StringUtil.htmlToString(title);
+
+        String bvid = card.getString("bvid");
+        long aid = card.getLong("aid");
+        String cover = httpsUrl(card.optString("pic", ""));
+        String upName = card.getString("author");
+
+        long play = card.getLong("play");
+        String playTimesStr = StringUtil.toWan(play) + "观看";
+
+        videoCardList.add(new VideoCard(title, upName, playTimesStr, cover, aid, bvid, "video"));
+    }
+
+    /**
+     * 搜索结果里的图片都是协议相对地址（{@code //i0.hdslb.com/...}），不补 scheme 的话
+     * Glide 不认、{@code GlideUtil} 也不会加尺寸后缀，封面必然加载失败。
+     * <p>
+     * 统一补 <b>https</b>（与 {@link #getBangumiFromSearchResult} 同一规则）：本应用只走 https，
+     * 明文白名单只用于兜底，不该在客户端主动拼 http 地址。
+     */
+    private static String httpsUrl(String url) {
+        if (url == null) return "";
+        return url.startsWith("//") ? "https:" + url : url;
     }
 
     /**
@@ -176,7 +226,7 @@ public class SearchApi {
 
             long mid = card.getLong("mid");
             String name = card.getString("uname");
-            String avatar = "http:" + card.getString("upic");
+            String avatar = httpsUrl(card.getString("upic"));
             String sign = card.getString("usign");
             int fans = card.getInt("fans");
             int level = card.getInt("level");
@@ -193,7 +243,7 @@ public class SearchApi {
 
             articleCard.id = card.getLong("id");
             if (card.getJSONArray("image_urls").length() > 0)
-                articleCard.cover = "http:" + card.getJSONArray("image_urls").getString(0);
+                articleCard.cover = httpsUrl(card.getJSONArray("image_urls").getString(0));
             else
                 articleCard.cover = "";
             articleCard.upName = card.getString("category_name");

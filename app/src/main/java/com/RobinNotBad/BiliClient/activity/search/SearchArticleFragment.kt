@@ -24,6 +24,12 @@ class SearchArticleFragment : SearchFragment() {
         super.onCreate(savedInstanceState)
     }
 
+    override fun sortOptions(): List<SearchSortOption> = SearchSortOptions.ARTICLE
+
+    override fun onSortChanged(order: String) {
+        refreshInternal()
+    }
+
     @SuppressLint("SetTextI18n")
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
@@ -38,8 +44,10 @@ class SearchArticleFragment : SearchFragment() {
 
     private fun continueLoading(page: Int) {
         CenterThreadPool.run {
+            val orderAtRequest = sortOrder
             try {
-                val result = SearchApi.searchType(keyword, page, "article") as JSONArray?
+                val result = SearchApi.searchType(keyword, page, "article", orderAtRequest) as JSONArray?
+                if (orderAtRequest != sortOrder) return@run // 已切换排序，这批结果作废
                 if (result != null) {
                     if (page == 1) showEmptyView(false)
                     val list = ArrayList<ArticleCard>()

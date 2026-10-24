@@ -19,6 +19,7 @@ import com.RobinNotBad.BiliClient.R
 import com.RobinNotBad.BiliClient.listener.OnLoadMoreListener
 import com.RobinNotBad.BiliClient.ui.widget.recycler.CustomGridManager
 import com.RobinNotBad.BiliClient.ui.widget.recycler.CustomLinearManager
+import com.RobinNotBad.BiliClient.ui.appearance.ColorScheme
 import com.RobinNotBad.BiliClient.util.MsgUtil
 import com.RobinNotBad.BiliClient.util.SharedPreferencesUtil
 import com.RobinNotBad.BiliClient.util.view.ImageAutoLoadScrollListener
@@ -44,6 +45,44 @@ open class SearchFragment : Fragment() {
     var page = 1
     var lastLoadTimestamp: Long = 0
     var refreshable = false
+
+    /**
+     * 当前排序档位（`order` 参数值）。**@Volatile**：点击在主线程写，子类在
+     * CenterThreadPool 的后台线程读来决定请求哪条接口。与 [bottom] 同一类问题——
+     * 没有 happens-before 边时后台线程可能读到旧值，表现就是"点了排序但拉回来的还是旧排序的结果"。
+     */
+    @Volatile
+    protected var sortOrder: String = SearchSortOptions.TOTALRANK
+
+    /**
+     * 本分类支持的排序档位；返回空列表表示没有排序条（番剧 / 用户 / 直播的排序键与视频不通用，
+     * 本功能不做）。排序条的控件在 `SearchActivity` 里——**不能放进 fragment**：搜索页的
+     * `ViewPager` 只对齐到顶栏下方，搜索框是盖在 fragment 上方的，放进 fragment 的条会被
+     * 搜索框压住（26.10.24 模拟器实测）。
+     */
+    open fun sortOptions(): List<SearchSortOption> = emptyList()
+
+    /** 当前排序档位（`order` 参数值），供宿主写排序条的高亮状态。 */
+    fun currentSortOrder(): String = sortOrder
+
+    /** 排序被用户切换后调用，子类负责清空列表并重拉第一页（[page] 与 [bottom] 已由基类重置）。 */
+    protected open fun onSortChanged(order: String) {
+    }
+
+    /**
+     * 由宿主（`SearchActivity` 的排序条）调用：切换排序并重拉。
+     *
+     * `page` 必须先回 1 再清 `bottom`——[bottom] 的 setter 会按 `page == 1` 决定是"清空态"还是
+     * "弹到底提示"，顺序反了会在切换排序时弹一次「已经到底啦」。
+     */
+    fun selectSort(order: String) {
+        if (order == sortOrder) return
+        sortOrder = order
+        page = 1
+        bottom = false
+        setRefreshing(true)
+        onSortChanged(order)
+    }
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {
         return inflater.inflate(R.layout.fragment_simple_refresh, container, false)
