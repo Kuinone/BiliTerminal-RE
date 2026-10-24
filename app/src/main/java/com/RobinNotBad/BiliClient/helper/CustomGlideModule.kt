@@ -1,6 +1,7 @@
 package com.RobinNotBad.BiliClient.helper
 
 import android.content.Context
+import com.RobinNotBad.BiliClient.util.ImageRequestPolicy
 import com.RobinNotBad.BiliClient.util.NetWorkUtil
 import com.RobinNotBad.BiliClient.util.PerformanceManager
 import com.bumptech.glide.Glide
@@ -14,8 +15,8 @@ import com.bumptech.glide.load.engine.cache.MemorySizeCalculator
 import com.bumptech.glide.load.model.GlideUrl
 import com.bumptech.glide.module.AppGlideModule
 import com.bumptech.glide.request.RequestOptions
+import okhttp3.Interceptor
 import okhttp3.OkHttpClient
-import okhttp3.Request
 import java.io.InputStream
 import java.util.concurrent.TimeUnit
 
@@ -43,17 +44,26 @@ class CustomGlideModule : AppGlideModule() {
     }
 
     override fun registerComponents(context: Context, glide: Glide, registry: Registry) {
-        val builder: OkHttpClient.Builder = NetWorkUtil.setOkHttpSsl(OkHttpClient.Builder())
-        builder.addInterceptor { chain ->
-            val headers: ArrayList<String> = NetWorkUtil.webHeaders
-            val requestBuilder: Request.Builder = chain.request().newBuilder()
-            var i = 0
-            while (i < headers.size) {
-                requestBuilder.addHeader(headers[i], headers[i + 1])
-                i += 2
-            }
+        // 审计 P0-1：原实现把 NetWorkUtil.webHeaders（第一组就是完整登录 Cookie）全量追加到
+        // 每一个图片请求上，站外图床（afdiancdn.com 等）也会收到 SESSDATA / bili_jct，等于把
+        // 账号会话交给第三方。现在按目标域名收敛：只有 B 站白名单域才带会话头，站外域只留 UA。
+        // 判定逻辑抽在 ImageRequestPolicy（纯 JVM、有单测），这里只负责写头。
+        val sessionFilter = Interceptor { chain ->
+            val request = chain.request()
+            val url = request.url.toString()
+            val requestBuilder = request.newBuilder()
+            // 先删再写：站外域必须显式摘掉会话头，防止跨主机重定向把上一跳的 Cookie 带过去。
+            ImageRequestPolicy.headersToRemove(url).forEach { requestBuilder.removeHeader(it) }
+            ImageRequestPolicy.headersFor(url, NetWorkUtil.webHeaders)
+                .forEach { (name, value) -> requestBuilder.header(name, value) }
             chain.proceed(requestBuilder.build())
         }
+
+        val builder: OkHttpClient.Builder = NetWorkUtil.setOkHttpSsl(OkHttpClient.Builder())
+            .addInterceptor(sessionFilter)
+            // 网络拦截器对「每一跳」再过滤一次：OkHttp 跟跨主机重定向会保留自定义头，
+            // 只在应用层过滤挡不住「B 站图 302 到站外」。两个拦截器共用同一份策略，不会漂移。
+            .addNetworkInterceptor(sessionFilter)
 
         registry.replace(
             GlideUrl::class.java, InputStream::class.java,
