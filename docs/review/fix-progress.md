@@ -6,9 +6,9 @@
 
 ## 1. 当前版本状态
 
-- **版本号**：`26.10.19`（`app/build.gradle` 的 `versionName`），`versionCode 2610200`（26.10.21 合并上游时上游把它从 `2610190` 抬到 `2610200`，`versionName` 未变）。tag `26.10.19` 已占用。
-- **上一版**：`26.10.16` / tag `26.10.16`。
-- **下次递增**：先看 `app/build.gradle:23-24`；release immutability 下被 Release 用过的 tag **永久不可复用**，同版本名补丁版只能用 `26.10.19.1` 这种后缀形式，`versionCode` 递增、`versionName` 可不变。改了版本号还要同步 `strings.xml` 里 `update_log_current` 的「【YY.MM.DD 本次更新】」锚点，否则 `:app:verifyVersionConsistency` 会失败。
+- **版本号**：`26.10.24`（`app/build.gradle` 的 `versionName`），`versionCode 2610240`（26.10.24 远端发版时从 `2610200` 抬上来，`update_log_current` 锚点同期换成了「【26.10.24 本次更新】」，`:app:verifyVersionConsistency` 已复验通过）。tag `26.10.24` 已占用，上一版 tag 是 `26.10.19`。
+- **上一版**：`26.10.19` / tag `26.10.19`。
+- **下次递增**：先看 `app/build.gradle:23-24`；release immutability 下被 Release 用过的 tag **永久不可复用**，同版本名补丁版只能用 `26.10.24.1` 这种后缀形式，`versionCode` 递增、`versionName` 可不变。改了版本号还要同步 `strings.xml` 里 `update_log_current` 的「【YY.MM.DD 本次更新】」锚点，否则 `:app:verifyVersionConsistency` 会失败。
 - **构建命令**（单测任务名**带 flavor 前缀**，`testDebugUnitTest` 自 26.10.11 引入 flavor 后已不存在）：
 
   ```text
