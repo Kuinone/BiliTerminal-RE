@@ -48,6 +48,7 @@ object Tutorials {
         id = "recommend",
         title = UiText.of("推荐页面-重要教程"),
         version = 1,
+        descriptionRes = R.string.tutorial_desc_recommend,
         target = RecommendActivity::class.java,
         kind = TutorialKind.GUIDE,
         imageRes = R.mipmap.tutorial_recommend,
@@ -87,6 +88,7 @@ object Tutorials {
         id = "theme_notice",
         title = UiText.of("主题说明"),
         version = 1,
+        descriptionRes = R.string.tutorial_desc_theme_notice,
         target = RecommendActivity::class.java,
         kind = TutorialKind.NOTICE,
     ) {
@@ -115,6 +117,7 @@ object Tutorials {
         id = "video_main",
         title = UiText.of("视频详情-主要教程"),
         version = 1,
+        descriptionRes = R.string.tutorial_desc_video_main,
         target = VideoInfoActivity::class.java,
         kind = TutorialKind.GUIDE,
         imageRes = R.mipmap.tutorial_video,
@@ -193,6 +196,7 @@ object Tutorials {
         id = "space",
         title = UiText.of("用户主页-主要教程"),
         version = 1,
+        descriptionRes = R.string.tutorial_desc_space,
         target = UserInfoActivity::class.java,
         kind = TutorialKind.GUIDE,
         imageRes = R.mipmap.tutorial_space,
@@ -231,6 +235,7 @@ object Tutorials {
         id = "search",
         title = UiText.of("搜索教程"),
         version = 1,
+        descriptionRes = R.string.tutorial_desc_search,
         target = SearchActivity::class.java,
         kind = TutorialKind.GUIDE,
         imageRes = R.mipmap.tutorial_search,
@@ -260,6 +265,7 @@ object Tutorials {
         id = "message",
         title = UiText.of("消息页面教程"),
         version = 1,
+        descriptionRes = R.string.tutorial_desc_message,
         target = MessageActivity::class.java,
         kind = TutorialKind.NOTICE,
     ) {
@@ -282,6 +288,7 @@ object Tutorials {
         id = "dynamic",
         title = UiText.of("动态页教程"),
         version = 1,
+        descriptionRes = R.string.tutorial_desc_dynamic,
         target = DynamicActivity::class.java,
         kind = TutorialKind.NOTICE,
         imageRes = R.mipmap.tutorial_dynamic,
@@ -303,6 +310,7 @@ object Tutorials {
         id = "dynamic_info",
         title = UiText.of("动态详情页教程"),
         version = 1,
+        descriptionRes = R.string.tutorial_desc_dynamic_info,
         target = DynamicInfoActivity::class.java,
         kind = TutorialKind.NOTICE,
         imageRes = R.mipmap.tutorial_dynamic,
@@ -329,6 +337,7 @@ object Tutorials {
         id = "article",
         title = UiText.of("专栏详情页教程"),
         version = 1,
+        descriptionRes = R.string.tutorial_desc_article,
         target = OpusInfoActivity::class.java,
         kind = TutorialKind.NOTICE,
         imageRes = R.mipmap.tutorial_article,
@@ -361,6 +370,7 @@ object Tutorials {
         // 26.10.21：左右滑改为翻到右侧的详情/评论/相关推荐页；长按改为 3 倍速播放。
         // 内容变了要 +1，老用户才会重新看到。
         version = 4,
+        descriptionRes = R.string.tutorial_desc_short_video,
         target = ShortVideoPlayerActivity::class.java,
         kind = TutorialKind.GUIDE,
     ) {
@@ -409,6 +419,7 @@ object Tutorials {
         // 26.10.20 改版：长按弹菜单、文件夹卡长按、进文件夹后顶栏变返回箭头、空态改为列表内一行。
         // 内容变了就 +1，老用户才会重新看到这篇。
         version = 2,
+        descriptionRes = R.string.tutorial_desc_local,
         target = LocalListActivity::class.java,
         kind = TutorialKind.NOTICE,
     ) {

@@ -34,6 +34,7 @@ fun tutorial(
     hintText: String? = null,
     hintViewId: Int? = null,
     imageRes: Int? = null,
+    descriptionRes: Int? = null,
     block: TutorialScope.() -> Unit = {},
 ): Tutorial {
     val scope = TutorialScope()
@@ -46,6 +47,7 @@ fun tutorial(
         kind = kind,
         pages = scope.pages,
         imageRes = imageRes,
+        descriptionRes = descriptionRes,
         hintText = hintText,
         hintViewId = hintViewId,
     )
