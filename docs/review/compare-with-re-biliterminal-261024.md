@@ -180,7 +180,7 @@ if (Build.VERSION.SDK_INT >= 26 && !activity.getPackageManager().canRequestPacka
 | P2-8 | 极验 WebView 把服务端返回的 `gt`/`challenge` 直接拼进 JS 字符串 | `activity/settings/login/CaptchaWebViewActivity.kt:200-203` | 用 `JSONObject.quote` 转义并注释缘由 | 改用 `JSONObject.quote(...)`；对 URL 参数做白名单校验 |
 | P2-9 | 遥测采集面比对方宽：`ANDROID_ID` 派生 `device_key`、内存/ABI、崩溃日志 | `api/TerminalApi.java:383-405`、`:134-150`、`:211-241` | `install_id` 用随机 UUID，明确不采 AndroidID/账号 | 评估去掉 `device_key`（用 install_id + 服务端去重）；隐私文案逐字覆盖；`ram_*` 只留等级。**26.10.24 定案：`device_key` 按产品需求保留采集（不整改），仅落实「精确内存改档位」；隐私文案维持 v2 口径** |
 
-> **修后状态（26.10.24 第二批，`d0c703b` + `revert`）**：P2-2 / P2-5 / P2-6 / P2-7 / P2-8 五条已落地，P2-9 部分落地（精确内存改为档位；`device_key` 采集按产品需求保留）——
+> **修后状态（26.10.24 第二批，`d0c703b` + `b9d019c`（回退 device_key））**：P2-2 / P2-5 / P2-6 / P2-7 / P2-8 五条已落地，P2-9 部分落地（精确内存改为档位；`device_key` 采集按产品需求保留）——
 > 图片默认目录改应用专属 + MediaStore 发布进相册（MANAGE 只在用户自定义公共目录时才可能需要）；
 > Cookie 域校验改为 `equals` / 子域点后缀 + 响应 host 校验；直播弹幕校验 wss 域名与端口、握手只带 `SESSDATA`；
 > 深链 http/https 限定 B 站域与 `b23.tv`；极验参数白名单 + `JSONObject.quote`；遥测内存只报档位，`device_key` 仍由 `ANDROID_ID` 哈希派生并上报。
@@ -901,7 +901,7 @@ override fun attachBaseContext(base: Context) {
 | 10.2（P1） | START_STICKY 后下载不续跑 | `6a947a6` |
 | 5.1（P1-1） | 无极调音 0~100%（新增实现） | `13db917` |
 
-**第二批**（§3.3 五条 P2 + P2-9 部分，提交 `d0c703b` + `revert(privacy)`）：
+**第二批**（§3.3 五条 P2 + P2-9 部分，提交 `d0c703b` + `b9d019c`（回退 device_key））：
 
 | 报告编号 | 内容 | 落点文件 |
 | --- | --- | --- |
