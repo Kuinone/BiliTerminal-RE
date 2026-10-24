@@ -47,6 +47,21 @@ public class FavoriteApi {
         return (attr & 2) == 0;
     }
 
+    /**
+     * 收藏夹是否私密：{@code attr} 二进制第 0 位为 1 表示私有收藏夹。
+     *
+     * <p>v3 接口没有独立的 {@code privacy} 字段，位定义见
+     * {@code bilibili-API/docs/fav/info.md} 的「attr 属性位二进制值表」（bit0：0 公开 / 1 私有，
+     * bit1：0 默认 / 1 其他）。该位表写在 created/list-all 小节，folder/info 只标注 attr 为
+     * 「属性位」，两者是同一个 attr 字段；按同一语义解析，不依赖未文档化的 privacy 字段
+     * （字段缺失时会被当成 0=公开，反而把私密夹误判成公开）。
+     *
+     * <p>纯函数，供单测直接调用。
+     */
+    public static boolean isPrivateFolder(int attr) {
+        return (attr & 1) != 0;
+    }
+
     /** 收藏夹视频上限：默认 50000，自建 1000（v3 接口不返回 max_count） */
     public static int maxCountOf(boolean isDefault) {
         return isDefault ? MAX_COUNT_DEFAULT_FOLDER : MAX_COUNT_CUSTOM_FOLDER;
@@ -147,6 +162,60 @@ public class FavoriteApi {
             pn++;
         }
         return folderList;
+    }
+
+    /**
+     * 解析 {@code x/v3/fav/folder/info} 的响应（纯函数，供单测直接调用）。
+     *
+     * <p>只取编辑页需要预填的 title/intro/privacy，以及详情页要用的 id/mediaId/media_count/attr。
+     * 字段依据：{@code bilibili-API/docs/fav/info.md} 的 data 对象表（`:31-51`，含
+     * attr/title/intro/media_count，<b>没有 privacy 字段</b>）；privacy 由 attr 的 bit0 解析
+     * （同文档「attr 属性位二进制值表」，`:185-191`）。
+     *
+     * @param result 接口根对象（含 code/message/data）
+     * @return 解析结果（intro 缺失时为空串，privacy 只会是 0/1）
+     * @throws JSONException code!=0、data 为空或字段类型异常时抛出——调用方不得用默认值兜底覆盖
+     */
+    public static FavoriteFolder parseFolderInfo(JSONObject result) throws JSONException {
+        if (result == null) throw new JSONException("收藏夹信息为空");
+        int code = result.optInt("code", -1);
+        if (code != 0) {
+            String message = result.optString("message", "");
+            throw new JSONException("获取收藏夹信息失败 code=" + code
+                    + (message.isEmpty() ? "" : " message=" + message));
+        }
+        JSONObject data = result.optJSONObject("data");
+        if (data == null) throw new JSONException("收藏夹信息为空：data=null");
+
+        int attr = data.optInt("attr", 0);
+        FavoriteFolder folder = new FavoriteFolder();
+        folder.id = data.optLong("fid", 0);
+        // v3 的 data.id 就是 media_id（mlid），优先用它；缺省时退回 fid
+        folder.mediaId = data.optLong("id", folder.id);
+        folder.name = data.optString("title", "");
+        folder.cover = data.optString("cover", "");
+        folder.intro = data.optString("intro", "");
+        folder.videoCount = data.optInt("media_count", 0);
+        folder.isDefault = isDefaultFolder(attr);
+        folder.maxCount = maxCountOf(folder.isDefault);
+        folder.privacy = isPrivateFolder(attr) ? 1 : 0;
+        return folder;
+    }
+
+    /**
+     * 获取收藏夹详情：编辑页用它预填标题/简介/隐私，避免拿列表数据（或 Intent）里的空值覆盖服务端数据。
+     *
+     * <p>接口：{@code GET https://api.bilibili.com/x/v3/fav/folder/info?media_id=}，
+     * 依据 {@code bilibili-API/docs/fav/info.md:5-51}；Cookie 认证，查询私密收藏夹必须本人登录（`:13`）。
+     *
+     * @param mediaId 收藏夹完整 id（media_id）
+     * @throws JSONException code!=0（如 11010 内容不存在、-403 权限不足）时抛出，调用方应禁用保存并提示
+     */
+    public static FavoriteFolder getFolderInfo(long mediaId) throws IOException, JSONException {
+        String url = "https://api.bilibili.com/x/v3/fav/folder/info" + new NetWorkUtil.FormData()
+                .setUrlParam(true)
+                .put("media_id", mediaId);
+        return parseFolderInfo(NetWorkUtil.getJson(url));
     }
 
     /**

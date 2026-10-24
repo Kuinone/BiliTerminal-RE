@@ -1,10 +1,12 @@
 package com.RobinNotBad.BiliClient.api
 
 import com.RobinNotBad.BiliClient.model.VideoCard
+import org.json.JSONException
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Test
 
 class FavoriteApiTest {
@@ -160,5 +162,97 @@ class FavoriteApiTest {
         assertEquals("请求出错了，请稍后再试", FavoriteApi.resourceErrorMsg(-400))
         assertEquals("内容不存在，可能已经被删除了", FavoriteApi.resourceErrorMsg(11010))
         assertEquals("未知码带原码", "操作失败（错误码 7）", FavoriteApi.resourceErrorMsg(7))
+    }
+
+    // ==================== folder/info 编辑页预填 ====================
+
+    /**
+     * attr 位定义见 bilibili-API/docs/fav/info.md（attr 属性位表）：bit0=1 私有、bit1=1 非默认。
+     * 公开示例取文档 folder/info 响应里的 attr=54（bit0=0 公开、bit1=1 非默认），
+     * 并带真实字段 id/fid/title/intro/media_count。
+     */
+    @Test
+    fun parseFolderInfo_publicAttr_privacyIsPublic() {
+        val json = JSONObject(
+            """{"code":0,"message":"0","ttl":1,"data":{
+                "id":1052622027,"fid":10526220,"mid":7792521,
+                "attr":54,"title":"猛 男 生 存","cover":"http://i0.hdslb.com/bfs/xxx.jpg",
+                "intro":"猛 男 生 存","media_count":28
+            }}"""
+        )
+
+        val folder = FavoriteApi.parseFolderInfo(json)
+
+        assertEquals("attr bit0=0 是公开", 0, folder.privacy)
+        assertEquals("简介取自 intro 字段", "猛 男 生 存", folder.intro)
+        assertEquals("标题取自 title 字段", "猛 男 生 存", folder.name)
+        assertEquals("mediaId 取 data.id（mlid）", 1052622027L, folder.mediaId)
+        assertEquals("id 取 fid", 10526220L, folder.id)
+        assertEquals("media_count", 28, folder.videoCount)
+        assertFalse("attr=54 的 bit1=1，不是默认收藏夹", folder.isDefault)
+    }
+
+    @Test
+    fun parseFolderInfo_privateAttrBit0_privacyIsPrivate() {
+        // attr=23 = 0b10111：bit0=1 私有、bit1=1 非默认（自建私密收藏夹的典型值）
+        val json = JSONObject(
+            """{"code":0,"message":"0","data":{
+                "id":936347621,"fid":9363476,"mid":7792521,
+                "attr":23,"title":"私密收藏夹","intro":"只有我能看","media_count":2
+            }}"""
+        )
+
+        val folder = FavoriteApi.parseFolderInfo(json)
+
+        assertEquals("attr bit0=1 是私密，编辑页保存时必须原样带回", 1, folder.privacy)
+        assertTrue("isDefaultFolder 只看 bit1", !folder.isDefault)
+    }
+
+    @Test
+    fun parseFolderInfo_introMissing_defaultsEmpty() {
+        // 旧收藏夹/接口裁剪时可能没有 intro、media_count 字段，不能让异常冒到编辑页
+        val json = JSONObject(
+            """{"code":0,"message":"0","data":{"id":9,"fid":1,"attr":0,"title":"默认收藏夹"}}"""
+        )
+
+        val folder = FavoriteApi.parseFolderInfo(json)
+
+        assertEquals("intro 缺失兜底空串（保存时不会塞 null）", "", folder.intro)
+        assertEquals("media_count 缺失兜底 0", 0, folder.videoCount)
+        assertEquals("attr=0 的 bit0=0 是公开", 0, folder.privacy)
+        assertTrue("attr=0 是默认收藏夹", folder.isDefault)
+    }
+
+    @Test
+    fun parseFolderInfo_codeNonZero_throws() {
+        // 11010 = 内容不存在（bilibili-API/docs/fav/info.md 的 code 表）
+        val json = JSONObject("""{"code":11010,"message":"内容不存在","data":null}""")
+
+        try {
+            FavoriteApi.parseFolderInfo(json)
+            fail("code!=0 必须抛异常，调用方据此禁用保存，绝不能用默认值覆盖")
+        } catch (e: JSONException) {
+            assertTrue("异常信息应带 code 方便排查，实际：${e.message}", e.message!!.contains("11010"))
+        }
+    }
+
+    @Test
+    fun parseFolderInfo_dataNull_throws() {
+        try {
+            FavoriteApi.parseFolderInfo(JSONObject("""{"code":0,"message":"0","data":null}"""))
+            fail("data=null 时应抛异常")
+        } catch (e: JSONException) {
+            assertTrue("异常信息应指明 data 为空，实际：${e.message}", e.message!!.contains("data"))
+        }
+    }
+
+    /** bit0 语义与 isDefaultFolder 的 bit1 分开校验，防止有人把两个位混用 */
+    @Test
+    fun isPrivateFolder_checksAttrBit0() {
+        assertFalse("attr=0 公开", FavoriteApi.isPrivateFolder(0))
+        assertFalse("attr=54 公开", FavoriteApi.isPrivateFolder(54))
+        assertTrue("attr=1 私密", FavoriteApi.isPrivateFolder(1))
+        assertTrue("attr=23 私密", FavoriteApi.isPrivateFolder(23))
+        assertTrue("attr=3 私密+非默认", FavoriteApi.isPrivateFolder(3))
     }
 }
