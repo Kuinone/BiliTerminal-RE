@@ -2,6 +2,7 @@ package com.RobinNotBad.BiliClient.api
 
 import com.RobinNotBad.BiliClient.model.VideoCard
 import org.json.JSONArray
+import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -178,5 +179,34 @@ class SearchApiTest {
         // 与分类搜索同一份封面规则：协议相对地址一律补 https
         assertEquals("https://i0.hdslb.com/h.jpg", cards[0].cover)
         assertEquals("video", cards[0].type)
+    }
+
+    /**
+     * 风控回退的判据。
+     *
+     * 26.10.24 审查指出：只有 `v_voucher` 一种形态被认出来，`code=-412/-352` 的响应往往连
+     * `data` 都没有，会在主链路上静默返回 null → 页面显示成「啥都木有」。
+     */
+    @Test
+    fun riskControl_recognizesBothShapes() {
+        // 形态二：code=0 但 data 里只有 v_voucher（实测抓到的那种）
+        assertTrue(SearchApi.shouldFallback(JSONObject("""{"code":0,"data":{"v_voucher":"voucher_x"}}""")))
+        // 形态一：code=-412/-352，通常没有 data
+        assertTrue(SearchApi.shouldFallback(JSONObject("""{"code":-412,"message":"请求被拦截"}""")))
+        assertTrue(SearchApi.shouldFallback(JSONObject("""{"code":-352,"message":"风控校验失败"}""")))
+        assertTrue(SearchApi.shouldFallback(JSONObject("""{"code":-412,"data":null}""")))
+    }
+
+    @Test
+    fun riskControl_normalResponsesAreNotFallback() {
+        // 真的没有匹配结果：带 result（空数组），不能当成风控
+        assertTrue(!SearchApi.shouldFallback(JSONObject("""{"code":0,"data":{"seid":"1","result":[]}}""")))
+        // 正常有结果
+        assertTrue(!SearchApi.shouldFallback(JSONObject("""{"code":0,"data":{"result":[{"type":"video"}]}}""")))
+        // 其它错误码交给 throwIfServerError 抛，不当风控回退
+        assertTrue(!SearchApi.shouldFallback(JSONObject("""{"code":-400,"message":"请求错误"}""")))
+
+        assertTrue(!SearchApi.isRiskControl(JSONObject("""{"seid":"1","result":[]}""")))
+        assertTrue(SearchApi.isRiskControl(JSONObject("""{"v_voucher":"voucher_x"}""")))
     }
 }

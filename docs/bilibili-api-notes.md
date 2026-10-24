@@ -119,6 +119,8 @@
       - 换成之前被风控挡下的中文长关键词（`linux操作系统零基础到入门` + `order=click`）→ 同样 20 条、同样降序。
     - **客户端做法**（`SearchApi.search` / `searchType`）：先走 wbi；只在响应是 `v_voucher` 空壳时才退到旧接口再打一次；旧接口**也**是空壳才抛 `SearchApi.RiskControlException`，页面据此把排序按钮画成「因B站风控不可用」、点击提示「请稍候再试」（见 `docs/review/fix-progress.md` §3.61）。
     - **别把它当长期方案**：旧接口是上游标了"旧链接"的地址，随时可能下线；回退只用来兜住"这一下搜不出来"，不要为了绕风控把主链路整体切过去。
+    - **回退只发一次，不走通用重试**：`NetWorkUtil.getJson` 对 `-352`/`-412` 会重试到 `api_retry_max_times`（默认 5 次），回退请求再走一遍就是「一次搜索最多 10 个请求」，只会把限流拖得更久（26.10.24 审查指出）。所以回退用新增的 `NetWorkUtil.getJsonOnce()`，主链路的重试行为不变。
+    - **旧接口的其它错误码不能当成"没有结果"**：`-400` 之类的非零 `code` 现在会抛 `SearchApi.SearchException`（带服务端错误码，`ApiErrorText.opFailed`），页面弹出来；只有 `code == 0` 且确实没有 `result` 才算"搜不到"。
 
 ## 4. 按接口可行性收敛的「值得做 / 不值得做」
 

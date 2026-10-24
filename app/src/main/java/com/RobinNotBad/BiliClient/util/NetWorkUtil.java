@@ -252,6 +252,17 @@ public class NetWorkUtil {
     }
 
     /**
+     * 不跑风控重试的 JSON 请求：只发**一次**，`-352` / `-412` 原样返回，由调用方自己决定怎么处理。
+     *
+     * 给「已经确定处在风控状态」的场景用：搜索在 wbi 接口被拦后要回退旧接口，那次回退再走
+     * 通用重试的话两条接口各重试 5 次 = 一次搜索最多 10 个请求，只会把限流拖得更久
+     * （26.10.24 审查指出）。默认的 {@link #getJson(String)} 行为不变。
+     */
+    public static JSONObject getJsonOnce(String url) throws IOException, JSONException {
+        return executeJsonOnce(url, webHeaders);
+    }
+
+    /**
      * 隐私模式下的JSON请求，使用游客Cookie（剔除登录态Cookie），避免详情请求暴露个人状态
      */
     public static JSONObject getJsonPrivacy(String url) throws IOException, JSONException {
@@ -314,6 +325,16 @@ public class NetWorkUtil {
             }
         }
         return json;
+    }
+
+    /**
+     * 只发一次，不对 `-352` / `-412` 重试（见 {@link #getJsonOnce(String)}）。
+     */
+    private static JSONObject executeJsonOnce(String url, ArrayList<String> headers) throws IOException, JSONException {
+        try (ResponseBody body = get(url, headers).body()) {
+            if (body == null) throw new JSONException("在访问" + url + "时返回内容为空");
+            return new JSONObject(body.string());
+        }
     }
 
     public static Response get(String url) throws IOException {

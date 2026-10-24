@@ -1389,6 +1389,11 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
   - **`-412` / `-352` 形态漏了**：以前只在 `data` 有 `v_voucher` 时才回退，而 `code=-412` 的响应往往连 `data` 都没有，会走 `if (all.isNull("data")) return null;` 静默返回空列表。新增 `shouldFallback(all)` 同时认两种形态（含 `NetWorkUtil` 重试 5 次后原样返回的 `-412`），旧接口也一样认。
   - **风控文案被吞成「网络错误」**：`MsgUtil.err` 对任何 `IOException` 一律换成 `err_network`，而 `RiskControlException` 正是它的子类 → 「搜索被B站风控了…」只会进 logcat。改为在 `SearchFragment.report()` 里先拦一道（5 个搜索分类共用）。
   - **风控态没有重试入口**：按钮只弹提示、下拉刷新关着、同关键词再点搜索会短路，锁定后再也解不开。现在点按钮会真的重拉第一页（`SearchFragment.retry()`），且 `update(keyword)` 换了关键词时会复位。
+- **第二轮审查（26.10.24，外部评审）修掉的 3 条 + 补的测试**：
+  - **在途的旧请求仍可能污染新结果**：只在后台线程比了 `sortOrder`，从"检查通过"到 `runOnUiThread` 真正执行之间状态变了仍会把旧结果追加进新列表；换关键词更是完全没校验。改成发请求时抓 `loadGeneration` + `keyword` + `sortOrder` 三样，**后台与改列表前各验一次**（`SearchFragment.invalidateInFlightRequests()` 在 `update` / `selectSort` / `retry` 里自增）。
+  - **一次搜索最多 10 个请求**：通用重试对 `-352/-412` 重试 5 次，回退旧接口再走一遍。新增 `NetWorkUtil.getJsonOnce()`，回退只发一次；主链路重试行为不变。
+  - **旧接口的其它错误码被伪装成空结果**：`resultOrThrow` 以前对所有非风控情况返回 null，`-400` 之类会显示成「啥都木有」。现在非零 `code` 抛 `SearchApi.SearchException`（`ApiErrorText.opFailed`），页面把错误码弹出来；`SearchFragment.report()` 改成认 `SearchException` 基类，风控与其它错误码都按自己的文案显示。
+  - **测试补上判据**：`SearchApi.shouldFallback` / `isRiskControl` 提成 public static 供单测，新增 2 例钉住两种风控形态与「真没结果不算风控」。全量基线 **79 类 / 847 例 / 0 失败**。
 - **未做**：用户 / 直播的排序（它们的 `order` 是另一套键：`fans`/`level`、`online`/`live_time`），以及「最多弹幕 / 最多评论」两档（手表屏上弹窗列表已经够长）。
 
 ## 4. 历史章节索引

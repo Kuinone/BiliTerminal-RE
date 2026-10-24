@@ -44,10 +44,15 @@ class SearchArticleFragment : SearchFragment() {
 
     private fun continueLoading(page: Int) {
         CenterThreadPool.run {
+            // 同 SearchVideoFragment：抓代次 + 关键词 + 排序，落地前再验一次
+            val genAtRequest = loadGeneration
+            val keywordAtRequest = keyword
             val orderAtRequest = sortOrder
+            fun stale() = genAtRequest != loadGeneration ||
+                    keywordAtRequest != keyword || orderAtRequest != sortOrder
             try {
                 val result = SearchApi.searchType(keyword, page, "article", orderAtRequest) as JSONArray?
-                if (orderAtRequest != sortOrder) return@run // 已切换排序，这批结果作废
+                if (stale()) return@run // 已切换排序 / 关键词，这批结果作废
                 markSortBlocked(false)
                 if (result != null) {
                     if (page == 1) showEmptyView(false)
@@ -56,6 +61,7 @@ class SearchArticleFragment : SearchFragment() {
                     if (list.size == 0) bottom = true
                     CenterThreadPool.runOnUiThread {
                         if (!isAdded || view == null) return@runOnUiThread
+                        if (stale()) return@runOnUiThread
                         // 26.10.04 批次 3（B5）：起点 lastSize + 1 → lastSize（原写法第 2 页越界）
                         val lastSize = articleCardList.size
                         articleCardList.addAll(list)
@@ -63,8 +69,8 @@ class SearchArticleFragment : SearchFragment() {
                     }
                 } else bottom = true
             } catch (e: Exception) {
-                // 旧排序的失败同样不该动状态（见 SearchVideoFragment 同处注释）
-                if (orderAtRequest != sortOrder) return@run
+                // 旧请求的失败同样不该动状态（见 SearchVideoFragment 同处注释）
+                if (stale()) return@run
                 if (e is SearchApi.RiskControlException) markSortBlocked(true)
                 report(e)
             }

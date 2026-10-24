@@ -58,11 +58,13 @@ public class SearchApi {
         JSONObject all = NetWorkUtil.getJson(ConfInfoApi.signWBI(url)); // 得到一整个json
 
         if (shouldFallback(all)) {
-            // 风控只拦 wbi 那条，退到旧接口（不带签名）再试一次
-            Object legacyResult = resultOrThrow(keyword, NetWorkUtil.getJson(legacySearchAllUrl(keyword, page)));
+            // 风控只拦 wbi 那条，退到旧接口（不带签名）再试一次。
+            // 用 getJsonOnce：已经确认处在风控态，再走通用重试（5 次）只会把限流拖得更久。
+            Object legacyResult = resultOrThrow(keyword, NetWorkUtil.getJsonOnce(legacySearchAllUrl(keyword, page)));
             return legacyResult == null ? null : (JSONArray) legacyResult;
         }
 
+        throwIfServerError(all);
         if (all.isNull("data"))
             return null;
         JSONObject data = all.getJSONObject("data"); // 搜索列表中的data项又是一个json，把它提出来
@@ -101,10 +103,12 @@ public class SearchApi {
         JSONObject all = NetWorkUtil.getJson(ConfInfoApi.signWBI(url)); // 得到一整个json
 
         if (shouldFallback(all)) {
-            // 风控只拦 wbi 那条，退到旧接口（不带签名）再试一次
-            return resultOrThrow(keyword, NetWorkUtil.getJson(legacySearchTypeUrl(keyword, page, type, order)));
+            // 风控只拦 wbi 那条，退到旧接口（不带签名）再试一次。
+            // 用 getJsonOnce：已经确认处在风控态，再走通用重试（5 次）只会把限流拖得更久。
+            return resultOrThrow(keyword, NetWorkUtil.getJsonOnce(legacySearchTypeUrl(keyword, page, type, order)));
         }
 
+        throwIfServerError(all);
         if (all.isNull("data"))
             return null;
         JSONObject data = all.getJSONObject("data"); // 搜索列表中的data项又是一个json，把它提出来
@@ -144,7 +148,7 @@ public class SearchApi {
      *   <li>`code` 是 0，但 `data` 里只有 `v_voucher`（既无 `result` 也无 `seid`）。</li>
      * </ul>
      */
-    private static boolean shouldFallback(JSONObject all) {
+    public static boolean shouldFallback(JSONObject all) {
         int code = all.optInt("code", 0);
         if (code == -412 || code == -352) return true;
         JSONObject data = all.optJSONObject("data");
@@ -158,7 +162,7 @@ public class SearchApi {
      * 判据只认 `v_voucher`：真正"没有匹配结果"的搜索会返回带 `result` 的响应（数组可能为空），
      * 不能因为 `result` 为空就当成风控。
      */
-    private static boolean isRiskControl(JSONObject data) {
+    public static boolean isRiskControl(JSONObject data) {
         return !hasResult(data) && data.has("v_voucher");
     }
 
@@ -166,10 +170,18 @@ public class SearchApi {
      * 旧接口的响应清洗：仍然给风控挡下（旧接口也回了 `v_voucher`）就抛出去，
      * 让页面把「搜索被B站风控了，过一会儿再试」告诉用户，而不是给一个空列表。
      */
-    private static Object resultOrThrow(String keyword, JSONObject all) throws JSONException, RiskControlException {
+    /**
+     * 旧接口的响应清洗：风控（`-412`/`-352`/`v_voucher`）抛 {@link RiskControlException}，
+     * 其它非零 `code` 抛 {@link SearchException}（带服务端错误码，别伪装成"没有结果"），
+     * 只有 `code == 0` 且拿不到 `result` 才返回 null。
+     *
+     * 26.10.24 审查指出：以前其它错误码也返回 null，页面会显示成「啥都木有」。
+     */
+    private static Object resultOrThrow(String keyword, JSONObject all) throws JSONException, SearchException {
         if (all == null) return null;
         int code = all.optInt("code", 0);
         if (code == -412 || code == -352) throw new RiskControlException(ApiErrorText.searchRejected());
+        if (code != 0) throw new SearchException(ApiErrorText.opFailed(code));
         if (all.isNull("data")) return null;
         JSONObject data = all.getJSONObject("data");
         putSeid(keyword, data.optString("seid", ""));
@@ -178,12 +190,35 @@ public class SearchApi {
     }
 
     /**
+     * 主链路（wbi）响应的错误码检查：非零且不是风控就抛出去，别让页面把"请求失败"显示成"没有结果"。
+     */
+    private static void throwIfServerError(JSONObject all) throws SearchException {
+        int code = all.optInt("code", 0);
+        if (code != 0 && code != -412 && code != -352) {
+            throw new SearchException(ApiErrorText.opFailed(code));
+        }
+    }
+
+    /**
+     * 搜索请求失败、且原因要原样告诉用户的异常基类。
+     * <p>
+     * 为什么不直接用 {@link IOException}：`MsgUtil.err` 对任何 `IOException` 一律换成
+     * 「网络错误」，带 message 也进不了界面（26.10.24 审查发现）。页面在
+     * `SearchFragment.report()` 里认这个基类，直接把 `message` 弹出来。
+     */
+    public static class SearchException extends IOException {
+        public SearchException(String message) {
+            super(message);
+        }
+    }
+
+    /**
      * 搜索被风控挡下、且旧接口也没拿到结果时抛这个。
      * <p>
-     * 单独一种异常而不是普通 {@link IOException}：页面要据此把排序按钮画成
-     * 「因B站风控不可用」（见 `SearchFragment.isSortBlocked`），不能靠比对异常文案。
+     * 页面据此把排序按钮画成「因B站风控不可用」（见 `SearchFragment.isSortBlocked`），
+     * 不能靠比对异常文案。
      */
-    public static class RiskControlException extends IOException {
+    public static class RiskControlException extends SearchException {
         public RiskControlException(String message) {
             super(message);
         }

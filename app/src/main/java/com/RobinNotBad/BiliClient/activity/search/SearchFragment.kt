@@ -76,6 +76,22 @@ open class SearchFragment : Fragment() {
     @Volatile
     private var sortBlocked: Boolean = false
 
+    /**
+     * 请求代次：排序 / 关键词 / 重试任一变化就自增。
+     *
+     * 光比较 `sortOrder` 不够——检查通过到 `runOnUiThread` 真正执行之间，用户在那一瞬间切了
+     * 排序或换了关键词，旧结果仍会追加进新列表；换关键词的情况更是完全没被覆盖过
+     * （26.10.24 审查指出）。所以发请求时抓一份代次 + 关键词 + 排序，**改列表前再验一次**。
+     */
+    @Volatile
+    protected var loadGeneration: Int = 0
+        private set
+
+    /** 让所有在途请求作废。主线程调用。 */
+    protected fun invalidateInFlightRequests() {
+        loadGeneration++
+    }
+
     /** 排序可用性变化时通知宿主重画按钮。由 `SearchActivity` 安装。 */
     var onSortStateChanged: (() -> Unit)? = null
 
@@ -102,6 +118,7 @@ open class SearchFragment : Fragment() {
     fun selectSort(order: String) {
         if (order == sortOrder) return
         sortOrder = order
+        invalidateInFlightRequests()
         page = 1
         bottom = false
         setRefreshing(true)
@@ -212,10 +229,10 @@ open class SearchFragment : Fragment() {
     }
 
     fun report(e: Throwable) {
-        // 风控不是网络错误：`MsgUtil.err` 对任何 IOException 一律换成「网络错误」，
-        // 而 RiskControlException 正是它的子类，不在这里拦一道的话
-        // 「搜索被B站风控了…」只会进 logcat（26.10.24 审查发现）。
-        if (e is SearchApi.RiskControlException) {
+        // 搜索专用的失败原因（风控 / 服务端错误码）要原样弹出来：
+        // `MsgUtil.err` 对任何 IOException 一律换成「网络错误」，带 message 也进不了界面
+        // （26.10.24 审查发现）。
+        if (e is SearchApi.SearchException) {
             MsgUtil.showMsg(e.message.orEmpty())
             return
         }
@@ -247,6 +264,7 @@ open class SearchFragment : Fragment() {
         this.keyword = keyword
         this.refreshable = true
         bottom = false
+        invalidateInFlightRequests()
         // 换了关键词就重新给一次机会：上一次被风控锁住的按钮不该一直锁着
         markSortBlocked(false)
     }
@@ -266,6 +284,7 @@ open class SearchFragment : Fragment() {
      */
     fun retry() {
         markSortBlocked(false)
+        invalidateInFlightRequests()
         page = 1
         bottom = false
         setRefreshing(true)

@@ -45,9 +45,13 @@ class SearchVideoFragment : SearchFragment() {
 
     private fun continueLoading(page: Int) {
         CenterThreadPool.run {
-            // 请求发出时先记下排序：网络慢的时候用户可能已经切了档位，
-            // 那这批结果属于旧排序，不能再往新列表里追加（否则排序会串）。
+            // 发请求时抓一份"当时是谁的结果"：网络慢的时候用户可能已经切了排序、换了关键词，
+            // 甚至切了又切回来。只有这三样都没变，这批结果才准落到界面上。
+            val genAtRequest = loadGeneration
+            val keywordAtRequest = keyword
             val orderAtRequest = sortOrder
+            fun stale() = genAtRequest != loadGeneration ||
+                    keywordAtRequest != keyword || orderAtRequest != sortOrder
             try {
                 val list = ArrayList<VideoCard>()
                 if (orderAtRequest == SearchSortOptions.TOTALRANK) {
@@ -58,13 +62,15 @@ class SearchVideoFragment : SearchFragment() {
                     val result = SearchApi.searchType(keyword, page, "video", orderAtRequest) as JSONArray?
                     SearchApi.getVideosFromTypeResult(result, list)
                 }
-                if (orderAtRequest != sortOrder) return@run // 已切换排序，这批结果作废
+                if (stale()) return@run // 已切换排序 / 关键词，这批结果作废
                 markSortBlocked(false)
 
                 if (page == 1) showEmptyView(false)
                 if (list.size == 0) bottom = true
                 else CenterThreadPool.runOnUiThread {
                     if (!isAdded || view == null) return@runOnUiThread
+                    // 检查通过到这一段真正执行之间状态可能又变了，落地前再验一次
+                    if (stale()) return@runOnUiThread
                     // 26.10.04 批次 3（B5）：起点写成了 lastSize + 1，第 2 页起会多算 1 格，
                     // RecyclerView 直接抛 IndexOutOfBoundsException。正确起点就是插入前的 size。
                     val lastSize = videoCardList.size
@@ -72,10 +78,9 @@ class SearchVideoFragment : SearchFragment() {
                     videoCardAdapter!!.notifyItemRangeInserted(lastSize, list.size)
                 }
             } catch (e: Exception) {
-                // 与成功分支同一个判据：旧排序的失败也不该动状态
-                // （风控链路比正常链路慢，最坏情况是新排序已经刷出来了、旧请求才抛异常，
-                //  那时把按钮锁成「不可用」就冤枉了——26.10.24 审查发现）
-                if (orderAtRequest != sortOrder) return@run
+                // 旧请求的失败同样不该动状态（风控链路比正常链路慢，
+                // 最坏情况是新排序已经刷出来了、旧请求才抛异常——26.10.24 审查发现）
+                if (stale()) return@run
                 if (e is SearchApi.RiskControlException) markSortBlocked(true)
                 e.printStackTrace()
                 loadFail(e)
