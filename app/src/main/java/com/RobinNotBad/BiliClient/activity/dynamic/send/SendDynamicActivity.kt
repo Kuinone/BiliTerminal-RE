@@ -35,6 +35,7 @@ import com.RobinNotBad.BiliClient.util.TimeUtil
 import com.bumptech.glide.Glide
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.card.MaterialCardView
+import com.google.android.material.checkbox.MaterialCheckBox
 import org.json.JSONArray
 import java.io.Serializable
 import java.util.Calendar
@@ -51,6 +52,10 @@ class SendDynamicActivity : BaseActivity() {
     private lateinit var removeVoteBtn: MaterialButton
     private lateinit var addPicText: TextView
     private lateinit var addTimerText: TextView
+    /** 「仅自己可见」勾选框（发布选项，只在普通发布时露出）。 */
+    private lateinit var optPrivatePub: MaterialCheckBox
+    /** 「关闭评论」勾选框（发布选项，只在普通发布时露出）。 */
+    private lateinit var optCloseComment: MaterialCheckBox
     private lateinit var picsPreview: LinearLayout
     private var voteDraft: VoteDraft? = null
     private val optionEditTexts = mutableListOf<EditText>()
@@ -118,6 +123,11 @@ class SendDynamicActivity : BaseActivity() {
             val addVote = findViewById<MaterialCardView>(R.id.add_vote)
             val addPic = findViewById<MaterialCardView>(R.id.add_pic)
             val addTimer = findViewById<MaterialCardView>(R.id.add_timer)
+            // 发布选项（仅自己可见 / 关闭评论）：不收进 addTimer 那张卡片，
+            // 单独一张卡，避免"定时"与"可见性"混在一起让用户以为是同一个开关
+            val publishOptions = findViewById<MaterialCardView>(R.id.publish_options)
+            optPrivatePub = findViewById(R.id.opt_private_pub)
+            optCloseComment = findViewById(R.id.opt_close_comment)
             addPicText = findViewById(R.id.add_pic_text)
             addTimerText = findViewById(R.id.add_timer_text)
             picsPreview = findViewById(R.id.pics_preview)
@@ -161,6 +171,8 @@ class SendDynamicActivity : BaseActivity() {
             addPic.visibility = if (normalPublish) View.VISIBLE else View.GONE
             // 定时发布只在普通发布链路上有意义：转发走 relayDynamic（没有 option），编辑接口也没有定时字段
             addTimer.visibility = if (normalPublish) View.VISIBLE else View.GONE
+            // 可见范围/关闭评论同理：转发与编辑都没有 option 字段，露出来只会让用户以为生效了
+            publishOptions.visibility = if (normalPublish) View.VISIBLE else View.GONE
             // 编辑不带投票：编辑接口改不了 attach_card，留着入口只会让用户以为能改
             if (editing) addVote.visibility = View.GONE
 
@@ -213,6 +225,10 @@ class SendDynamicActivity : BaseActivity() {
                 }
                 val text = editText.text.toString()
 
+                // 发布选项：在本线程（UI 线程）快照，带图链路的上传在后台线程跑，别在那边读 View
+                val sendPrivatePub = optPrivatePub.isChecked
+                val sendCloseComment = optCloseComment.isChecked
+
                 // 编辑模式：直接在页内调编辑接口，不走 DynamicActivity 的发布链路
                 if (editing) {
                     submitEdit(text)
@@ -235,6 +251,7 @@ class SendDynamicActivity : BaseActivity() {
                     val bundle = this@SendDynamicActivity.intent.extras
                     if (bundle != null) result.putExtras(bundle)
                     result.putExtra("text", text)
+                    putPublishOptions(result, sendPrivatePub, sendCloseComment)
                     if (draft != null) {
                         result.putExtra("voteDraft", draft as Serializable)
                     }
@@ -263,6 +280,7 @@ class SendDynamicActivity : BaseActivity() {
                         if (bundle != null) result.putExtras(bundle)
                         result.putExtra("text", text)
                         result.putExtra("pics", pics.toString())
+                        putPublishOptions(result, sendPrivatePub, sendCloseComment)
                         if (timerPubTime > 0) result.putExtra("timerPubTime", timerPubTime)
                         runOnUiThread {
                             setResult(RESULT_OK, result)
@@ -281,6 +299,23 @@ class SendDynamicActivity : BaseActivity() {
                 emoteLauncher.launch(Intent(this, EmoteActivity::class.java).putExtra("from", EmoteApi.BUSINESS_DYNAMIC))
             }
         }
+    }
+
+    /**
+     * 把两个发布选项开关的状态塞进回传 Intent。
+     *
+     * <p>只在用户真的勾上时才带 {@code true}：`DynamicActivity.writeDynamicLauncher`
+     * 按「缺省即不勾」读取，再交给 `DynamicApi.buildPublishOption` 决定是否下发
+     * `private_pub` / `close_comment`。两个都不勾时整条链路与改造前完全一致。
+     *
+     * <p>状态在 UI 线程快照后传进来：带图链路的上传在后台线程跑，不该在那边再读 View。
+     *
+     * <p>不做状态记忆：私密/关评论是「这一条」的属性，跨会话记住会让用户
+     * 在下次发动态时不知不觉又发成仅自己可见（或关掉评论）。
+     */
+    private fun putPublishOptions(result: Intent, privatePub: Boolean, closeComment: Boolean) {
+        if (privatePub) result.putExtra("privatePub", true)
+        if (closeComment) result.putExtra("closeComment", true)
     }
 
     /**

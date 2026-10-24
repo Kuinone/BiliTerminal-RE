@@ -146,6 +146,46 @@
                     tools:ignore="RtlCompat" />
             </com.google.android.material.card.MaterialCardView>
 
+            <!-- 发布选项：仅自己可见 / 关闭评论。
+                 只在普通发布时露出（转发走 relayDynamic、编辑接口都没有这两个字段）；
+                 两个开关收在同一张卡片里、每行 35dp，对齐上面各入口卡片的高度节奏，
+                 不在手表窄屏上多占一整屏。不勾 = 保持旧链路（不下发 option，服务端默认：
+                 公开、允许评论）。 -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/publish_options"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginHorizontal="8dp"
+                    android:orientation="vertical">
+
+                    <com.google.android.material.checkbox.MaterialCheckBox
+                        android:id="@+id/opt_private_pub"
+                        android:layout_width="match_parent"
+                        android:layout_height="35dp"
+                        android:gravity="center_vertical"
+                        android:minHeight="35dp"
+                        android:text="@string/text_activitysenddynamic_06"
+                        android:textSize="13sp"
+                        app:buttonTint="?attr/colorPrimary" />
+
+                    <com.google.android.material.checkbox.MaterialCheckBox
+                        android:id="@+id/opt_close_comment"
+                        android:layout_width="match_parent"
+                        android:layout_height="35dp"
+                        android:gravity="center_vertical"
+                        android:minHeight="35dp"
+                        android:text="@string/text_activitysenddynamic_07"
+                        android:textSize="13sp"
+                        app:buttonTint="?attr/colorPrimary" />
+
+                </LinearLayout>
+
+            </com.google.android.material.card.MaterialCardView>
+
             <!-- 投票编辑区 -->
             <LinearLayout
                 android:id="@+id/vote_edit_area"
