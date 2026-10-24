@@ -225,6 +225,8 @@ object SettingsKeys {
      *
      * 上报内容只有随机 install_id + 版本号 + 机型/系统版本，不带任何账号信息，
      * 也绝不携带 Cookie；用途仅为统计唯一安装数与日活。
+     *
+     * 26.10.24（安全审计 P2-9）：已移除由 ANDROID_ID 派生的设备键，**不再读任何系统设备标识**。
      */
     const val TELEMETRY_ENABLE = "terminal_telemetry_enable"
 
@@ -234,16 +236,9 @@ object SettingsKeys {
     /** 最近一次上报成功的日期（yyyy-MM-dd，UTC+8），用于「一天一次」。 */
     const val TELEMETRY_LAST_REPORT_DAY = "terminal_telemetry_last_day"
 
-    /**
-     * 设备级去重键：`sha256(ANDROID_ID + 固定盐)` 的截断值，见 `TerminalApi.getDeviceKey()`。
-     *
-     * 用途**只有**一个：让同一台手机同时装「普通版 + 共存版」时被算作**一台设备**，
-     * 而不是两台。两个 flavor 用同一个签名，系统给的 ANDROID_ID 相同，所以哈希也相同。
-     *
-     * 原始 ANDROID_ID **绝不上报、也不落盘**，这里只存哈希。
-     * 恢复出厂设置或切换系统用户会得到新值，此时视为一台新设备（可接受）。
-     */
-    const val TELEMETRY_DEVICE_KEY = "terminal_device_key"
+    // 26.10.24（安全审计 P2-9）：`terminal_device_key`（sha256(ANDROID_ID + 固定盐) 的截断值）
+    // 已下线，常量一并删除 —— 留着名字只会让人照着它把设备指纹加回来。
+    // 老用户本机残留的旧值由 `TerminalApi.getInstallId()` 顺手清掉，不要在任何地方再读这个键。
 
     /**
      * 客户端公告已读到的最大 id（唯一游标）：本项目公告与上游逐条审核透传的公告共用。

@@ -330,10 +330,40 @@ public class FileUtil {
         return null;
     }
 
-    /** 用户配置的图片下载目录（设置页、图片查看器把目标传给下载页时用）。 */
+    /**
+     * 用户配置的图片下载目录（设置页、图片查看器把目标传给下载页时用）。
+     *
+     * <p>语义与 [getConfiguredVideoDownloadPath] 对齐：**只回答配置/默认，不含运行时降级**——
+     * 设置页展示用这个；真正写入前还要经过 [resolvePictureDownloadDir] 的可写性判断。
+     *
+     * <p>26.10.24 安全审计 P2-2：默认目录不再无条件取公共 `Pictures/`。Android 10+ 上
+     * 裸 File 写公共目录必须拿「所有文件访问」权限（手表 ROM 根本没有这个设置页，
+     * issue #42），为了一张图要求全盘权限不成比例；所以 10+ 默认落应用专属目录
+     * （免权限），下载完成后再由 [PictureMediaStore.publishToGallery] 发布进相册。
+     */
     public static File getPicturePath() {
-        return new File(SharedPreferencesUtil.getString(SettingsKeys.SAVE_PATH_PICTURES,
-                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES) + "/哔哩终端/"));
+        return getConfiguredPictureDownloadPath();
+    }
+
+    /** 用户配置的图片目录；没配置（或配成空串）时返回按 API 分档的默认目录。 */
+    public static File getConfiguredPictureDownloadPath() {
+        String configured = PictureSavePolicy.cleanConfiguredPath(
+                SharedPreferencesUtil.getString(SettingsKeys.SAVE_PATH_PICTURES, ""));
+        if (configured != null) return new File(configured);
+        return getDefaultPictureDownloadPath();
+    }
+
+    /**
+     * 默认图片目录：Android 10（API 29）及以上用应用专属目录（免权限），更老的系统沿用
+     * 公共 `Pictures/哔哩终端/`（旧系统的存储权限安装即授予，不存在全盘权限问题）。
+     */
+    @SuppressWarnings("deprecation")
+    public static File getDefaultPictureDownloadPath() {
+        if (PictureSavePolicy.usesAppPrivateDefault(Build.VERSION.SDK_INT)) {
+            return getFallbackPictureDownloadPath();
+        }
+        return new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES),
+                PictureSavePolicy.PUBLIC_PICTURE_SUBDIR);
     }
 
     /** 图片下载的降级目录（应用专属，免权限）。 */

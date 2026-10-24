@@ -515,6 +515,18 @@ public class NetWorkUtil {
     }
 
     private static void saveCookiesFromResponse(Response response) {
+        if (response == null || response.request() == null) return;
+
+        // 审计 P2-5：Set-Cookie 只收 B 站域响应下发的。手动跟跳、下载、图片等请求都复用这套
+        // 客户端，若不管来源，一次跳去站外的响应就能往 Cookie 存储里塞任意键值
+        // （覆盖 SESSDATA / bili_jct 即等于劫持会话）。来源判定复用 isBilibiliHost。
+        HttpUrl url = response.request().url();
+        String responseHost = url == null ? null : url.host();
+        if (!isBilibiliHost(responseHost)) {
+            Logu.d("saveCookiesFromResponse", "跳过非 B 站来源的 Set-Cookie：" + responseHost);
+            return;
+        }
+
         List<String> newCookies = response.headers("Set-Cookie");
 
         //如果没有新cookies，直接返回
@@ -522,19 +534,25 @@ public class NetWorkUtil {
         // 本方法由 CookieSaveInterceptor 在任意线程调用，必须与 putCookie/setCookies/getCookies
         // 共用同一把锁，否则 read-modify-write 互相覆盖会导致偶发登录态丢失。
         synchronized (NetWorkUtil.class) {
-            saveCookiesLocked(newCookies);
+            saveCookiesLocked(newCookies, responseHost);
         }
     }
 
-    private static void saveCookiesLocked(List<String> newCookies) {
+    private static void saveCookiesLocked(List<String> newCookies, String responseHost) {
         String cookiesStr = getCachedCookies();
         ArrayList<String> oldCookies = (cookiesStr.equals("") ? new ArrayList<>() : new ArrayList<>(Arrays.asList(cookiesStr.split("; "))));  //转list
 
         for (String newCookie : newCookies) {  //对每一条新cookie遍历
 
-            Cookies cookies = new Cookies(newCookie);
-            if (cookies.containsKey("Domain") && !cookies.get("Domain").endsWith("bilibili.com"))
+            // 审计 P2-5：原来是 cookies.get("Domain").endsWith("bilibili.com")——不看点边界，
+            // evilbilibili.com 也能过；而且没有 Domain 属性时干脆无条件收下。
+            // 现在交给 CookieDomainPolicy：带 Domain 的必须落在 bilibili.com 内；不带 Domain 的
+            // 按第一方 Cookie 处理，要求响应来源本身是 B 站域（domainAttributeOf 大小写不敏感）。
+            String cookieDomain = CookieDomainPolicy.domainAttributeOf(newCookie);
+            if (!CookieDomainPolicy.shouldAccept(responseHost, cookieDomain)) {
+                Logu.d("newCookie", "跳过域不符的 Cookie：" + cookieDomain);
                 continue;
+            }
 
             int index = newCookie.indexOf("; ");
             if (index != -1) newCookie = newCookie.substring(0, index);  //如果没有分号不做处理

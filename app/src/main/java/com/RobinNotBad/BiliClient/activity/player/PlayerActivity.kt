@@ -77,6 +77,7 @@ import com.RobinNotBad.BiliClient.ui.widget.BatteryView
 import com.RobinNotBad.BiliClient.ui.widget.HighEnergyProgressBar
 import com.RobinNotBad.BiliClient.ui.widget.recycler.CustomLinearManager
 import com.RobinNotBad.BiliClient.util.CenterThreadPool
+import com.RobinNotBad.BiliClient.util.CookieDomainPolicy
 import com.RobinNotBad.BiliClient.util.DisguiseGesture
 import com.RobinNotBad.BiliClient.util.DisguisePrefs
 import com.RobinNotBad.BiliClient.util.LocalVideoProgress
@@ -2844,18 +2845,36 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
                 }
                 val response = NetWorkUtil.get(ConfInfoApi.signWBI(url), mHeaders)
                 val data = JSONObject(response.body!!.string()).getJSONObject("data")
-                val host = data.getJSONArray("host_list").getJSONObject(0)
+                val hostInfo = data.getJSONArray("host_list").getJSONObject(0)
 
-                url = "wss://" + host.getString("host") + ":" + host.getInt("wss_port") + "/sub"
+                // 审计 P2-6：host_list 由服务端下发，不校验就等于把「携带 Cookie 的握手」送去
+                // 任意域名（接口响应被劫持/中间人改包即可实现）。只接受 bilibili.com 及其子域，
+                // 端口也做一次范围检查；不通过就提示失败并放弃，不建立连接。
+                val wssHost = hostInfo.optString("host", "")
+                val wssPort = hostInfo.optInt("wss_port", 0)
+                if (!CookieDomainPolicy.isBilibiliDomain(wssHost) || wssPort !in 1..65535) {
+                    Logu.e("danmuSocket", "弹幕服务器地址非法，已放弃连接：$wssHost:$wssPort")
+                    MsgUtil.showMsg(UiText.of("直播弹幕连接失败"))
+                    return@run
+                }
+
+                url = "wss://" + wssHost + ":" + wssPort + "/sub"
                 Logu.v("连接WebSocket", url)
 
                 okHttpClient = OkHttpClient()
-                val request = Request.Builder()
+                val requestBuilder = Request.Builder()
                     .url(url)
-                    .header("Cookie", SharedPreferencesUtil.getString(SharedPreferencesUtil.cookies, ""))
                     .header("Origin", "https://live.bilibili.com")
                     .header("User-Agent", NetWorkUtil.USER_AGENT_WEB)
-                    .build()
+                // 审计 P2-6：握手只需要「我是谁」，不需要写权限。原来把整串 Cookie（含 bili_jct）
+                // 发给弹幕服务器，对方若是伪造域就等于交出 csrf；这里只带弹幕必需的 SESSDATA，
+                // 取不到就不带 Cookie 头（游客态也能收弹幕，发弹幕本来另有接口）。
+                val sessdata = NetWorkUtil.getInfoFromCookie(
+                    "SESSDATA",
+                    SharedPreferencesUtil.getString(SharedPreferencesUtil.cookies, "")
+                )
+                if (sessdata.isNotEmpty()) requestBuilder.header("Cookie", "SESSDATA=$sessdata")
+                val request = requestBuilder.build()
 
                 val listener = PlayerDanmuClientListener()
                 listener.mid = mid

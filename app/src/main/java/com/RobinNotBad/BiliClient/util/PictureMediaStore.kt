@@ -1,8 +1,11 @@
 package com.RobinNotBad.BiliClient.util
 
+import android.content.ContentValues
 import android.content.Context
 import android.media.MediaScannerConnection
+import android.os.Build
 import android.os.Environment
+import android.provider.MediaStore
 import java.io.File
 
 /**
@@ -23,6 +26,9 @@ import java.io.File
  * 所以这里补的就是「写完登记」这一环，不是权限问题、也不是下完被 onDestroy 删掉。
  */
 object PictureMediaStore {
+
+    /** 相册里展示的目录（`Pictures/` 下的子目录名，安全审计 P2-2 后固定在这里）。 */
+    const val PUBLIC_PICTURE_FOLDER = "Pictures/${PictureSavePolicy.PUBLIC_PICTURE_SUBDIR}"
 
     /**
      * 纯函数：按文件名后缀判图片 MIME。
@@ -92,6 +98,96 @@ object PictureMediaStore {
             }
         } catch (e: Throwable) {
             Logu.e("PictureMediaStore", "媒体库登记异常：${file.absolutePath} $e")
+        }
+    }
+
+    /**
+     * 纯函数：文件是否已经躺在公共 `Pictures/哔哩终端/` 下。
+     *
+     * 是的话不需要再往 MediaStore 复制一份（那就是两份文件、用户删一份还有一份），
+     * 只要 `scan` 登记即可。比较按目录前缀做，不解析 canonical path ——
+     * 这里只用于「要不要复制」，判错最坏是多复制一份，不会丢文件。
+     */
+    @JvmStatic
+    fun isUnderPublicPictures(file: File, externalStorageRoot: String): Boolean {
+        if (externalStorageRoot.isEmpty()) return false
+        val root = if (externalStorageRoot.endsWith("/")) externalStorageRoot else "$externalStorageRoot/"
+        return file.absolutePath.startsWith("$root$PUBLIC_PICTURE_FOLDER/")
+    }
+
+    /**
+     * 把下载完成的图片**发布进系统相册**，返回给 toast 用的展示目录；失败返回 null。
+     *
+     * 三种路径：
+     * - 文件已经在公共 `Pictures/哔哩终端/`：只 [scan] 登记，返回固定展示目录；
+     * - Android 9 及以下：同样只 scan（默认目录本来就写的公共 Pictures）；
+     * - Android 10 及以上：默认目录是应用专属（免全盘权限），用 MediaStore `insert` +
+     *   `IS_PENDING` 复制进 `Pictures/哔哩终端/`，成功后清 pending；失败删掉半成品行。
+     *
+     * 发布失败**不改变**「下载已成功」的事实：文件仍在应用专属目录里，最坏是相册里看不到，
+     * 所以返回值只用于换提示文案，不抛给调用方。
+     */
+    @Suppress("DEPRECATION")
+    @JvmStatic
+    fun publishToGallery(context: Context, file: File): String? {
+        val mimeType = mimeTypeOf(file.name) ?: run {
+            Logu.w("PictureMediaStore", "非图片文件，跳过发布：${file.name}")
+            return null
+        }
+        if (!file.isFile || file.length() <= 0L) {
+            Logu.w("PictureMediaStore", "文件不存在或为空，跳过发布：${file.absolutePath}")
+            return null
+        }
+        val externalRoot = try {
+            Environment.getExternalStorageDirectory()?.absolutePath ?: ""
+        } catch (e: Throwable) {
+            Logu.e("PictureMediaStore", "取外部存储根失败：$e")
+            ""
+        }
+        if (isUnderPublicPictures(file, externalRoot)) {
+            scan(context, file)
+            return PUBLIC_PICTURE_FOLDER
+        }
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            // 旧系统的默认目录就是公共 Pictures/，能走到这里说明是用户自定义的应用专属路径，
+            // 媒体扫描能登记就登记，登记不了也只是相册看不到，不影响下载结果。
+            scan(context, file)
+            return displayFolder(file)
+        }
+        val resolver = context.contentResolver
+        val values = ContentValues().apply {
+            put(MediaStore.Images.Media.DISPLAY_NAME, file.name)
+            put(MediaStore.Images.Media.MIME_TYPE, mimeType)
+            put(MediaStore.Images.Media.RELATIVE_PATH, PUBLIC_PICTURE_FOLDER)
+            put(MediaStore.Images.Media.IS_PENDING, 1)
+        }
+        val uri = try {
+            resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+        } catch (e: Throwable) {
+            Logu.e("PictureMediaStore", "MediaStore insert 失败：${file.absolutePath} $e")
+            null
+        } ?: run {
+            Logu.e("PictureMediaStore", "MediaStore 拒收：${file.absolutePath}")
+            return null
+        }
+        return try {
+            resolver.openOutputStream(uri)?.use { output ->
+                file.inputStream().use { input -> input.copyTo(output) }
+            } ?: throw IllegalStateException("openOutputStream 返回 null")
+            resolver.update(uri, ContentValues().apply {
+                put(MediaStore.Images.Media.IS_PENDING, 0)
+            }, null, null)
+            Logu.d("PictureMediaStore", "已发布进相册：${file.name} -> $uri")
+            PUBLIC_PICTURE_FOLDER
+        } catch (e: Throwable) {
+            Logu.e("PictureMediaStore", "发布进相册失败：${file.absolutePath} $e")
+            // 删掉半成品行：留着会在相册里显示一张 0 字节/损坏的图
+            try {
+                resolver.delete(uri, null, null)
+            } catch (ignored: Throwable) {
+                // 删除失败也只能算了，下次下载同名文件会覆盖
+            }
+            null
         }
     }
 }

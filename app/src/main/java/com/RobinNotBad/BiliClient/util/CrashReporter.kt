@@ -67,18 +67,21 @@ object CrashReporter {
         uptimeSec: Long,
         extra: String? = null
     ): JSONObject {
-        val manager = context?.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
-        var ramTotal = 0L
-        var ramAvail = 0L
-        try {
-            if (manager != null) {
+        // 安全审计 P2-9：只取总内存用于**分档**，不再上报精确的 ram_total / ram_avail。
+        // 精确字节数等于给机型再加一枚指纹，而统计只关心「手表 / 手机大概多大内存」。
+        // 档位规则在 TerminalApi.ramLevel（纯函数，有 JVM 单测）；取不到就是 UNKNOWN(0)。
+        val ramLevel = try {
+            val manager = context?.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
+            if (manager == null) {
+                TerminalApi.RAM_LEVEL_UNKNOWN
+            } else {
                 val info = ActivityManager.MemoryInfo()
                 manager.getMemoryInfo(info)
-                ramTotal = info.totalMem
-                ramAvail = info.availMem
+                TerminalApi.ramLevel(info.totalMem)
             }
         } catch (ignored: Exception) {
             // 采集内存失败不影响报告主体
+            TerminalApi.RAM_LEVEL_UNKNOWN
         }
 
         val mid = if (SharedPreferencesUtil.getBoolean(SettingsKeys.FEEDBACK_ATTACH_MID, false))
@@ -86,7 +89,6 @@ object CrashReporter {
 
         return TerminalApi.buildCrashPayload(
             /* installId = */ TerminalApi.getInstallId(),
-            /* deviceKey = */ TerminalApi.getDeviceKey(),
             /* mid = */ mid,
             /* exception = */ exception,
             /* message = */ message,
@@ -103,8 +105,7 @@ object CrashReporter {
             /* product = */ Build.PRODUCT,
             /* model = */ Build.MODEL,
             /* abi = */ TerminalApi.firstAbi(),
-            /* ramTotal = */ ramTotal,
-            /* ramAvail = */ ramAvail,
+            /* ramLevel = */ ramLevel,
             /* uptimeSec = */ uptimeSec,
             /* isCoexist = */ BuildConfig.COEXIST
         )
