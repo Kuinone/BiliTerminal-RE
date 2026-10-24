@@ -1369,7 +1369,11 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
   - **排序不持久化**：每次进搜索页都是「综合」。少一个存储键，也少一类「我什么时候设过排序」的困惑。
   - **`sortOrder` 是 `@Volatile`**：点击在主线程写、`continueLoading` 在 `CenterThreadPool` 线程读（与 `bottom` 同一类可见性问题）。
   - **切换排序时在途结果作废**：请求发出前抓一份 `orderAtRequest`，回包后发现排序已变就整批丢弃，否则会把旧排序的第 2 页追加到新列表里。
-- **风控降级不再表现为空列表**（26.10.24 用户报「有时候拼接的链接会没有任何搜索结果」，实测抓到原始响应）：`search/type` 在风控降级时会回 `{"code":0,"message":"OK","data":{"v_voucher":"voucher_…"}}` —— `code` 是 0，但 `data` 里**既没有 `result` 也没有 `seid`**，只有 `v_voucher`。以前 `SearchApi` 对它返回 null，页面就只剩空列表 +「啥都木有~」，看上去像排序参数拼错了。现在 `SearchApi.throwIfRiskControl(data)` 抛 `IOException(ApiErrorText.searchRejected())` → 提示「搜索被B站风控了，过一会儿再试」。**判据只认 `v_voucher`**：真没结果的搜索仍会返回带 `result` 的响应。同一条 URL 形状在风控冷却后立刻恢复正常（`order=click&page=1&search_type=video&seid=…` → 200 / `numResults:1000`），所以**不是参数拼错**。
+- **风控降级不再表现为空列表 + 自动回退旧接口**（26.10.24 用户报「有时候拼接的链接会没有任何搜索结果」，实测抓到原始响应）：`search/type` 在风控降级时会回 `{"code":0,"message":"OK","data":{"v_voucher":"voucher_…"}}` —— `code` 是 0，但 `data` 里**既没有 `result` 也没有 `seid`**，只有 `v_voucher`。以前 `SearchApi` 对它返回 null，页面就只剩空列表 +「啥都木有~」，看上去像排序参数拼错了。
+  - **回退链路**（按用户要求）：wbi 那条 → 若拿到 `v_voucher` 空壳，改打**旧接口** `x/web-interface/search/type`（不带 `w_rid`/`wts`/`seid`）→ 旧接口也是空壳才抛 `SearchApi.RiskControlException`。旧接口实测同样吃 `order`（`order=click` 下 `play` 严格降序 7972105 → 5017479 → 4438614 → …），中文长关键词也一样能出。
+  - **按钮不可用态**：抛到页面后 `SearchFragment.markSortBlocked(true)`，排序按钮改成「因B站风控不可用」、点它只提示「请稍候再试」；下一次加载成功会自动解除。状态变化经 `onSortStateChanged` 回主线程重画按钮。
+  - **判据只认 `v_voucher`**：真没结果的搜索仍会返回带 `result` 的响应，不能因为 `result` 为空就报风控。同理**不要急着怀疑参数**——同一条 URL 形状在冷却几十秒后立刻恢复 200 / `numResults:1000`。接口结论已并进 `docs/bilibili-api-notes.md` §3.14。
+
 - **顺带修的**：`SearchApi` 里三处封面/头像用 `"http:" +` 拼协议（违反「只走 https」），统一改成 `httpsUrl()`（`//` 开头才补 `https:`，已是绝对地址的原样保留）；视频条目解析抽成 `parseVideoEntry`，聚合搜索与分类搜索共用一份。
 - **单测**：`SearchApiTest` 从 6 例补到 **10 例**（分类搜索视频解析、非 video 条目跳过、null 输入、聚合分支与分类分支共用同一解析与封面规则）。全量基线 **79 类 / 845 例 / 0 失败**。
 - **模拟器实测（MuMu Android 15 x86_64，coexist debug）**：MuMu 会把窗口在 display 2~7 之间搬来搬去，每次搬运都重建 Activity，所以每一步都要现查 `dumpsys display` 拿 physicalId（截图）与逻辑 displayId（`input -d`）。

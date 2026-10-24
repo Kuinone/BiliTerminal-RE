@@ -579,13 +579,29 @@ class SearchActivity : InstanceActivity() {
      *
      * 没搜过的时候不显示——那时页面上是搜索历史，摆一个「排序」没有意义。
      * 搜索框被滚走时也一起收起：它们是同一层顶部 chrome，只收一半会让列表顶上留个洞。
+     *
+     * 被风控挡下（`SearchApi.RiskControlException`，wbi 与旧接口都没结果）时按钮改成
+     * 「因B站风控不可用」，点它只提示「请稍候再试」——此时切排序也拿不到结果。
      */
     private fun refreshSortBar() {
+        if (isFinishing || isDestroyed) return
         if (!::sortButton.isInitialized) return
         val fragment = supportFragmentManager.findFragmentByTag("f" + viewPager.currentItem) as? SearchFragment
         val options = fragment?.sortOptions().orEmpty()
         if (fragment == null || !hasSearched || options.isEmpty() || !searchBarVisible) {
             sortButton.visibility = View.GONE
+            return
+        }
+
+        // 风控状态可能在后台线程变化，装一次回调让宿主跟着重画
+        fragment.onSortStateChanged = { refreshSortBar() }
+
+        if (fragment.isSortBlocked()) {
+            sortButton.text = getString(R.string.text_search_sort_blocked)
+            sortButton.setOnClickListener {
+                MsgUtil.showMsg(getString(R.string.msg_search_sort_retry_later))
+            }
+            sortButton.visibility = View.VISIBLE
             return
         }
 

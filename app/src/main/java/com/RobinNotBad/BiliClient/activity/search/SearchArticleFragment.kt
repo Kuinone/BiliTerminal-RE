@@ -48,6 +48,7 @@ class SearchArticleFragment : SearchFragment() {
             try {
                 val result = SearchApi.searchType(keyword, page, "article", orderAtRequest) as JSONArray?
                 if (orderAtRequest != sortOrder) return@run // 已切换排序，这批结果作废
+                markSortBlocked(false)
                 if (result != null) {
                     if (page == 1) showEmptyView(false)
                     val list = ArrayList<ArticleCard>()
@@ -62,6 +63,7 @@ class SearchArticleFragment : SearchFragment() {
                     }
                 } else bottom = true
             } catch (e: Exception) {
+                if (e is SearchApi.RiskControlException) markSortBlocked(true)
                 report(e)
             }
             setRefreshing(false)

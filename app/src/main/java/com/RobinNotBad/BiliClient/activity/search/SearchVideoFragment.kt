@@ -59,6 +59,7 @@ class SearchVideoFragment : SearchFragment() {
                     SearchApi.getVideosFromTypeResult(result, list)
                 }
                 if (orderAtRequest != sortOrder) return@run // 已切换排序，这批结果作废
+                markSortBlocked(false)
 
                 if (page == 1) showEmptyView(false)
                 if (list.size == 0) bottom = true
@@ -71,6 +72,7 @@ class SearchVideoFragment : SearchFragment() {
                     videoCardAdapter!!.notifyItemRangeInserted(lastSize, list.size)
                 }
             } catch (e: Exception) {
+                if (e is SearchApi.RiskControlException) markSortBlocked(true)
                 e.printStackTrace()
                 loadFail(e)
             }

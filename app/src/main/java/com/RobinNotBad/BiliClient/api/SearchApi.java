@@ -11,6 +11,7 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.io.IOException;
+import java.io.UnsupportedEncodingException;
 import java.net.URLEncoder;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -64,9 +65,14 @@ public class SearchApi {
         // 把整页搜索结果一起带走
         putSeid(keyword, data.optString("seid", ""));
 
-        throwIfRiskControl(data);
+        if (isRiskControl(data)) {
+            // 风控只拦 wbi 那条，退到旧接口（不带签名）再试一次
+            JSONObject legacy = NetWorkUtil.getJson(legacySearchAllUrl(keyword, page));
+            Object legacyResult = resultOrThrow(keyword, legacy);
+            return legacyResult == null ? null : (JSONArray) legacyResult;
+        }
 
-        if (data.has("result") && !data.isNull("result"))
+        if (hasResult(data))
             return data.getJSONArray("result"); // 其实这还不是我们要的结果，下面的函数对它进行再次拆解 这里做了判空
         else
             return null;
@@ -101,28 +107,71 @@ public class SearchApi {
 
         putSeid(keyword, data.optString("seid", ""));
 
-        throwIfRiskControl(data);
+        if (isRiskControl(data)) {
+            // 风控只拦 wbi 那条，退到旧接口（不带签名）再试一次
+            JSONObject legacy = NetWorkUtil.getJson(legacySearchTypeUrl(keyword, page, type, order));
+            return resultOrThrow(keyword, legacy);
+        }
 
-        if (data.has("result") && !data.isNull("result"))
+        if (hasResult(data))
             return data.get("result"); // 其实这还不是我们要的结果，下面的函数对它进行再次拆解 这里做了判空
         else
             return null;
     }
 
+    /** 旧接口（非 wbi 签名）。风控只拦 wbi 那条，退到这里一般还能拿到结果——26.10.24 实测。 */
+    private static String legacySearchTypeUrl(String keyword, int page, String type, String order)
+            throws UnsupportedEncodingException {
+        String url = "https://api.bilibili.com/x/web-interface/search/type?";
+        url += "page=" + page +
+                "&keyword=" + URLEncoder.encode(keyword, "UTF-8") + "&search_type=" + type;
+        if (order != null && !order.isEmpty()) url += "&order=" + order;
+        return url;
+    }
+
+    private static String legacySearchAllUrl(String keyword, int page) throws UnsupportedEncodingException {
+        return "https://api.bilibili.com/x/web-interface/search/all/v2?page=" + page +
+                "&keyword=" + URLEncoder.encode(keyword, "UTF-8");
+    }
+
+    private static boolean hasResult(JSONObject data) {
+        return data.has("result") && !data.isNull("result");
+    }
+
     /**
-     * 搜索接口的**风控降级响应**要当成错误抛出去，不能当成"没有结果"。
-     * <p>
-     * 形态（26.10.24 实测抓到）：`{"code":0,"message":"OK","data":{"v_voucher":"voucher_…"}}`——
-     * `code` 是 0，但 `data` 里**既没有 `result` 也没有 `seid`**，只有一个 `v_voucher`。
-     * 以前这里返回 null，页面只拿到"空列表"，用户看到的就是「有时候搜什么都不出来」，
-     * 还以为是排序参数拼错了。现在抛 {@link ApiErrorText#searchRejected()} 让页面把原因说出来。
+     * 搜索接口的**风控降级响应**（26.10.24 实测抓到）：`code` 仍是 0，但 `data` 里
+     * **既没有 `result` 也没有 `seid`**，只有一个 `v_voucher`——
+     * `{"code":0,"message":"OK","data":{"v_voucher":"voucher_…"}}`。
      * <p>
      * 判据只认 `v_voucher`：真正"没有匹配结果"的搜索会返回带 `result` 的响应（数组可能为空），
-     * 不能因为 `result` 为空就报风控。
+     * 不能因为 `result` 为空就当成风控。
      */
-    private static void throwIfRiskControl(JSONObject data) throws IOException {
-        if (data.has("result") && !data.isNull("result")) return;
-        if (data.has("v_voucher")) throw new IOException(ApiErrorText.searchRejected());
+    private static boolean isRiskControl(JSONObject data) {
+        return !hasResult(data) && data.has("v_voucher");
+    }
+
+    /**
+     * 旧接口的响应清洗：仍然给风控挡下（旧接口也回了 `v_voucher`）就抛出去，
+     * 让页面把「搜索被B站风控了，过一会儿再试」告诉用户，而不是给一个空列表。
+     */
+    private static Object resultOrThrow(String keyword, JSONObject all) throws JSONException, RiskControlException {
+        if (all == null || all.isNull("data")) return null;
+        JSONObject data = all.getJSONObject("data");
+        putSeid(keyword, data.optString("seid", ""));
+        if (isRiskControl(data)) throw new RiskControlException(ApiErrorText.searchRejected());
+        return hasResult(data) ? data.get("result") : null;
+    }
+
+    /**
+     * 搜索被风控挡下、且旧接口也没拿到结果时抛这个。
+     * <p>
+     * 单独一种异常而不是普通 {@link IOException}：页面要据此把排序按钮画成
+     * 「因B站风控不可用」（见 `SearchFragment.isSortBlocked`），不能靠比对异常文案。
+     */
+    public static class RiskControlException extends IOException {
+        public RiskControlException(String message) {
+            super(message);
+        }
     }
 
     public static void getVideosFromSearchResult(JSONArray input, ArrayList<VideoCard> videoCardList, boolean first)

@@ -21,6 +21,7 @@ import com.RobinNotBad.BiliClient.ui.widget.recycler.CustomGridManager
 import com.RobinNotBad.BiliClient.ui.widget.recycler.CustomLinearManager
 import com.RobinNotBad.BiliClient.ui.appearance.ColorScheme
 import com.RobinNotBad.BiliClient.util.MsgUtil
+import com.RobinNotBad.BiliClient.util.CenterThreadPool
 import com.RobinNotBad.BiliClient.util.SharedPreferencesUtil
 import com.RobinNotBad.BiliClient.util.view.ImageAutoLoadScrollListener
 
@@ -64,6 +65,28 @@ open class SearchFragment : Fragment() {
 
     /** 当前排序档位（`order` 参数值），供宿主写排序条的高亮状态。 */
     fun currentSortOrder(): String = sortOrder
+
+    /**
+     * 这次搜索是否被 B 站风控挡下（wbi 与旧接口都没拿到结果）。
+     *
+     * 排序按钮据此显示「因B站风控不可用」——`SearchApi` 的风控回退链路见
+     * `docs/bilibili-api-notes.md` §3.14。
+     */
+    @Volatile
+    private var sortBlocked: Boolean = false
+
+    /** 排序可用性变化时通知宿主重画按钮。由 `SearchActivity` 安装。 */
+    var onSortStateChanged: (() -> Unit)? = null
+
+    fun isSortBlocked(): Boolean = sortBlocked
+
+    /** 子类在加载成功/被风控挡下时调用；状态真的变了才通知宿主。 */
+    protected fun markSortBlocked(blocked: Boolean) {
+        if (sortBlocked == blocked) return
+        sortBlocked = blocked
+        val notify = onSortStateChanged ?: return
+        CenterThreadPool.runOnUiThread { notify() }
+    }
 
     /** 排序被用户切换后调用，子类负责清空列表并重拉第一页（[page] 与 [bottom] 已由基类重置）。 */
     protected open fun onSortChanged(order: String) {
