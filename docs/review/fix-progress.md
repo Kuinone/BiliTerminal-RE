@@ -1357,27 +1357,30 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
 - **文档计数修正**：`architecture-map` 的测试清单从「80 个文件」改为「**79 个文件**（78 个 `*Test` + 1 个 `FakeSharedPreferences.kt`）、**79 个测试类**」（`CalculatorEngineTest.kt` 内有 `CalculatorEngineTest` 与 `DisguisePrefsTest` 两个类），用例数统一为 **841**。`strings.xml` / `themes.xml` 末尾多余空行已清。
 - **手表端验证口径（26.10.23）**：本 PR 涉及的弹幕时间轴、短视频亮屏、伪装功能**已由维护者人工在手表上实测通过**（维护者自述，非本会话 agent 复现，因此没有设备日志/截图入库）。仍未覆盖的是「极弱机上的媒体时钟收敛」「单击顶栏 0.3 秒延迟的手感」「圆屏蓝牙提示页布局」——这三项只能真机肉眼判断，已分别记在 §3.57 / §3.59 的对应条目里。
 
-### 3.61 搜索结果加排序条：综合 / 播放量 / 最新 / 收藏（26.10.24，用户反馈）
+### 3.61 搜索结果加排序：单按钮 + 单选弹窗（综合 / 播放量 / 最新 / 收藏，26.10.24，用户反馈）
 
-- **需求来源**：用户反馈原文「希望可以在搜索里加一个最多播放 最多点赞 最新播放之类的分类」。与用户确认的口径：① 入口做成**视频 tab 顶部一条常驻排序行**（不是设置项、不是长按弹菜单）；② 四档 **综合 / 最多播放 / 最新发布 / 最多收藏**；③ 覆盖**视频 + 专栏**两个 tab。
+- **需求来源**：用户反馈原文「希望可以在搜索里加一个最多播放 最多点赞 最新播放之类的分类」。两轮口径：① 先做成**视频 tab 顶部一条常驻排序行**，随后按用户要求改成**单按钮 + 点开弹窗选择**（弹窗用番剧选集同款 `TerminalDialog.singleChoice`，按钮走主题里的经典终端按钮样式）；② 四档 **综合 / 播放量 / 最新 / 收藏**；③ 覆盖**视频 + 专栏**两个 tab。
 - **接口事实**（已并入 `docs/bilibili-api-notes.md` §3.13）：`all/v2` 只吃 `keyword`，`order` 是 `search/type` 的参数；视频搜索**没有「最多点赞」**（只有 `click`/`pubdate`/`dm`/`stow`/`scores`）。所以**视频分类选「综合」时仍走 `all/v2`**（保留它把番剧混进第一页的既有行为），选其余档位改走 `search/type?search_type=video&order=…`（不混番剧）。
-- **为什么排序条不能放进 fragment**：`activity_search.xml` 里 `ViewPager` 只对齐到 `@id/top` 下方，`searchbar` 与它同起点、后声明（画在上层）。第一版把条加进 `fragment_simple_refresh` 顶部，模拟器实测**四个档位正好压在搜索框里**（截图见本轮验证记录）。最终把控件放在 `activity_search.xml` 的 `searchSortBar`（锚 `searchbar` 下方），`SearchFragment` 只暴露 `sortOptions()` / `currentSortOrder()` / `selectSort()`，`SearchActivity.refreshSortBar()` 负责文案、高亮与显隐。
+- **控件为什么在本页而不是 fragment**：`activity_search.xml` 里 `ViewPager` 只对齐到 `@id/top` 下方，`searchbar` 与它同起点、后声明（画在上层）。第一版把控件加进 `fragment_simple_refresh` 顶部，模拟器实测**四个档位正好压在搜索框里**。现在控件是 `activity_search.xml` 的 `searchSortButton`（锚 `searchbar` 下方，`ViewPager` 锚它），`SearchFragment` 只暴露 `sortOptions()` / `currentSortOrder()` / `selectSort()`，`SearchActivity` 负责文案、弹窗与显隐。
+- **按钮为什么是裸 `<Button>`**：MaterialComponents 主题会把 `<Button>` inflate 成 MaterialButton 并套用主题里声明的 `materialButtonStyle` —— 默认主题（经典终端）对应 `ButtonStyleTerminal`（`#cc262626` 半透明卡底 + 暖白字 + 圆角），换主题时自动跟随各自的按钮样式。**别写死 `@color/terminal_*`**，浅色主题下会变成暗块。
+- **弹窗**：`TerminalDialog.singleChoice(this, title, labels, checked)`，与 `BangumiInfoFragment.getEposideChooseDialog()` 同一款（`›` 引导符 + 选中项 `▸`/`✓` + 底部「点空白处取消」）。**TerminalDialog 只负责拼装、不会自己 show**，调用方必须 `.show()`——第一次就是漏了这个：点按钮只有水波纹，弹窗不出现（模拟器实测抓到）。
 - **几个刻意的取舍**：
-  - **没搜过不显示**（`hasSearched`）——那时页面上是搜索历史，摆一条「排序」没有意义；搜索框被滚走时排序条**一起收**（两层 chrome 只收一半会在列表顶上留个洞）。
+  - **没搜过不显示**（`hasSearched`）——那时页面上是搜索历史，摆一个「排序」没有意义；搜索框被滚走时按钮**一起收**（两层 chrome 只收一半会在列表顶上留个洞）。
   - **排序不持久化**：每次进搜索页都是「综合」。少一个存储键，也少一类「我什么时候设过排序」的困惑。
-  - **排序条不做横向滚动**：手表右滑返回是窗口层 `windowSwipeToDismiss` 处理的，横向滚动一划就退出页面；4 格固定宽度，文案压到 2~3 个字（`text_search_sort_*`）。
   - **`sortOrder` 是 `@Volatile`**：点击在主线程写、`continueLoading` 在 `CenterThreadPool` 线程读（与 `bottom` 同一类可见性问题）。
   - **切换排序时在途结果作废**：请求发出前抓一份 `orderAtRequest`，回包后发现排序已变就整批丢弃，否则会把旧排序的第 2 页追加到新列表里。
+- **风控降级不再表现为空列表**（26.10.24 用户报「有时候拼接的链接会没有任何搜索结果」，实测抓到原始响应）：`search/type` 在风控降级时会回 `{"code":0,"message":"OK","data":{"v_voucher":"voucher_…"}}` —— `code` 是 0，但 `data` 里**既没有 `result` 也没有 `seid`**，只有 `v_voucher`。以前 `SearchApi` 对它返回 null，页面就只剩空列表 +「啥都木有~」，看上去像排序参数拼错了。现在 `SearchApi.throwIfRiskControl(data)` 抛 `IOException(ApiErrorText.searchRejected())` → 提示「搜索被B站风控了，过一会儿再试」。**判据只认 `v_voucher`**：真没结果的搜索仍会返回带 `result` 的响应。同一条 URL 形状在风控冷却后立刻恢复正常（`order=click&page=1&search_type=video&seid=…` → 200 / `numResults:1000`），所以**不是参数拼错**。
 - **顺带修的**：`SearchApi` 里三处封面/头像用 `"http:" +` 拼协议（违反「只走 https」），统一改成 `httpsUrl()`（`//` 开头才补 `https:`，已是绝对地址的原样保留）；视频条目解析抽成 `parseVideoEntry`，聚合搜索与分类搜索共用一份。
 - **单测**：`SearchApiTest` 从 6 例补到 **10 例**（分类搜索视频解析、非 video 条目跳过、null 输入、聚合分支与分类分支共用同一解析与封面规则）。全量基线 **79 类 / 845 例 / 0 失败**。
-- **模拟器实测（MuMu Android 15 x86_64，coexist debug，`displayId` 会跳动，`screencap -p -d <physicalId>` + `input -d <displayId>`）**：
-  - 搜 `linux` → 排序条出现在搜索框下方，`综合` 高亮；列表首项 797.1 万播放。
-  - 点「播放量」→ `signWBI: keyword=linux&order=click&page=1&search_type=video&seid=…`，结果按播放量**降序**（797.1万 → 501.7万 → 443.9万 → 412.9万）。
-  - 点「最新」→ `order=pubdate&search_type=video`，首屏全是个位数播放量的新视频（1/163/187/229 观看），`最新` 高亮。
-  - 切到**专栏** → 排序条变成「综合 / 阅读量 / 最新 / 收藏」，专栏卡片正常（2674 阅读等）；切到**用户**、**番剧** → 排序条消失。
-  - 列表下滑 → 搜索框与排序条一起收起、列表顶到顶栏下；回滑恢复。
+- **模拟器实测（MuMu Android 15 x86_64，coexist debug）**：MuMu 会把窗口在 display 2~7 之间搬来搬去，每次搬运都重建 Activity，所以每一步都要现查 `dumpsys display` 拿 physicalId（截图）与逻辑 displayId（`input -d`）。
+  - 搜 `linux` → 搜索框下方出现「排序：综合」按钮；点开是单选弹窗（标题「搜索结果排序」，四项带 `›`，当前项 `▸`+`✓`，底部「点空白处取消」）。
+  - 选「播放量」→ `order=click&page=1&search_type=video`，结果按播放量降序（797.2万 → 501.7万 → 443.9万 → 412.9万），按钮变成「排序：播放量」。
+  - 选「最新」→ `order=pubdate`，首屏全是个位数播放量的新视频（0/11/56 观看），按钮变成「排序：最新」。
+  - 选「收藏」→ `order=stow`，按钮变成「排序：收藏」，列表正常返回。
+  - 切到**专栏**：按钮文案里的档位变成「阅读量」；切到**用户**、**番剧**：按钮消失。
+  - 列表下滑 → 搜索框与排序按钮一起收起、列表顶到顶栏下；回滑恢复。
   - 全程 `logcat` 里 `FATAL EXCEPTION` / `AndroidRuntime` **0 条**。
-- **未做**：用户 / 直播的排序（它们的 `order` 是另一套键：`fans`/`level`、`online`/`live_time`），以及「最多弹幕 / 最多评论」两档（手表 4 格放不下）。
+- **未做**：用户 / 直播的排序（它们的 `order` 是另一套键：`fans`/`level`、`online`/`live_time`），以及「最多弹幕 / 最多评论」两档（手表屏上弹窗列表已经够长）。
 
 ## 4. 历史章节索引
 

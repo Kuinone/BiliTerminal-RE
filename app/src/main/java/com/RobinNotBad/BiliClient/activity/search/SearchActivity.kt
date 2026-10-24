@@ -14,6 +14,7 @@ import android.view.KeyEvent
 import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
+import android.widget.Button
 import android.widget.EditText
 import android.widget.TextView
 
@@ -32,7 +33,7 @@ import com.RobinNotBad.BiliClient.adapter.SearchHistoryAdapter
 import com.RobinNotBad.BiliClient.adapter.SearchSuggestionsAdapter
 import com.RobinNotBad.BiliClient.api.SearchApi
 import com.RobinNotBad.BiliClient.ui.widget.recycler.CustomLinearManager
-import com.RobinNotBad.BiliClient.ui.appearance.ColorScheme
+import com.RobinNotBad.BiliClient.util.TerminalDialog
 import com.RobinNotBad.BiliClient.util.JsonUtil
 import com.RobinNotBad.BiliClient.util.LinkUrlUtil
 import com.RobinNotBad.BiliClient.util.MsgUtil
@@ -55,13 +56,11 @@ class SearchActivity : InstanceActivity() {
     private lateinit var searchBar: ConstraintLayout
     private var searchBarVisible = true
 
-    // 搜索结果排序条（视频 / 专栏）。控件在本页而不是 fragment 里：fragment 的 ViewPager 只对齐到
-    // 顶栏下方、搜索框压在 fragment 上面，条放进去会被搜索框盖住（26.10.24 模拟器实测）。
-    private lateinit var sortBar: View
-    private var sortSlots: List<TextView> = emptyList()
-    private var unselectedSortColor = 0
+    // 搜索结果排序按钮（视频 / 专栏）。控件在本页而不是 fragment 里：fragment 的 ViewPager 只对齐到
+    // 顶栏下方、搜索框压在 fragment 上面，控件放进去会被搜索框盖住（26.10.24 模拟器实测）。
+    private lateinit var sortButton: Button
 
-    /** 至少搜过一次才显示排序条：还没搜索时页面上是历史记录，给「排序」没有意义。 */
+    /** 至少搜过一次才显示排序按钮：还没搜索时页面上是历史记录，给「排序」没有意义。 */
     private var hasSearched = false
     private var refreshing = false
     private var animate_last: Long = 0
@@ -568,51 +567,58 @@ class SearchActivity : InstanceActivity() {
     }
 
     /**
-     * 绑定排序条控件。文案与点击行为按当前分类在 [refreshSortBar] 里填。
+     * 绑定排序按钮。文案与点击行为按当前分类在 [refreshSortBar] 里填。
      */
     private fun setupSortBar() {
-        sortBar = findViewById(R.id.searchSortBar)
-        val slotIds = intArrayOf(
-            R.id.sortOption1, R.id.sortOption2, R.id.sortOption3, R.id.sortOption4
-        )
-        sortSlots = slotIds.map { findViewById<TextView>(it) }
-        // 未选中色取布局里声明的次要文字色，别在代码里写死色值（配色跟随主题）
-        unselectedSortColor = sortSlots[0].currentTextColor
+        sortButton = findViewById(R.id.searchSortButton)
         refreshSortBar()
     }
 
     /**
-     * 按当前分类刷新排序条：支持排序的分类（视频 / 专栏）显示，其余隐藏。
+     * 按当前分类刷新排序按钮：支持排序的分类（视频 / 专栏）显示，其余隐藏。
      *
-     * 没搜过的时候不显示——那时页面上是搜索历史，摆一条「排序」没有意义。
+     * 没搜过的时候不显示——那时页面上是搜索历史，摆一个「排序」没有意义。
      * 搜索框被滚走时也一起收起：它们是同一层顶部 chrome，只收一半会让列表顶上留个洞。
      */
     private fun refreshSortBar() {
-        if (!::sortBar.isInitialized) return
+        if (!::sortButton.isInitialized) return
         val fragment = supportFragmentManager.findFragmentByTag("f" + viewPager.currentItem) as? SearchFragment
         val options = fragment?.sortOptions().orEmpty()
-        if (!hasSearched || options.isEmpty() || !searchBarVisible) {
-            sortBar.visibility = View.GONE
+        if (fragment == null || !hasSearched || options.isEmpty() || !searchBarVisible) {
+            sortButton.visibility = View.GONE
             return
         }
 
-        val current = fragment?.currentSortOrder()
-        sortSlots.forEachIndexed { i, slot ->
-            val option = options.getOrNull(i)
-            if (option == null) {
-                slot.visibility = View.INVISIBLE
-                slot.setOnClickListener(null)
-            } else {
-                slot.visibility = View.VISIBLE
-                slot.text = getString(option.labelRes)
-                slot.setTextColor(if (option.order == current) ColorScheme.PRIMARY else unselectedSortColor)
-                slot.setOnClickListener {
-                    fragment?.selectSort(option.order)
-                    refreshSortBar()
-                }
-            }
-        }
-        sortBar.visibility = View.VISIBLE
+        val current = options.firstOrNull { it.order == fragment.currentSortOrder() } ?: options[0]
+        sortButton.text = getString(R.string.text_search_sort_button, getString(current.labelRes))
+        sortButton.setOnClickListener { showSortDialog(fragment, options, current.order) }
+        sortButton.visibility = View.VISIBLE
+    }
+
+    /**
+     * 排序选择弹窗：与番剧选集（`BangumiInfoFragment.getEposideChooseDialog`）同一款
+     * `TerminalDialog.singleChoice`——带 `▸` 引导符的单选列表，选中项即当前排序。
+     *
+     * 这个弹窗**不会自动关闭**（选集场景要在回调里做越界校验），所以这里自己 `dismiss()`。
+     */
+    private fun showSortDialog(
+        fragment: SearchFragment,
+        options: List<SearchSortOption>,
+        currentOrder: String
+    ) {
+        val labels = options.map { getString(it.labelRes) }
+        val checked = options.indexOfFirst { it.order == currentOrder }.coerceAtLeast(0)
+        // TerminalDialog 只负责拼装，**不会自己 show**（与番剧选集同一约定），这里必须调 .show()
+        TerminalDialog.singleChoice(
+            context = this,
+            title = getString(R.string.text_search_sort_title),
+            items = labels,
+            checked = checked
+        ) { sheet, which ->
+            options.getOrNull(which)?.let { fragment.selectSort(it.order) }
+            sheet.dialog.dismiss()
+            refreshSortBar()
+        }.show()
     }
 
     fun onScrolled(dy: Int) {

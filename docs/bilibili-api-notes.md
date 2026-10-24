@@ -111,6 +111,7 @@
     - **没有「最多点赞」**：视频搜索不支持按点赞数排序，别照用户口吻去拼一个不存在的值。
     - **要排序就得换接口**：本项目视频分类选「综合」时仍走 `all/v2`（它会把番剧结果混进第一页），选其余档位改走 `search/type?search_type=video&order=…`（不混番剧；条目字段与聚合结果同构，解析共用 `SearchApi.parseVideoEntry`）。
     - **`seid` 两条接口都会回**：`search/type` 的响应同样带 `data.seid`，`SearchApi.searchType` 已写回缓存，不会因为不再调 `all/v2` 而丢 `seid`。
+    - **风控降级的形态要认出来**（26.10.24 实测）：降级时 `code` 仍是 **0**，`data` 里**既没有 `result` 也没有 `seid`**，只有一个 `v_voucher`——`{"code":0,"message":"OK","data":{"v_voucher":"voucher_…"}}`。**别把它当成"没有搜索结果"**：以前 `SearchApi` 返回 null、页面只剩空列表，看着像排序参数拼错了（用户就是这么报的）。现在 `SearchApi.throwIfRiskControl()` 会抛「搜索被B站风控了，过一会儿再试」。判据只认 `v_voucher`——**真没结果的搜索照样带 `result`**（数组可能为空），不能因为 `result` 为空就报风控。冷却后同一条请求立刻恢复正常（同一 URL 形状 200 / `numResults:1000`），所以它不是参数问题。
 
 ## 4. 按接口可行性收敛的「值得做 / 不值得做」
 

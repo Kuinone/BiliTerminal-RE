@@ -1424,6 +1424,8 @@
     <string name="text_search_sort_click_article">阅读量</string>
     <string name="text_search_sort_pubdate">最新</string>
     <string name="text_search_sort_stow">收藏</string>
+    <string name="text_search_sort_button">排序：%1$s</string>
+    <string name="text_search_sort_title">搜索结果排序</string>
     <string name="uitext_favoritefoldercreateactivity_001">创建成功</string>
     <string name="uitext_favoritefoldercreateactivity_002">请输入收藏夹名称</string>
     <string name="uitext_favoritefoldercreateactivity_003">创建收藏夹</string>

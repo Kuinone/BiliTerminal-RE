@@ -64,6 +64,8 @@ public class SearchApi {
         // 把整页搜索结果一起带走
         putSeid(keyword, data.optString("seid", ""));
 
+        throwIfRiskControl(data);
+
         if (data.has("result") && !data.isNull("result"))
             return data.getJSONArray("result"); // 其实这还不是我们要的结果，下面的函数对它进行再次拆解 这里做了判空
         else
@@ -99,10 +101,28 @@ public class SearchApi {
 
         putSeid(keyword, data.optString("seid", ""));
 
+        throwIfRiskControl(data);
+
         if (data.has("result") && !data.isNull("result"))
             return data.get("result"); // 其实这还不是我们要的结果，下面的函数对它进行再次拆解 这里做了判空
         else
             return null;
+    }
+
+    /**
+     * 搜索接口的**风控降级响应**要当成错误抛出去，不能当成"没有结果"。
+     * <p>
+     * 形态（26.10.24 实测抓到）：`{"code":0,"message":"OK","data":{"v_voucher":"voucher_…"}}`——
+     * `code` 是 0，但 `data` 里**既没有 `result` 也没有 `seid`**，只有一个 `v_voucher`。
+     * 以前这里返回 null，页面只拿到"空列表"，用户看到的就是「有时候搜什么都不出来」，
+     * 还以为是排序参数拼错了。现在抛 {@link ApiErrorText#searchRejected()} 让页面把原因说出来。
+     * <p>
+     * 判据只认 `v_voucher`：真正"没有匹配结果"的搜索会返回带 `result` 的响应（数组可能为空），
+     * 不能因为 `result` 为空就报风控。
+     */
+    private static void throwIfRiskControl(JSONObject data) throws IOException {
+        if (data.has("result") && !data.isNull("result")) return;
+        if (data.has("v_voucher")) throw new IOException(ApiErrorText.searchRejected());
     }
 
     public static void getVideosFromSearchResult(JSONArray input, ArrayList<VideoCard> videoCardList, boolean first)
