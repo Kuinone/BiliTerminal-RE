@@ -3,7 +3,6 @@ package com.RobinNotBad.BiliClient.activity.video.info
 import com.RobinNotBad.BiliClient.util.UiText
 
 import android.annotation.SuppressLint
-import android.Manifest
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
@@ -139,10 +138,10 @@ class VideoInfoFragment : BaseFragment() {
     private val notificationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { isGranted ->
-        if (isGranted) {
-            startDownloadFlow()
-        } else {
-            MsgUtil.showMsg(UiText.of("需要通知权限才能进行下载，请前往设置授予权限"))
+        // 下载已在 downloadClick() 里无条件开始，这里只补一句非阻断提示：
+        // 未授权时进度通知不可见，但下载与前台服务照常跑，不再回头阻断下载。
+        if (!isGranted) {
+            MsgUtil.showMsg(UiText.of("已开始下载；未授予通知权限，本次进度通知不可见"))
         }
     }
 
@@ -765,13 +764,12 @@ class VideoInfoFragment : BaseFragment() {
         // 只有连降级目录都写不了（存储满/只读）才返回 null 挡下这次下载。
         // 手表 ROM 往往没有「所有文件访问」设置页（issue #42），按授权判会把下载永久挡死。
         if (FileUtil.resolveVideoDownloadDir(requireActivity()) == null) return
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-            requireContext().checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
-            != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-        } else {
-            startDownloadFlow()
-        }
+
+        // 通知权限只决定「进度通知看不看得见」，前台服务在未授权时照常运行，
+        // 所以它绝不能当下载的前置条件——旧行为是拒绝一次就永远下不了（手表上也找不到恢复入口）。
+        // 这里仍请求一次权限，但请求与下载**并行**：不等回调结果，立刻进入下载流程。
+        DownloadNotificationGate.requestOnce(requireActivity(), notificationPermissionLauncher)
+        startDownloadFlow()
     }
 
     private fun startDownloadFlow() {
