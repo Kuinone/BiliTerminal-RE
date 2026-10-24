@@ -7,6 +7,12 @@ name: 构建发行版并创建 Release
 #    适合「只想拿一个正式签名的包去传应用商店 / 自己装」，不会污染 Releases 列表、不会同步 Gitee。
 #    （tag 留空也能只构建，但那条路仍会跑发布说明组装、且更新日志抽不到时会红；build_only 直接跳过。）
 # 2) 推送 tag 自动触发：用该 tag 创建 Release 并上传 APK。
+#    **只认版本 tag**：`YY.MM.DD[.N][-后缀]`（见下方 on.push.tags 与 verify-version job）。
+#    历史上这里是 `tags: '*'`：任意 tag 都会走签名发版，而且没有任何 tag↔版本号校验，
+#    曾发出过 tag 28.08.16、包内 versionName 却是 26.08.14 的错版
+#    （findings/standards.md P1-1）。现在 verify-version 会在编译前硬校验：
+#    tag 的日期 == build.gradle versionName、versionCode/10 == YYMMDD、
+#    strings.xml 含「【YY.MM.DD 本次更新】」锚点，任一不满足直接 fail。
 #
 # 两种方式产出的 Release 说明都含**完整更新日志**：手工触发用输入的 release_body，
 # 推 tag（inputs.* 恒空）则由 .github/scripts/extract_update_log.py 从 strings.xml 的
@@ -37,7 +43,16 @@ on:
         default: false
   push:
     tags:
-      - '*'
+      # 只接受"版本 tag"，不再对任意 tag 生效。现存 18 个 tag 的命名惯例实测只有三种
+      # （无 v 前缀，也没有别的写法），下面按字符位精确匹配，而不是用 `[0-9]*` 兜底：
+      #   YY.MM.DD      普通发版：26.10.24 / 26.10.19 / …… / 26.08.17 / 28.08.16
+      #   YY.MM.DD.N    同日重发：26.10.10.1 / 26.10.03.1 / 26.10.03.2
+      #   YY.MM.DD-后缀 带含义后缀：26.09.07-security
+      # 真正的版本一致性不靠 glob 保证（glob 只能挡住 v1/test 之类误触），
+      # 由 verify-version job 解析 tag 后与 app/build.gradle、strings.xml 比对。
+      - '[0-9][0-9].[0-9][0-9].[0-9][0-9]'
+      - '[0-9][0-9].[0-9][0-9].[0-9][0-9].[0-9]*'
+      - '[0-9][0-9].[0-9][0-9].[0-9][0-9]-*'
 
 # 需要创建 Git tag / Release，授予 contents 写权限
 permissions:
@@ -48,7 +63,133 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # ===== 前置门禁：tag 名 ↔ 版本号 / 更新日志锚点一致性（findings/standards.md P1-1） =====
+  # 历史事故：tag 28.08.16 指向的 commit 里 versionName 仍是 26.08.14、versionCode 2608140，
+  # Release 名与安装包版本完全对不上；26.08.17 / 26.08.27 两个 tag 还指向纯文档提交。
+  # 所以这里在**编译、签名、建 Release 之前**做硬校验，不合格直接 fail（不浪费构建时间）。
+  #
+  # 仓库 tag 惯例（现存 18 个 tag 实测）：
+  #   26.10.24                               普通发版（YY.MM.DD）
+  #   26.10.10.1 / 26.10.03.1 / 26.10.03.2   同日重发（YY.MM.DD.N）
+  #   26.09.07-security                      带含义后缀（YY.MM.DD-后缀）
+  # 校验项：
+  #   1) tag 匹配 ^YY.MM.DD([.N])?(-后缀)?$（glob 已挡一层，这里再严格解析）；
+  #   2) app/build.gradle 的 versionName == YY.MM.DD（末尾 -BETA<n> 不算差异）；
+  #   3) versionCode / 10 == YYMMDD（同日重发的尾号历史上是 0/1/2 无固定规律，故不校验尾号）；
+  #   4) strings.xml 含更新日志锚点「【YY.MM.DD 本次更新】」。
+  # 手工 build_only（tag 留空）不校验——那条路本来就不发版。
+  verify-version:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      tag: ${{ steps.target.outputs.tag }}
+      checkout_ref: ${{ steps.target.outputs.checkout_ref }}
+      version_name: ${{ steps.check.outputs.version_name }}
+      version_code: ${{ steps.check.outputs.version_code }}
+    steps:
+      - name: 解析目标 tag 与检出 ref
+        id: target
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+          INPUT_TAG: ${{ inputs.tag }}
+          FALLBACK_REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          # inputs.tag 是用户输入，去掉空白避免带进 ref（tag 本身不允许空格）
+          input_tag="$(printf '%s' "${INPUT_TAG:-}" | tr -d '[:space:]')"
+          if [ "$EVENT_NAME" = "push" ]; then
+            tag="$REF_NAME"
+            checkout_ref="$FALLBACK_REF"        # refs/tags/<tag>
+          else
+            tag="$input_tag"
+            if [ -n "$tag" ]; then
+              checkout_ref="refs/tags/$tag"     # 手工触发时按 tag 自己的提交比对
+            else
+              checkout_ref="$FALLBACK_REF"      # 手工 build_only：仍按默认分支检出
+            fi
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "checkout_ref=$checkout_ref" >> "$GITHUB_OUTPUT"
+          echo "目标 tag=「${tag:-<空>}」，检出 ref = $checkout_ref"
+
+      # 按 tag 的提交检出：手工触发也必须拿 tag 自己的 build.gradle/strings.xml 来比对，
+      # 否则"发旧 tag、main 已升版"会被误判。build-and-release 也用同一个 ref 构建，
+      # 保证"tag 名 ↔ 被发布的包"始终指向同一个提交。
+      - name: 检出代码（优先按 tag）
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.target.outputs.checkout_ref }}
+          fetch-depth: 1
+
+      - name: 校验 tag ↔ versionName / versionCode / 更新日志锚点
+        id: check
+        shell: bash
+        env:
+          TAG: ${{ steps.target.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if [ -z "${TAG:-}" ]; then
+            echo "未指定 tag（手工 build_only 构建），跳过 tag↔版本号校验"
+            exit 0
+          fi
+
+          # 1) tag 形态：YY.MM.DD[.N][-后缀]
+          re='^([0-9]{2})\.([0-9]{2})\.([0-9]{2})(\.[0-9]+)?(-[A-Za-z0-9._-]+)?$'
+          if ! [[ "$TAG" =~ $re ]]; then
+            echo "::error::tag「$TAG」不符合仓库惯例 YY.MM.DD[.N][-后缀]（如 26.10.24、26.10.10.1、26.09.07-security）"
+            exit 1
+          fi
+          yy="${BASH_REMATCH[1]}"
+          mm="${BASH_REMATCH[2]}"
+          dd="${BASH_REMATCH[3]}"
+          expect_name="$yy.$mm.$dd"
+          expect_code_prefix=$((10#$yy * 10000 + 10#$mm * 100 + 10#$dd))
+
+          # 2) build.gradle 实际值
+          gradle=app/build.gradle
+          actual_name=$(grep -oP 'versionName\s+"\K[^"]+' "$gradle" | head -1 || true)
+          actual_code=$(grep -oP '^[[:space:]]*versionCode[[:space:]]+\K[0-9]+' "$gradle" | head -1 || true)
+          if [ -z "$actual_name" ] || [ -z "$actual_code" ]; then
+            echo "::error::无法从 $gradle 读出 versionName/versionCode"
+            exit 1
+          fi
+          base_name="${actual_name%%-*}"   # 去掉可能的 -BETA<n>（betaVer != 0 时才会加）
+
+          fail=0
+          if [ "$base_name" != "$expect_name" ]; then
+            echo "::error::tag「$TAG」期望 versionName=「$expect_name」，实际 build.gradle=「$actual_name」"
+            fail=1
+          fi
+          if ! [[ "$actual_code" =~ ^[0-9]{7}$ ]]; then
+            echo "::error::versionCode=$actual_code 不是 7 位 YYMMDDx 形式"
+            fail=1
+          elif [ $((10#$actual_code / 10)) -ne "$expect_code_prefix" ]; then
+            echo "::error::tag「$TAG」期望 versionCode 前缀 $expect_code_prefix（YYMMDD），实际 $actual_code/10 = $((10#$actual_code / 10))"
+            fail=1
+          fi
+          if [ "$fail" -ne 0 ]; then
+            echo "::error::tag 与安装包版本不一致，拒绝构建/发版（见 findings/standards.md P1-1）"
+            exit 1
+          fi
+
+          # 3) 更新日志锚点（关于页「本次更新」标题必须跟着版本号走）
+          anchor="【${expect_name} 本次更新】"
+          if ! grep -qF "$anchor" app/src/main/res/values/strings.xml; then
+            echo "::error::strings.xml 缺少更新日志锚点「$anchor」（update_log_current 首项），拒绝发版"
+            exit 1
+          fi
+
+          echo "version_name=$actual_name" >> "$GITHUB_OUTPUT"
+          echo "version_code=$actual_code" >> "$GITHUB_OUTPUT"
+          echo "✅ tag $TAG ↔ versionName $actual_name / versionCode $actual_code 一致，更新日志锚点存在"
+
   build-and-release:
+    # 版本一致性不通过就不编译、不签名、不发版
+    needs: verify-version
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
@@ -63,6 +204,11 @@ jobs:
     steps:
       - name: 检出代码
         uses: actions/checkout@v4
+        with:
+          # 用 verify-version 解析出的 ref 构建：推 tag 时是 refs/tags/<tag>（与旧行为一致），
+          # 手工触发填了 tag 时也构建 tag 自己的提交——避免"main 已升版、却拿旧 tag 发版"
+          # 造成的版本错位（P1-1 的另一半）。
+          ref: ${{ needs.verify-version.outputs.checkout_ref }}
 
       - name: 安装 JDK 17
         uses: actions/setup-java@v4
