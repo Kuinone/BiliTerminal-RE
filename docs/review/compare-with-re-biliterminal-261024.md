@@ -2,7 +2,7 @@
 
 - 报告日期：2026-10-24
 - 我方基线：`17212e3c73c52e5250a6c118625b658458c23a5c`（main，2026-10-24 11:33:46 +0800，版本 26.10.24）
-- 对比基线：[`cyq114514/Re-BiliTerminal`](https://github.com/cyq114514/Re-BiliTerminal.git) `c6705d84eca3f17b7701269e9237863a0aff4ee9`（main，2026-10-24 12:48:55 +0800，版本 1.2.3fix）
+- 对比基线：[`cyq114514/Re-BiliTerminal`](https://github.com/cyq114514/Re-BiliTerminal.git) `c6705d84eca3f17b7701269e9237863a0aff4ee9`（main，2026-10-24 12:48:55 +0800，版本 1.2.3fix；本文完成于其 1.2.4 发布前，1.2.4 的增量复核见第 15 章）
 - 扫描范围：两个仓库的全部源码、资源、清单、构建脚本、CI 与文档；我方 436 个主代码文件，对方 354 个
 - 结论：**我方在工程规范、测试体系、资源化与文档上明显领先；兼容性在现代设备上大幅领先、在「旧安卓手表」目标场景只是小幅领先；对方在登录态生命周期、崩溃可观测性、更新链完整性、旧设备保守选型（OkHttp 3.12 / 纯 Java）与若干播放器/互动细节上更成熟**。我方有 2 个 P0（图片管线 Cookie 外发、收藏夹编辑重置隐私）、20 个 P1 需优先处理。
 
@@ -191,7 +191,7 @@ if (Build.VERSION.SDK_INT >= 26 && !activity.getPackageManager().canRequestPacka
 | 宣称 | 核实结论 |
 | --- | --- |
 | 登录凭证不进日志 | **属实**。对方 3 处命中均为文案含 Cookie 主题词，未见打印凭证值；我方同类 14 处亦未见凭证值，且有 `LogSanitizer` |
-| 图片与播放链路不带会话 | **半属实**：图片管线按域过滤属实；播放链路不属实——`CookieGenerator.getCookieString(true)` 在 `forVideoQuality=true` 时仍拼完整 loggedCookie（含 `bili_jct`），`PlayerActivity.java:3182` 正传 true |
+| 图片与播放链路不带会话 | **半属实（1.2.4 后已自修媒体链路）**：图片管线按域过滤属实；1.2.3fix 的播放链路不属实——`CookieGenerator.getCookieString(true)` 在 `forVideoQuality=true` 时仍拼完整 loggedCookie（含 `bili_jct`），`PlayerActivity.java:3182` 正传 true。1.2.4 新增 `PlayerApi.mediaHeadersFor` 收口（只有 B 站媒体域带 Cookie），但**直播弹幕 wss 握手仍下发全量 Cookie**（已加 host 白名单校验） |
 | 更新包强制签名与完整性校验 | **属实**（SHA-256 + size + 签名三道闸，缺信息拒绝安装） |
 | 崩溃上报改自建服务、移除闭源统计 SDK、默认开启可关闭 | **部分属实**：确实移除闭源 SDK，但「自建服务」实际是 Supabase BaaS（第三方托管），且默认开启；我方为自建 HTTP 接口 + 默认关闭策略 |
 
@@ -998,6 +998,31 @@ override fun attachBaseContext(base: Context) {
 - 严重度是工程判断，P1 与 P2 的边界（尤其功能缺口）存在主观性，报告已逐条给出理由；
 - 代码行数、中文硬编码等指标受统计口径影响，报告中同时给出主代码/测试、单属性/四属性等口径；
 - 目标设备口径：本报告初稿按「现代设备」评分，收到项目定位反馈后已按「旧安卓手表」重排（见 1.4）；兼容性分数与路线图优先级以重排后为准。仍缺一份明确的「已验证机型/系统版本」清单，这是下一步最该补的证据。
+
+## 15. 上游增量复核（1.2.4，26.10.26）
+
+> 本文定稿后对方发布了 1.2.4。26.10.26 已把兄弟仓库同步到 `94709cc`（tag `v1.2.4` 指向 `2a4777d`，versionCode `20261026`；其后还有 2 个仅官网改动 `cd234c4`、`94709cc`），相对审计基线 `c6705d8` 共 5 个提交、67 个文件、+3792/−158。本章只记录影响本文结论的部分，不重跑全量对比。
+
+### 15.1 主要改动
+
+- **新增竖屏短视频**：`activity/video/shortvideo/` 下 `ShortVideoFeedFragment.java`（1280 行）、`ShortVideoPlayerActivity.java`、两个 adapter 与 `FeedGestureLayout`；配套 `api/ShortVideoFeedApi.java`（289 行）、`api/StoryFeedQuery.java`（235 行）、`model/ShortVideoItem.java`（147 行）与 3 个布局；主菜单入口可在设置里关闭。
+- **安全自修（对方自称 3 个 P0，均已在代码核实）**：媒体请求头按域分级——`PlayerApi.mediaHeadersFor(url)` 只对 B 站媒体域附带 Cookie，第三方 PCDN 候选只保留 https，播放器与短视频两处均改走该出口；DASH 反序列化修复——`GsonUtil` 注册 `DashDataDeserializer`，「仅音频下载」此前因字段名不匹配而从未可用；头像上传改 1080 采样重压 + `catch (Throwable)` 兜住 OOM。
+- **稳定性**：下载 worker 整体 `try/finally` 收口 + `AtomicBoolean` 单 worker + 真取消语义；`-111` 归入可重试 `CSRF_MISMATCH`（只有 `-101` 才登出）；`saveCookiesFromResponse` 在 Cookie 轮换后同锁同步 csrf 快照，写操作改用 `NetWorkUtil.getLoginCsrf()`；全局 OkHttp 加 `retryOnConnectionFailure(false)`；暂停态 seek/重绘与弹幕 `userPaused`；失效页 `finish()` 条件修正；菜单排序只校验 key。
+- **发布/工程**：`res/raw/keep.xml` 补 `@mipmap/tutorial_*`；CI 增加 release 资源冒烟（`aapt2 dump resources` 断言 6 张教程插图仍在包内）；版本 1.2.4 与官网/友情链接更新。
+
+### 15.2 对本文结论的影响
+
+- §3.4「播放链路不带会话」的对方问题已在 1.2.4 修复媒体路径；但**直播弹幕 wss 握手仍下发全量 Cookie**——`PlayerActivity.danmuSocketConnect`（1.2.4 工作树 `:3215-3274`）加了 host 白名单校验与全局 OkHttp 复用，`CookieGenerator.getCookieString(true)` 未收窄。对 1.2.4 而言，该项仍属「半属实」。
+- 对方对 `-111`/CSRF 与下载服务的修法，与本文 §13.2 C、§10 的建议方向一致，说明两边在收敛到同一套修法；我方对应的 P1 项（Cookie 代际隔离、-111 重试语义）仍未修，见 §13.0。
+- 兼容性结论不变：1.2.4 仍是 `targetSdk 26`、只打 32 位 ABI、0 测试文件；新增的 CI 资源冒烟是 APK 级断言，不构成单测覆盖。
+- 新增隐私面：`util/DeviceIdentity.java` 生成并持久化一个随机 32 位十六进制 `Display-ID`（短视频取流请求头），来源不是 ANDROID_ID，但属于新的设备级伪标识；我方「设备键」争议的同类问题在对方也出现了，只是实现不同（我方向 ANDROID_ID 哈希、对方随机持久 ID）。
+- 文档瑕疵：对方 1.2.4 更新日志多处引用 `docs/audit/00-summary.md`，该文件不在仓库中（链接 404），其自述审计结论无法复核。
+
+### 15.3 复核方式
+
+- 同步：`git fetch origin --tags` + `git merge --ff-only origin/main`（`c6705d8`→`94709cc`，tag `v1.2.4`）。
+- 逐文件核对：`git diff c6705d8..94709cc -- <path>`；关键行为在 1.2.4 工作树中按行号复核（`PlayerApi.java:210-270`、`PlayerActivity.java:1415-1417/3215-3274`、`ShortVideoFeedFragment.java:664-666`、`NetWorkUtil.java:69-81/531-543`、`ImageApi.java:125-190`）。
+- 未重新构建 1.2.4（本次只做增量阅读）；其构建可用性仍以审计时的 `assembleDebug`/`assembleRelease` 记录为准。
 
 ## 附录 A：关键证据索引
 
