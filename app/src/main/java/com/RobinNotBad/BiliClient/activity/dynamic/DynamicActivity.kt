@@ -136,6 +136,10 @@ class DynamicActivity : RefreshMainActivity() {
             val picsJson = data.getStringExtra("pics")
             // 定时发布：秒级时间戳，0 表示不定时（只有发布链路吃这个字段）
             val timerSeconds = data.getLongExtra("timerPubTime", 0L)
+            // 发布选项开关：SendDynamicActivity 的普通发布链路会回传；
+            // 转发（relayDynamic）与视频分享链路不带这两个字段 → 缺省即「不勾」
+            val privatePub = data.getBooleanExtra("privatePub", false)
+            val closeComment = data.getBooleanExtra("closeComment", false)
             CenterThreadPool.run {
                 try {
                     val pics = if (!picsJson.isNullOrEmpty()) org.json.JSONArray(picsJson) else null
@@ -162,10 +166,18 @@ class DynamicActivity : RefreshMainActivity() {
                         // 表情文本用于把正文里的 [xxx] 拆成 type 9 表情节点
                         val emoteTexts = EmoteApi.getEmoteTexts(EmoteApi.BUSINESS_DYNAMIC)
 
-                        // 定时发布走 option.timer_pub_time（秒级时间戳）；不定时就不传 option，
-                        // 保持各条既有链路原样
-                        val option = if (timerSeconds > 0) {
-                            DynamicApi.buildPublishOption(false, null, null, timerSeconds.toInt())
+                        // 发布选项：定时 / 仅自己可见 / 关闭评论任一开启才下发 option，
+                        // 三个都不开时保持各条既有链路原样（不下发 option，服务端走默认值）
+                        val option = if (timerSeconds > 0 || privatePub || closeComment) {
+                            DynamicApi.buildPublishOption(
+                                privatePub,
+                                // close_comment：1 = 关闭评论；null = 不下发，服务端默认允许评论
+                                if (closeComment) 1 else null,
+                                // up_choose_comment（精选评论）暂未接线，null = 不下发
+                                null,
+                                // timer_pub_time 要秒级 int 时间戳，不是 "yyyy-MM-dd HH:mm" 字符串
+                                if (timerSeconds > 0) timerSeconds.toInt() else null
+                            )
                         } else null
 
                         val dynId: Long

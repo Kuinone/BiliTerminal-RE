@@ -71,6 +71,38 @@ public class TerminalApi {
     };
 
     /**
+     * 内存档位（对比审计 P2-9 的隐私收敛部分）。
+     *
+     * <p>崩溃报告不再上报精确的 {@code ram_total}/{@code ram_avail} 字节数（那等于给机型
+     * 再加一枚指纹），只报一个档位，0 表示取不到。档位数值**不要重排**：服务端一旦
+     * 开始读，改数值会让历史数据对不上。
+     */
+    public static final int RAM_LEVEL_UNKNOWN = 0;
+
+    /** &lt; 2 GiB。 */
+    public static final int RAM_LEVEL_LOW = 1;
+
+    /** 2 ~ 4 GiB。 */
+    public static final int RAM_LEVEL_MID = 2;
+
+    /** &gt;= 4 GiB。 */
+    public static final int RAM_LEVEL_HIGH = 3;
+
+    /**
+     * 把总内存字节数折算成档位：按整 GiB 取整，{@code < 2} 低、{@code < 4} 中、否则高；
+     * 取不到（{@code <= 0}）返回 {@link #RAM_LEVEL_UNKNOWN}。
+     *
+     * <p>纯函数，不碰 {@code android.*}，JVM 单测可直接覆盖。
+     */
+    public static int ramLevel(long totalMemBytes) {
+        if (totalMemBytes <= 0) return RAM_LEVEL_UNKNOWN;
+        long gib = totalMemBytes / (1024L * 1024L * 1024L);
+        if (gib < 2) return RAM_LEVEL_LOW;
+        if (gib < 4) return RAM_LEVEL_MID;
+        return RAM_LEVEL_HIGH;
+    }
+
+    /**
      * 设备键的固定盐。改它等于把所有设备变成"新设备"（唯一设备数会翻一倍），**别随便改**。
      * 它不需要保密（就写在客户端里），作用只是让这个哈希不与别处对 ANDROID_ID 的哈希撞车。
      */
@@ -202,7 +234,13 @@ public class TerminalApi {
      *
      * <p>比上游 {@code /terminal/upload/stack} 多带了这些字段（用户要求「发的多一点」）：
      * 匿名 install_id、异常类名与消息（与堆栈分开）、出错线程、崩溃前的页面轨迹、
-     * 系统版本 / product / model / ABI / 内存 / 运行时长。堆栈本身仍是主体。
+     * 系统版本 / product / model / ABI / 内存档位 / 运行时长。堆栈本身仍是主体。
+     *
+     * <p><b>内存只报档位</b>（对比审计 P2-9）：{@code ram_level} 取值见 {@link #ramLevel(long)}；
+     * {@code ram_total}/{@code ram_avail} 仍然写进载荷，但**恒为 0**。服务端这两列本来就
+     * {@code DEFAULT 0}，控制台遇到 0 会显示成「—」，所以不用改后端也不会凭空显示出错误的 MB 数。
+     * 保留这两个字段名是为了不破老服务端的解析（它只按字段存在与否取值），
+     * 等后端开始读 {@code ram_level} 后再删。
      *
      * <p>{@code is_coexist} 与启动上报同源：两个 flavor 在「崩溃」这个维度上也要能分开统计，
      * 缺了它就只剩 ping 那一路能区分版本。做成参数而不是在方法里直接读 {@code BuildConfig}，
@@ -214,7 +252,7 @@ public class TerminalApi {
                                                int versionCode, String versionName, int sdk,
                                                String release, String brand, String device,
                                                String product, String model, String abi,
-                                               long ramTotal, long ramAvail,
+                                               int ramLevel,
                                                long uptimeSec, boolean isCoexist) throws JSONException {
         JSONObject data = new JSONObject();
         data.put("install_id", safe(installId));
@@ -235,8 +273,10 @@ public class TerminalApi {
         data.put("product", safe(product));
         data.put("model", safe(model));
         data.put("abi", safe(abi));
-        data.put("ram_total", ramTotal);
-        data.put("ram_avail", ramAvail);
+        data.put("ram_level", ramLevel);
+        // 精确内存已停止采集；字段留着并置 0，避免老服务端 / 控制台读到"字段缺失"
+        data.put("ram_total", 0L);
+        data.put("ram_avail", 0L);
         data.put("uptime_sec", uptimeSec);
         data.put("is_coexist", isCoexist);
         return data;
@@ -255,11 +295,11 @@ public class TerminalApi {
                                                int versionCode, String versionName, int sdk,
                                                String release, String brand, String device,
                                                String product, String model, String abi,
-                                               long ramTotal, long ramAvail,
+                                               int ramLevel,
                                                long uptimeSec) throws JSONException {
         return buildCrashPayload(installId, deviceKey, mid, exception, message, thread, stack, log,
                 extra, versionCode, versionName, sdk, release, brand, device, product, model,
-                abi, ramTotal, ramAvail, uptimeSec, BuildConfig.COEXIST);
+                abi, ramLevel, uptimeSec, BuildConfig.COEXIST);
     }
 
     /**

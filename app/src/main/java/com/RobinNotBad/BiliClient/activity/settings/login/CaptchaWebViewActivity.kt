@@ -14,8 +14,10 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import com.RobinNotBad.BiliClient.R
 import com.RobinNotBad.BiliClient.activity.base.BaseActivity
+import com.RobinNotBad.BiliClient.util.CaptchaParamPolicy
 import com.RobinNotBad.BiliClient.util.Logu
 import com.RobinNotBad.BiliClient.util.MsgUtil
+import org.json.JSONObject
 
 class CaptchaWebViewActivity : BaseActivity() {
 
@@ -67,7 +69,15 @@ class CaptchaWebViewActivity : BaseActivity() {
         mGt = intent.getStringExtra(EXTRA_GT)
         mChallenge = intent.getStringExtra(EXTRA_CHALLENGE)
 
-        if (mGt == null || mChallenge == null) {
+        // 安全审计 P2-8：gt / challenge 会被拼进 WebView 执行的 JS，先用白名单卡一道。
+        //
+        // 这两个值来自 B 站接口、经 Intent 转手进来；此前直接把它们塞进单引号字符串，
+        // 参数里只要有引号、换行或 `</script>`，就能改写我们要执行的脚本
+        // （参数来自服务端，等价于远程可执行代码）。官方取值是 32 位十六进制，
+        // 规则见 CaptchaParamPolicy；不合法就按「验证参数错误」结束，
+        // 且**不打印原值**——可疑内容不该再进日志。
+        if (!CaptchaParamPolicy.areValid(mGt, mChallenge)) {
+            Logu.w("CaptchaWebView", "gt/challenge 未通过格式校验，拒绝加载验证页")
             MsgUtil.showMsg(getString(R.string.msg_captchawebviewactivity_001))
             setResult(RESULT_CANCELED)
             finish()
@@ -182,6 +192,13 @@ class CaptchaWebViewActivity : BaseActivity() {
     }
 
     private fun buildCaptchaHtml(): String {
+        // 安全审计 P2-8：用 JSONObject.quote 生成 JS 字符串字面量，不再手工拼单引号。
+        //
+        // quote() 会把 `"` `\` 和换行等控制字符转义成合法字面量，参数里带引号也逃不出字符串；
+        // 但它**不转义 `</script>`**（HTML 解析器会先于 JS 结束脚本块），
+        // 所以它是第二道防线，第一道是 onCreate 里的 CaptchaParamPolicy 白名单，缺一不可。
+        val gtLiteral = JSONObject.quote(mGt)
+        val challengeLiteral = JSONObject.quote(mChallenge)
         return "<!DOCTYPE html>\n" +
                 "<html>\n" +
                 "<head>\n" +
@@ -199,8 +216,8 @@ class CaptchaWebViewActivity : BaseActivity() {
                 "<body>\n" +
                 "<div id=\"captcha\"><div class=\"loading\">正在加载验证码...</div></div>\n" +
                 "<script>\n" +
-                "var gt = '" + mGt + "';\n" +
-                "var challenge = '" + mChallenge + "';\n" +
+                "var gt = " + gtLiteral + ";\n" +
+                "var challenge = " + challengeLiteral + ";\n" +
                 "var captchaEl = document.getElementById('captcha');\n" +
                 "\n" +
                 "function loadScript(url, callback) {\n" +

@@ -225,21 +225,20 @@ class DownloadActivity : BaseActivity() {
                 runOnUiThread { MsgUtil.showMsg(getString(R.string.text_download_complete_rename_failed)) }
             }
         } else if (type == 0) {
-            // 图片下载（type 0，入口只有 ImageViewerActivity）。写完必须登记进系统媒体库：
-            // 这里是裸 File 写公共 Pictures/ 目录，Android 10+ 不会自动索引，而相册/图库和
-            // 文件管理器的「图片」分类都只查 MediaStore —— 不登记就是「下载完成」却哪儿都找不到
-            // （26.10.21 在手表模拟器上复现并确证，细节见 util/PictureMediaStore.kt 的注释）。
-            // 降级目录是应用专属的，不在系统相册扫描范围内，登记媒体库没有意义，提示也要换：
-            // 那种目录相册看不到，得用文件管理器。
-            val fallback = FileUtil.isPictureFallbackActive()
-            if (!fallback) PictureMediaStore.scan(this, downloadedFile)
-            val shownPath = if (fallback) downloadedFile.parent ?: downloadedFile.absolutePath
-            else PictureMediaStore.displayFolder(downloadedFile)
+            // 图片下载（type 0，入口只有 ImageViewerActivity）。写完必须让系统相册能看见：
+            // Android 10+ 的默认目录已经改成应用专属（安全审计 P2-2：裸写公共目录要全盘权限，
+            // 手表 ROM 又根本没有那个设置页），所以这里用 MediaStore 发布一份进
+            // `Pictures/哔哩终端/`；旧系统/用户自定义公共目录则只需登记扫描。
+            // 发布失败不影响「下载已成功」——文件仍在应用专属目录，只是相册里看不到，
+            // 因此返回值只用于换提示文案（失败也给出实际目录，用户能用文件管理器找到）。
+            val publishedFolder = PictureMediaStore.publishToGallery(this, downloadedFile)
+            val shownPath = publishedFolder ?: downloadedFile.parent ?: downloadedFile.absolutePath
             // 提示里带上实际保存目录：以前只有一句「下载完成」，用户即使知道去相册翻，
             // 也不知道文件落在哪个文件夹
             runOnUiThread {
                 MsgUtil.showMsg(getString(
-                    if (fallback) R.string.msg_picture_saved_fallback else R.string.msg_picture_saved,
+                    if (publishedFolder != null) R.string.msg_picture_saved
+                    else R.string.msg_picture_saved_fallback,
                     shownPath
                 ))
             }

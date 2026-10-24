@@ -371,24 +371,22 @@ class DownloadService : Service() {
     @SuppressLint("MutatingSharedPrefs")
     override fun onStartCommand(serviceIntent: Intent?, flags: Int, startId: Int): Int {
         Logu.d("onStartCommand")
-        if (serviceIntent == null) {
-            return START_STICKY
-        }
+        // START_STICKY 被系统重启时 onStartCommand 收到的 Intent 为 null。这条路径同样受
+        // 「5 秒内必须 startForeground」约束，不能再像修复前那样直接 return（findings/robust.md P1-2）。
+        val isStickyRestart = serviceIntent == null
         // 幂等守卫（审计 S6）：服务已在一个批次里时，重复的 onStartCommand 必须直接返回。
         // 否则第二个批次会重新执行 recoverStuckSections()，把第一个批次正在下载的 section
         // 由 "downloading" 改回 "none"，调度器随即二次拾取同一文件，两个线程写同一路径。
-        // 早退发生在 startForeground 之前是安全的：首次调用已把服务拉成前台。
+        // 正常重复投递时首次调用已把服务拉成前台；系统重启路径没人替我们调过 startForeground，
+        // 必须在这里补一次，否则服务会被系统按「前台服务没有进场」杀掉。
         if (batchRunning) {
             Logu.d("下载批次已在进行中，忽略重复的 onStartCommand")
+            if (isStickyRestart) ensureForeground()
             return START_STICKY
         }
         batchRunning = true
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(FOREGROUND_ID, statusBuilder.build(),
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
-        } else {
-            startForeground(FOREGROUND_ID, statusBuilder.build())
-        }
+        // 5 秒义务：正常启动与 START_STICKY 重启都先 startForeground 再做后续工作。
+        ensureForeground()
 
         exitCode = DownloadPathSpec.ERR_UNKNOWN
         notifier.startNotifyProgress()
@@ -401,26 +399,51 @@ class DownloadService : Service() {
                 FileUtil.resolveVideoDownloadDir(BiliTerminal.context)
                 // 恢复上次崩溃/中断遗留的"下载中"记录，避免卡死
                 recoverStuckSections()
-                // 开始新批次，重置统计
-                batchStats.reset()
-                resetDownloadedBytes()
-                resetSpeedSampling()
-                activeDownloadsCount = 0
 
-                val parallelCount = Aria2Util.getParallelDownloadVideos().coerceIn(1, 10)
-                if (parallelCount <= 1)
-                    sequentialDownload()
+                // START_STICKY 重启的续跑决策（修复前 null Intent 直接 return，队列永远不会续跑）。
+                // recoverStuckSections() 已把新进程里遗留的 "downloading" 重置为 "none"，
+                // 所以这里统计到的就是全部可恢复任务；paused/error 不算（见 DownloadServiceRecovery）。
+                val resumable = if (isStickyRestart)
+                    DownloadServiceRecovery.countResumable(DownloadRepository.getAll()?.map { it.state })
                 else
-                    parallelDownload(parallelCount)
+                    0
+                val action = DownloadServiceRecovery.decide(isStickyRestart, resumable)
 
-                section = null
-                refreshDownloadList()
+                if (action == DownloadServiceRecovery.Action.STOP) {
+                    // 重启后队列已空：前台义务已在 onStartCommand 里兑现，这里直接收摊，
+                    // 避免服务空转被系统反复重建。刻意不设 exitMessage、不走 notifyExit：
+                    // 这不是用户可见的「下载结束」。
+                    Logu.d("START_STICKY 重启后没有可恢复任务，停止下载服务")
+                    section = null
+                    refreshDownloadList()
+                } else {
+                    if (action == DownloadServiceRecovery.Action.RESUME) {
+                        // 系统重启路径没有人调用 start()，started 在新进程里是 false；
+                        // 不置位的话调度循环 while(started) 会立刻退出，等于没续跑。
+                        Logu.d("START_STICKY 重启：续跑 $resumable 个可恢复任务")
+                        started = true
+                    }
+                    // 开始新批次，重置统计
+                    batchStats.reset()
+                    resetDownloadedBytes()
+                    resetSpeedSampling()
+                    activeDownloadsCount = 0
 
-                exitCode = DownloadPathSpec.NORMAL
-                exitMessage = if (batchStats.failed > 0)
-                    getString(R.string.text_download_some_failed, batchStats.failed)
-                else
-                    getString(R.string.text_download_all_complete)
+                    val parallelCount = Aria2Util.getParallelDownloadVideos().coerceIn(1, 10)
+                    if (parallelCount <= 1)
+                        sequentialDownload()
+                    else
+                        parallelDownload(parallelCount)
+
+                    section = null
+                    refreshDownloadList()
+
+                    exitCode = DownloadPathSpec.NORMAL
+                    exitMessage = if (batchStats.failed > 0)
+                        getString(R.string.text_download_some_failed, batchStats.failed)
+                    else
+                        getString(R.string.text_download_all_complete)
+                }
             } catch (e: Exception) {
                 MsgUtil.err(e)
                 exitCode = DownloadPathSpec.ERR_UNKNOWN
@@ -431,6 +454,23 @@ class DownloadService : Service() {
         }
 
         return Service.START_STICKY
+    }
+
+    /**
+     * 兑现前台服务义务。
+     *
+     * Android 8+ 由 `startForegroundService()` 拉起的服务必须在 5 秒内调用 startForeground，
+     * 否则系统抛 `RemoteServiceException` 并杀掉进程（26.10.10 线上崩溃的同类问题，
+     * 详见 PlaybackService 的「前台义务」注释）。所有进入 onStartCommand 的路径都必须走到这里，
+     * 包括 START_STICKY 系统重启（Intent == null）和重复投递的早退分支。
+     */
+    private fun ensureForeground() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(FOREGROUND_ID, statusBuilder.build(),
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+        } else {
+            startForeground(FOREGROUND_ID, statusBuilder.build())
+        }
     }
 
     private fun sequentialDownload() {

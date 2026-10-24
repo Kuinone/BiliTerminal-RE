@@ -67,6 +67,7 @@ import com.RobinNotBad.BiliClient.player.IjkNativeLibs
 import com.RobinNotBad.BiliClient.player.PlayerDefaults
 import com.RobinNotBad.BiliClient.player.LocalAudioTrackPolicy
 import com.RobinNotBad.BiliClient.player.PlayerSurfaceBinder
+import com.RobinNotBad.BiliClient.player.PlayerVolumePolicy
 import com.RobinNotBad.BiliClient.player.SkipCancelPolicy
 import com.RobinNotBad.BiliClient.player.SkipOpEdPrefs
 import com.RobinNotBad.BiliClient.player.ViewPointSkip
@@ -76,6 +77,7 @@ import com.RobinNotBad.BiliClient.ui.widget.BatteryView
 import com.RobinNotBad.BiliClient.ui.widget.HighEnergyProgressBar
 import com.RobinNotBad.BiliClient.ui.widget.recycler.CustomLinearManager
 import com.RobinNotBad.BiliClient.util.CenterThreadPool
+import com.RobinNotBad.BiliClient.util.CookieDomainPolicy
 import com.RobinNotBad.BiliClient.util.DisguiseGesture
 import com.RobinNotBad.BiliClient.util.DisguisePrefs
 import com.RobinNotBad.BiliClient.util.LocalVideoProgress
@@ -181,6 +183,21 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
     private lateinit var loading_text1: TextView
     private lateinit var text_speed: TextView
     private lateinit var text_newspeed: TextView
+
+    /**
+     * 「无极调音」弹层（`layout_volume`）：软件增益滑条 0~100%，长按音量 +/- 打开。
+     *
+     * 与 [text_volume]（系统媒体音量提示）是两套东西：短按音量键仍调系统音量，
+     * 长按弹这个滑条调播放器自己的输出电平（见 [applyVolumeGain]）。
+     */
+    private lateinit var layout_volume: LinearLayout
+    private lateinit var seekbar_volume: SeekBar
+    private lateinit var text_volume_title: TextView
+    private lateinit var text_newvolume: TextView
+
+    /** 当前软件增益（百分比 0~100），唯一真相；换算/钳制见 [PlayerVolumePolicy]。 */
+    private var volumeGainPercent = PlayerVolumePolicy.DEFAULT_PERCENT
+
     @JvmField var text_title: TextView? = null
     private lateinit var text_subtitle: TextView
     private lateinit var text_audio_title: TextView
@@ -779,6 +796,9 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
         autohideReset()
 
         initSeekbars()
+        // 无极调音的滑条/存档在 findview() 之后、开始播放之前就位：无网络、无播放器依赖，
+        // 只读一次 SharedPreferences 并接线，放这里与 initSeekbars 并列最直观。
+        initVolumePanel()
 
         if (isLiveMode) {
             btn_control.visibility = View.GONE
@@ -874,6 +894,10 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
         loading_text1 = findViewById(R.id.loading_text1)
         text_title = findViewById(R.id.text_title)
         text_volume = findViewById(R.id.showsound)
+        layout_volume = findViewById(R.id.layout_volume)
+        seekbar_volume = findViewById(R.id.seekbar_volume)
+        text_volume_title = findViewById(R.id.text_volume_title)
+        text_newvolume = findViewById(R.id.text_newvolume)
         layout_video = findViewById(R.id.videoArea)
         bindDanmakuView()
         batteryView = findViewById(R.id.battery)
@@ -1153,6 +1177,12 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
         layout_top.visibility = View.GONE
         bottom_buttons.visibility = View.GONE
         seekbar_progress.visibility = View.GONE
+        // 控制栏自动隐藏时，无极调音弹层也要收掉：它盖住画面且拦截触摸，留着就点不到播放区。
+        if (::layout_volume.isInitialized && layout_volume.visibility == View.VISIBLE) {
+            layout_volume.removeCallbacks(hideVolumePanel)
+            layout_volume.visibility = View.GONE
+            persistVolumeGain()
+        }
         if (isPrepared && !isAudioOnlyMode) {
             text_speed.visibility = View.GONE
             btn_debug.visibility = View.GONE
@@ -2395,6 +2425,16 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
 
     @SuppressLint("SetTextI18n")
     fun changeVolume(addOrCut: Boolean) {
+        // 短按音量键仍按老行为调系统媒体音量 ±1 档：手表上单手握持时短按最顺手，
+        // 改成 1% 步进会出现「按十下才动一格」的体感倒退；细调走长按弹出的无极调音滑条。
+        // 唯一要兜的坑：增益被拉到 0% 时系统音量再大也没声，用户会以为播放器坏了 ——
+        // 所以短按「音量+」顺手把软件增益救回默认 100%（与手机上「音量+ 解除静音」的直觉一致）。
+        if (addOrCut && PlayerVolumePolicy.isMuted(volumeGainPercent)) {
+            volumeGainPercent = PlayerVolumePolicy.DEFAULT_PERCENT
+            persistVolumeGain()
+            applyVolumeGain()
+            syncVolumePanel()
+        }
         var volumeNow = audioManager!!.getStreamVolume(AudioManager.STREAM_MUSIC)
         val volumeMax = audioManager!!.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
         val volumeNew = volumeNow + (if (addOrCut) 1 else -1)
@@ -2413,6 +2453,127 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
     }
 
     private val hideVolume = Runnable { text_volume.visibility = View.GONE }
+
+    // ==================== 无极调音（软件增益 0~100%） ====================
+
+    /**
+     * 读存档、接线滑条，只在 onCreate 调一次。
+     *
+     * 存档值来自 SharedPreferences，旧版本/被手改过都可能是脏值，统一走
+     * [PlayerVolumePolicy.sanitize] 钳到 0~100 再用于播放。
+     */
+    private fun initVolumePanel() {
+        volumeGainPercent = PlayerVolumePolicy.sanitize(
+            SharedPreferencesUtil.getInt(
+                PlayerVolumePolicy.KEY_GAIN_PERCENT,
+                PlayerVolumePolicy.DEFAULT_PERCENT
+            )
+        )
+        text_volume_title.text = UiText.of("无极调音")
+        seekbar_volume.max = PlayerVolumePolicy.MAX_PERCENT
+        syncVolumePanel()
+
+        seekbar_volume.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: SeekBar, progress: Int, fromUser: Boolean) {
+                if (!fromUser) return
+                volumeGainPercent = PlayerVolumePolicy.clampPercent(progress)
+                text_newvolume.text = volumePercentText(volumeGainPercent)
+                applyVolumeGain()
+                // 拖动过程中不落盘（1% 一档会连写几十次存储），只把自动收起往后推
+                layout_volume.removeCallbacks(hideVolumePanel)
+                layout_volume.postDelayed(hideVolumePanel, VOLUME_PANEL_AUTO_HIDE_MS)
+                // 同步把控制栏的自动隐藏计时推后：否则控制栏 4s 一到 hidecon 会连面板一起收掉，
+                // 正拖着滑条时面板突然消失。
+                autohideReset()
+            }
+
+            override fun onStartTrackingTouch(seekBar: SeekBar) {
+                layout_volume.removeCallbacks(hideVolumePanel)
+                autohideReset()
+            }
+
+            override fun onStopTrackingTouch(seekBar: SeekBar) {
+                persistVolumeGain()
+                layout_volume.removeCallbacks(hideVolumePanel)
+                layout_volume.postDelayed(hideVolumePanel, VOLUME_PANEL_HIDE_AFTER_TRACK_MS)
+            }
+        })
+
+        // 点面板空白处关闭（与 layout_speed 同款交互），关闭时把当前百分比落盘。
+        layout_volume.setOnClickListener { hideVolumePanel.run() }
+        applyVolumeGain()
+    }
+
+    /** 面板上的百分比文案。先内联，等文案统一进 strings.xml 后再换资源。 */
+    private fun volumePercentText(percent: Int): CharSequence =
+        UiText.fmt(UiText.of("%1\$s%%"), percent)
+
+    /** 把 [volumeGainPercent] 同步到滑条/文字（打开面板、静音救回、初始化都走这里）。 */
+    private fun syncVolumePanel() {
+        if (!::seekbar_volume.isInitialized) return
+        seekbar_volume.progress = volumeGainPercent
+        text_newvolume.text = volumePercentText(volumeGainPercent)
+    }
+
+    /**
+     * 把百分比增益同时打到两路音频上。
+     *
+     * ijk 的 `setVolume` 是解码后的采样级线性乘算（0.0~1.0），与系统媒体音量是两层：
+     * 系统音量决定整机声音大小，这里决定播放器自己的输出电平，最终是两者相乘。它只对**当前播放器实例**
+     * 生效：换清晰度/切 P/出错重试都会重建 IjkMediaPlayer（见 [retryAfterPlayerError]），所以
+     * onPrepared 里必须再调一次（见 [onPrepared] 末尾）。
+     * 本地 DASH 视频还会额外起一条 `android.media.MediaPlayer` 外部音轨（见 [initAudioTrack]），
+     * 那条也要一起调，否则会出现「视频有声、音轨没声」的一半静音。
+     */
+    private fun applyVolumeGain() {
+        val gain = PlayerVolumePolicy.percentToGain(volumeGainPercent)
+        try {
+            ijkPlayer?.setVolume(gain, gain)
+        } catch (e: Exception) {
+            Logu.e("无极调音", "设置播放器增益失败：${e.message}")
+        }
+        try {
+            audioPlayer?.setVolume(gain, gain)
+        } catch (e: Exception) {
+            Logu.e("无极调音", "设置外部音轨增益失败：${e.message}")
+        }
+    }
+
+    /** 落盘当前百分比。拖动过程中不写，松手/关闭面板时各写一次。 */
+    private fun persistVolumeGain() {
+        SharedPreferencesUtil.putInt(PlayerVolumePolicy.KEY_GAIN_PERCENT, volumeGainPercent)
+    }
+
+    /**
+     * 长按音量 +/- 打开无极调音滑条。
+     *
+     * 短按仍调系统音量（见 [changeVolume]）。面板不会常驻：4s 无操作或松手 1.2s 后收起，
+     * 手表屏幕小，弹层挡画面。
+     */
+    private fun showVolumePanel() {
+        if (destroyed || !::layout_volume.isInitialized) return
+        syncVolumePanel()
+        layout_volume.visibility = View.VISIBLE
+        layout_volume.removeCallbacks(hideVolumePanel)
+        layout_volume.postDelayed(hideVolumePanel, VOLUME_PANEL_AUTO_HIDE_MS)
+        autohideReset()
+    }
+
+    /** 收起面板并落盘。用 `layout_volume` 这个 View 投递，onDestroy 才可以用同一个 View 移除。 */
+    private val hideVolumePanel = Runnable { hideVolumePanelNow() }
+
+    private fun hideVolumePanelNow() {
+        if (!::layout_volume.isInitialized) return
+        layout_volume.removeCallbacks(hideVolumePanel)
+        layout_volume.visibility = View.GONE
+        persistVolumeGain()
+    }
+
+    /** 无操作自动收起时长（毫秒）。 */
+    private val VOLUME_PANEL_AUTO_HIDE_MS = 4_000L
+
+    /** 松手后多久收起（毫秒）：留一点时间让用户看到调完的百分比。 */
+    private val VOLUME_PANEL_HIDE_AFTER_TRACK_MS = 1_200L
 
     private fun softwareRotate() {
         val displayMetrics = DisplayMetrics()
@@ -2663,6 +2824,8 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
         mainHandler?.removeCallbacksAndMessages(null)
         layout_control.removeCallbacks(hidecon)
         text_volume.removeCallbacks(hideVolume)
+        // 无极调音面板的自动收起：runnable 是 layout_volume.postDelayed 投递的，必须用同一个 View 移除
+        if (::layout_volume.isInitialized) layout_volume.removeCallbacks(hideVolumePanel)
         seekbar_progress.removeCallbacks(progressbarEnable)
     }
 
@@ -2682,18 +2845,36 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
                 }
                 val response = NetWorkUtil.get(ConfInfoApi.signWBI(url), mHeaders)
                 val data = JSONObject(response.body!!.string()).getJSONObject("data")
-                val host = data.getJSONArray("host_list").getJSONObject(0)
+                val hostInfo = data.getJSONArray("host_list").getJSONObject(0)
 
-                url = "wss://" + host.getString("host") + ":" + host.getInt("wss_port") + "/sub"
+                // 审计 P2-6：host_list 由服务端下发，不校验就等于把「携带 Cookie 的握手」送去
+                // 任意域名（接口响应被劫持/中间人改包即可实现）。只接受 bilibili.com 及其子域，
+                // 端口也做一次范围检查；不通过就提示失败并放弃，不建立连接。
+                val wssHost = hostInfo.optString("host", "")
+                val wssPort = hostInfo.optInt("wss_port", 0)
+                if (!CookieDomainPolicy.isBilibiliDomain(wssHost) || wssPort !in 1..65535) {
+                    Logu.e("danmuSocket", "弹幕服务器地址非法，已放弃连接：$wssHost:$wssPort")
+                    MsgUtil.showMsg(UiText.of("直播弹幕连接失败"))
+                    return@run
+                }
+
+                url = "wss://" + wssHost + ":" + wssPort + "/sub"
                 Logu.v("连接WebSocket", url)
 
                 okHttpClient = OkHttpClient()
-                val request = Request.Builder()
+                val requestBuilder = Request.Builder()
                     .url(url)
-                    .header("Cookie", SharedPreferencesUtil.getString(SharedPreferencesUtil.cookies, ""))
                     .header("Origin", "https://live.bilibili.com")
                     .header("User-Agent", NetWorkUtil.USER_AGENT_WEB)
-                    .build()
+                // 审计 P2-6：握手只需要「我是谁」，不需要写权限。原来把整串 Cookie（含 bili_jct）
+                // 发给弹幕服务器，对方若是伪造域就等于交出 csrf；这里只带弹幕必需的 SESSDATA，
+                // 取不到就不带 Cookie 头（游客态也能收弹幕，发弹幕本来另有接口）。
+                val sessdata = NetWorkUtil.getInfoFromCookie(
+                    "SESSDATA",
+                    SharedPreferencesUtil.getString(SharedPreferencesUtil.cookies, "")
+                )
+                if (sessdata.isNotEmpty()) requestBuilder.header("Cookie", "SESSDATA=$sessdata")
+                val request = requestBuilder.build()
 
                 val listener = PlayerDanmuClientListener()
                 listener.mid = mid
@@ -2893,6 +3074,16 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
 
         findViewById<View>(R.id.button_sound_add).setOnClickListener { changeVolume(true) }
         findViewById<View>(R.id.button_sound_cut).setOnClickListener { changeVolume(false) }
+        // 长按任一个音量键 → 打开「无极调音」滑条（0~100% 软件增益，1% 一档，松手落盘）。
+        // 短按保留系统音量 ±1 档的老手感，长按才进细调；两个键都能开，不用记方向。
+        findViewById<View>(R.id.button_sound_add).setOnLongClickListener {
+            showVolumePanel()
+            true
+        }
+        findViewById<View>(R.id.button_sound_cut).setOnLongClickListener {
+            showVolumePanel()
+            true
+        }
 
         btn_menu.setOnClickListener {
             if (menu_opened) {
@@ -4718,6 +4909,9 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
 
         // 判断实际轨道，含内嵌音轨时禁止再启动第二路音频；重复 prepared 也不会遗留旧实例。
         initAudioTrack(mediaPlayer)
+        // 新建的 IjkMediaPlayer/外部音轨默认增益都是 1.0，必须把用户记忆的「无极调音」重新打上去，
+        // 否则换清晰度、切 P、出错重试之后音量会跳回满格。
+        applyVolumeGain()
 
         if (isPlaying) {
             ijkPlayer!!.start()

@@ -60,6 +60,8 @@ data class TutorialPage(
  * @param version 显式版本号：新增内容就 +1，只对没看过这个版本的用户展示。
  * @param target  触发页面，`BaseActivity` 按当前页面类名集中匹配。
  * @param pages   分页内容；[TutorialKind.HINT] 为空。
+ * @param descriptionRes 管理页用的一句短描述（字符串资源 id）。`null` = 没写，管理页不显示描述。
+ *               放这里是让「一篇教程的全部元信息」只有注册表一个来源，管理页不用再维护一份平行数组。
  * @param hintText  HINT 类型的提示文案。
  * @param hintViewId HINT 类型要显示提示的目标 View id。
  */
@@ -71,6 +73,7 @@ data class Tutorial(
     val kind: TutorialKind,
     val pages: List<TutorialPage> = emptyList(),
     val imageRes: Int? = null,
+    val descriptionRes: Int? = null,
     val hintText: String? = null,
     val hintViewId: Int? = null,
 ) {

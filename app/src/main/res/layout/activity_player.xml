@@ -554,6 +554,60 @@
         android:textSize="13sp"
         android:visibility="gone" />
 
+    <!--
+        「无极调音」弹层：0~100% 软件增益（ijk setVolume）。与 layout_speed 同一套玩法：
+        点空白处关闭、无操作自动收起。放在 control_layout 之外是有意的：控制栏自动隐藏后
+        这个弹层也得单独收掉，塞进控制栏会被一起置 GONE（看不到调节反馈）。
+        手表窄屏下用 match_parent 铺满、靠 gravity 居中，SeekBar 上下各留 10dp padding 保证手指可点。
+    -->
+    <LinearLayout
+        android:id="@+id/layout_volume"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#50000000"
+        android:clickable="true"
+        android:focusable="true"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/text_volume_title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:shadowColor="#000000"
+            android:shadowDx="2.0"
+            android:shadowDy="0.0"
+            android:shadowRadius="3.0"
+            android:textAlignment="center"
+            android:textColor="#DDDDDD"
+            android:textSize="14sp" />
+
+        <SeekBar
+            android:id="@+id/seekbar_volume"
+            style="@style/Widget.AppCompat.SeekBar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="20dp"
+            android:layout_marginTop="6dp"
+            android:indeterminate="false"
+            android:max="100"
+            android:paddingVertical="10dp"
+            android:progress="100" />
+
+        <TextView
+            android:id="@+id/text_newvolume"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:shadowColor="#000000"
+            android:shadowDx="2.0"
+            android:shadowDy="0.0"
+            android:shadowRadius="3.0"
+            android:textAlignment="center"
+            android:textColor="#DDDDDD"
+            android:textSize="14sp" />
+    </LinearLayout>
+
     <RelativeLayout
         android:id="@+id/card_bg"
         android:layout_width="match_parent"

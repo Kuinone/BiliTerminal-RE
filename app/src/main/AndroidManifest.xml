@@ -5,6 +5,10 @@
     <uses-sdk tools:overrideLibrary="com.itsaky.androidide.logsender" />
 
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- 审计 P2-2：默认图片/视频下载目录都不再依赖它（图片默认落应用专属目录并在
+         Android 10+ 发布进 MediaStore，视频默认挂 Android/media/<包名>），
+         只有用户把保存路径显式改到公共目录时才需要这枚权限；
+         申请入口仅保留在「设置 → 下载路径 → 授予存储权限」。 -->
     <uses-permission
         android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
         tools:ignore="ScopedStorage" />
@@ -165,16 +169,43 @@
             android:exported="true"
             android:label="@string/label_activity_no_21"
             android:screenOrientation="locked">
+            <!-- 审计 P2-7：http/https 只接收 B 站域。
+                 之前只声明 scheme、不写 host，等于把本应用注册成任意网页的打开方式：
+                 用户点任何链接都可能弹本应用，且外部可用任意 URL 拉起本页。
+                 bilibili:// 是自定义 scheme，仍单独放行（页面内再做 host 校验）。 -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
 
                 <category android:name="android.intent.category.DEFAULT" />
-
-                <data android:scheme="http" />
-                <data android:scheme="https" />
-                <data android:scheme="bilibili" />
-
                 <category android:name="android.intent.category.BROWSABLE" />
+
+                <data android:scheme="bilibili" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <!-- 通配符只匹配子域，裸域要单独写 -->
+                <data
+                    android:host="bilibili.com"
+                    android:scheme="http" />
+                <data
+                    android:host="*.bilibili.com"
+                    android:scheme="http" />
+                <data
+                    android:host="b23.tv"
+                    android:scheme="http" />
+                <data
+                    android:host="bilibili.com"
+                    android:scheme="https" />
+                <data
+                    android:host="*.bilibili.com"
+                    android:scheme="https" />
+                <data
+                    android:host="b23.tv"
+                    android:scheme="https" />
             </intent-filter>
         </activity>
         <activity

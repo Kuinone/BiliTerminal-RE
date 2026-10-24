@@ -170,8 +170,7 @@ class TerminalApiTest {
             /* product      = */ "diting",
             /* model        = */ "Redmi Note 12T Pro",
             /* abi          = */ "arm64-v8a",
-            /* ramTotal     = */ 8192L,
-            /* ramAvail     = */ 2048L,
+            /* ramLevel     = */ TerminalApi.RAM_LEVEL_MID,
             /* uptimeSec    = */ 3600L
         )
         assertEquals("abc123", payload.getString("install_id"))
@@ -181,11 +180,25 @@ class TerminalApiTest {
         assertEquals("出错线程必须带上", "main", payload.getString("thread"))
         assertTrue("堆栈必须原样带上", payload.getString("stack").contains("com.example.A.b"))
         assertEquals("最近页面：视频详情 -> 播放器", payload.getString("log"))
-        assertEquals(8192L, payload.getLong("ram_total"))
-        assertEquals(2048L, payload.getLong("ram_avail"))
+        assertEquals("内存只报档位", TerminalApi.RAM_LEVEL_MID, payload.getInt("ram_level"))
+        assertEquals("精确内存不再采集", 0L, payload.getLong("ram_total"))
+        assertEquals("精确内存不再采集", 0L, payload.getLong("ram_avail"))
         assertEquals(3600L, payload.getLong("uptime_sec"))
         assertEquals("Redmi Note 12T Pro", payload.getString("model"))
         assertEquals("14", payload.getString("release"))
+    }
+
+    @Test
+    fun ramLevel_bucketsByWholeGiB() {
+        val gb = 1024L * 1024L * 1024L
+        assertEquals("取不到内存应为未知档", TerminalApi.RAM_LEVEL_UNKNOWN, TerminalApi.ramLevel(0))
+        assertEquals("负数应为未知档", TerminalApi.RAM_LEVEL_UNKNOWN, TerminalApi.ramLevel(-1))
+        assertEquals("1 GiB 属低档", TerminalApi.RAM_LEVEL_LOW, TerminalApi.ramLevel(gb))
+        assertEquals("2 GiB 属中档", TerminalApi.RAM_LEVEL_MID, TerminalApi.ramLevel(2 * gb))
+        assertEquals("4 GiB 属高档", TerminalApi.RAM_LEVEL_HIGH, TerminalApi.ramLevel(4 * gb))
+        assertEquals("8 GiB 属高档", TerminalApi.RAM_LEVEL_HIGH, TerminalApi.ramLevel(8 * gb))
+        assertEquals("不足 2 GiB 仍属低档", TerminalApi.RAM_LEVEL_LOW, TerminalApi.ramLevel((1.8 * gb).toLong()))
+        assertEquals("不足 4 GiB 仍属中档", TerminalApi.RAM_LEVEL_MID, TerminalApi.ramLevel((3.9 * gb).toLong()))
     }
 
     // ---------- 公告解析 ----------

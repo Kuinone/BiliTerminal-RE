@@ -12,39 +12,44 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import com.RobinNotBad.BiliClient.R
 import com.RobinNotBad.BiliClient.activity.base.BaseActivity
+import com.RobinNotBad.BiliClient.tutorial.Tutorial
+import com.RobinNotBad.BiliClient.tutorial.TutorialPagerActivity
+import com.RobinNotBad.BiliClient.tutorial.TutorialStore
+import com.RobinNotBad.BiliClient.tutorial.Tutorials
 import com.RobinNotBad.BiliClient.ui.appearance.ColorScheme
 import com.RobinNotBad.BiliClient.util.MsgUtil
-import com.RobinNotBad.BiliClient.util.SharedPreferencesUtil
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.card.MaterialCardView
 
+/**
+ * 教程管理页。
+ *
+ * 数据源只有两处：[Tutorials.all]（全屏教程注册表）与 [TutorialStore.HINT_PAGES]（页面滑动提示）。
+ * 列表、进度、通过、清除**全部走 [TutorialStore] 的正式 API**，本类里不再出现
+ * `tutorial_ver_*` / `tutorial_pager_*` / `tutorial_history_*` 这类键名字面量：
+ * 之前它按旧 tag 拼键（`tutorial_ver_<旧 tag>`），而新教程系统按 `tutorial_ver_<id>` 读，
+ * 两套键对不上，于是「通过教程」后教程照样弹、「清除进度」也清不掉（审计 P1-1）。
+ *
+ * 卡片状态含义：
+ * - 已完成：已读版本 >= 当前版本（[TutorialStore.isRead]）；
+ * - 历史记录：读过旧版本但还没读当前版本（例如 `short_video` 升到 v4 之后）；
+ * - 重看：不改进度，只把教程内容重新打开一遍（看完由 `TutorialPagerActivity` 自己 markRead）。
+ */
 class TutorialManagerActivity : BaseActivity() {
 
-    private data class TutorialItem(
-        val tag: String,
-        val name: String,
-        val description: String,
-        val xmlArrayId: Int,
-        val isPager: Boolean = false
-    )
-
-    private val tutorialItems = mutableListOf<TutorialItem>()
+    /** 当前渲染用的卡片容器；从「重看」返回时需要重新渲染一遍状态。 */
+    private var listContainer: LinearLayout? = null
 
     @SuppressLint("MissingInflatedId", "InflateParams")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        buildTutorialList()
-
         asyncInflate(R.layout.activity_tutorial_manager) { _, _ ->
             setPageName(getString(R.string.pagename_tutorial_manager))
 
             val container = findViewById<LinearLayout>(R.id.tutorial_list_container)
-
-            for (item in tutorialItems) {
-                val card = createTutorialCard(item)
-                container.addView(card)
-            }
+            listContainer = container
+            renderCards(container)
 
             findViewById<MaterialCardView>(R.id.btn_pass_all).setOnClickListener {
                 passAllTutorials()
@@ -62,79 +67,123 @@ class TutorialManagerActivity : BaseActivity() {
         }
     }
 
-    private fun buildTutorialList() {
-        tutorialItems.clear()
-        val tags = resources.getStringArray(R.array.tutorial_list)
-        val names = arrayOf(
-            "推荐页面教程",
-            "视频详情教程",
-            "用户主页教程",
-            "搜索教程",
-            "消息页面教程",
-            "动态页教程",
-            "动态详情页教程",
-            "专栏详情页教程",
-            "短视频教程"
-        )
-        val descs = arrayOf(
-            "引导用户使用推荐页面和哔哩终端",
-            "引导用户使用视频详情页",
-            "引导用户使用用户主页",
-            "引导用户使用搜索功能",
-            "引导用户使用消息页面",
-            "引导用户使用动态功能",
-            "引导用户查看动态详情",
-            "引导用户使用专栏详情页",
-            "引导用户使用短视频播放功能"
-        )
-        val xmlArrayIds = intArrayOf(
-            R.array.tutorial_recommend,
-            R.array.tutorial_video,
-            R.array.tutorial_space,
-            R.array.tutorial_search,
-            R.array.tutorial_message,
-            R.array.tutorial_dynamic,
-            R.array.tutorial_dynamic_info,
-            R.array.tutorial_article,
-            R.array.tutorial_short_video
-        )
+    override fun onResume() {
+        super.onResume()
+        // 从「重看」回来时教程可能刚被标记已读，重新渲染状态。
+        // 首次创建时容器还没 inflate 完（asyncInflate 回调晚于 onResume），这里为 null，跳过即可。
+        listContainer?.let { renderCards(it) }
+    }
 
-        for (i in tags.indices) {
-            tutorialItems.add(
-                TutorialItem(
-                    tag = tags[i],
-                    name = if (i < names.size) names[i] else tags[i],
-                    description = if (i < descs.size) descs[i] else "",
-                    xmlArrayId = if (i < xmlArrayIds.size) xmlArrayIds[i] else 0
-                )
-            )
+    /** 重画全部卡片：教程注册表 + 页面滑动提示。 */
+    private fun renderCards(container: LinearLayout) {
+        container.removeAllViews()
+
+        for (tutorial in Tutorials.all) {
+            container.addView(buildTutorialCard(tutorial))
         }
 
-        // 添加页面滑动引导（显示一次后不再显示的教程）
-        tutorialItems.add(TutorialItem("SearchActivity", "搜索页面引导", "搜索页面的左右翻页提示", 0, true))
-        tutorialItems.add(TutorialItem("VideoInfoActivity", "视频详情页引导", "视频详情页的左右翻页提示", 0, true))
-        tutorialItems.add(TutorialItem("UserInfoActivity", "用户主页引导", "用户主页的左右翻页提示", 0, true))
-        tutorialItems.add(TutorialItem("OpusInfoActivity", "专栏详情页引导", "专栏详情页的左右翻页提示", 0, true))
-        tutorialItems.add(TutorialItem("DynamicInfoActivity", "动态详情页引导", "动态详情页的左右翻页提示", 0, true))
+        container.addView(
+            buildSectionHeader(
+                getString(R.string.tutorial_section_page_hint),
+                getString(R.string.tutorial_section_page_hint_desc)
+            )
+        )
+        for (page in TutorialStore.HINT_PAGES) {
+            container.addView(buildHintCard(page))
+        }
     }
 
-    private fun isTutorialCompleted(tag: String): Boolean {
-        return SharedPreferencesUtil.getInt("tutorial_ver_$tag", -1) >= 0
+    // ==================== 卡片构建 ====================
+
+    private fun buildTutorialCard(tutorial: Tutorial): MaterialCardView {
+        val readVersion = TutorialStore.readVersion(tutorial.id)
+        // 只有「读过旧版本、当前版本还没读」才显示历史行；已完成的由状态标签表达，不必重复。
+        val history = if (readVersion in 0 until tutorial.version) {
+            getString(R.string.text_tutorial_history_done, readVersion)
+        } else {
+            null
+        }
+
+        return buildCard(
+            title = tutorial.title,
+            description = tutorial.descriptionRes?.let { getString(it) },
+            done = TutorialStore.isRead(tutorial),
+            history = history,
+            buttons = listOf(
+                getString(R.string.tutorial_btn_pass) to { passTutorial(tutorial) },
+                getString(R.string.tutorial_btn_clear) to { clearTutorial(tutorial) },
+                getString(R.string.tutorial_btn_replay) to { replayTutorial(tutorial) },
+            )
+        )
     }
 
-    private fun hasTutorialHistory(tag: String): Boolean {
-        return SharedPreferencesUtil.getBoolean("tutorial_history_$tag", false)
+    private fun buildHintCard(page: String): MaterialCardView = buildCard(
+        title = hintTitle(page),
+        description = null,
+        done = TutorialStore.isHintShown(page),
+        history = null,
+        buttons = listOf(
+            getString(R.string.tutorial_btn_pass) to { passHint(page) },
+            getString(R.string.tutorial_btn_clear) to { resetHint(page) },
+        )
+    )
+
+    /** 分组标题卡（与布局里「教程列表」那根标题卡观感接近）。 */
+    private fun buildSectionHeader(title: String, description: String): MaterialCardView {
+        val card = MaterialCardView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+            radius = resources.getDimension(R.dimen.card_round)
+            isClickable = false
+            isFocusable = false
+        }
+
+        val column = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+            setPadding(dp2px(8f), dp2px(4f), dp2px(8f), dp2px(4f))
+        }
+
+        column.addView(TextView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+            text = title
+            textSize = 13f
+            setTextColor(ColorScheme.TEXT_PRIMARY)
+        })
+
+        if (description.isNotBlank()) {
+            column.addView(TextView(this).apply {
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    topMargin = dp2px(2f)
+                }
+                text = description
+                textSize = 11f
+                setTextColor(ColorScheme.TEXT_SECONDARY)
+            })
+        }
+
+        card.addView(column)
+        return card
     }
 
-    private fun getTutorialVersion(tag: String): Int {
-        return SharedPreferencesUtil.getInt("tutorial_ver_$tag", -1)
-    }
-
-    private fun isPagerTutorialCompleted(tag: String): Boolean {
-        return !SharedPreferencesUtil.getBoolean("tutorial_pager_$tag", true)
-    }
-
-    private fun createTutorialCard(item: TutorialItem): MaterialCardView {
+    private fun buildCard(
+        title: String,
+        description: String?,
+        done: Boolean,
+        history: String?,
+        buttons: List<Pair<String, () -> Unit>>,
+    ): MaterialCardView {
         val card = MaterialCardView(this).apply {
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -151,12 +200,7 @@ class TutorialManagerActivity : BaseActivity() {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
             )
-            setPadding(
-                dp2px(8f),
-                dp2px(8f),
-                dp2px(8f),
-                dp2px(8f)
-            )
+            setPadding(dp2px(8f), dp2px(8f), dp2px(8f), dp2px(8f))
         }
 
         // 颜色一律走主题色或既有语义色资源，不写死色值：写死白色在浅色主题下看不见标题，
@@ -180,7 +224,7 @@ class TutorialManagerActivity : BaseActivity() {
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 1f
             )
-            text = item.name
+            text = title
             textSize = 13f
             setTextColor(ColorScheme.TEXT_PRIMARY)
         }
@@ -195,9 +239,7 @@ class TutorialManagerActivity : BaseActivity() {
             setPadding(dp2px(8f), dp2px(2f), dp2px(8f), dp2px(2f))
         }
 
-        val isCompleted = if (item.isPager) isPagerTutorialCompleted(item.tag) else isTutorialCompleted(item.tag)
-
-        if (isCompleted) {
+        if (done) {
             statusBadge.text = getString(R.string.text_tutorial_done)
             statusBadge.setTextColor(textOnColor)
             // View.backgroundTintList 的 setter 是 API 21 才有的，minSdk 19 上要走 ViewCompat；
@@ -211,34 +253,34 @@ class TutorialManagerActivity : BaseActivity() {
 
         titleRow.addView(titleText)
         titleRow.addView(statusBadge)
+        container.addView(titleRow)
 
-        val descText = TextView(this).apply {
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply {
-                topMargin = dp2px(4f)
-            }
-            text = item.description
-            textSize = 11f
-            setTextColor(ColorScheme.TEXT_SECONDARY)
+        if (!description.isNullOrBlank()) {
+            container.addView(TextView(this).apply {
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    topMargin = dp2px(4f)
+                }
+                text = description
+                textSize = 11f
+                setTextColor(ColorScheme.TEXT_SECONDARY)
+            })
         }
 
-        val historyText = TextView(this).apply {
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply {
-                topMargin = dp2px(2f)
-            }
-            textSize = 10f
-            visibility = View.GONE
-        }
-
-        if (!item.isPager && hasTutorialHistory(item.tag)) {
-            historyText.text = getString(R.string.text_tutorial_history_done, getTutorialVersion(item.tag))
-            historyText.setTextColor(ColorScheme.TEXT_TERTIARY)
-            historyText.visibility = View.VISIBLE
+        if (history != null) {
+            container.addView(TextView(this).apply {
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    topMargin = dp2px(2f)
+                }
+                text = history
+                textSize = 10f
+                setTextColor(ColorScheme.TEXT_TERTIARY)
+            })
         }
 
         val buttonRow = LinearLayout(this).apply {
@@ -251,125 +293,92 @@ class TutorialManagerActivity : BaseActivity() {
             }
         }
 
-        val passBtn = MaterialButton(this).apply {
-            layoutParams = LinearLayout.LayoutParams(
-                0,
-                dp2px(32f),
-                1f
-            ).apply {
-                marginEnd = dp2px(4f)
-            }
-            text = "通过教程"
-            textSize = 11f
-            isAllCaps = false
-            setOnClickListener {
-                passTutorial(item)
-            }
+        buttons.forEachIndexed { index, (label, action) ->
+            buttonRow.addView(MaterialButton(this).apply {
+                layoutParams = LinearLayout.LayoutParams(
+                    0,
+                    dp2px(32f),
+                    1f
+                ).apply {
+                    if (index > 0) marginStart = dp2px(4f)
+                }
+                text = label
+                textSize = 11f
+                isAllCaps = false
+                setOnClickListener { action() }
+            })
         }
 
-        val clearBtn = MaterialButton(this).apply {
-            layoutParams = LinearLayout.LayoutParams(
-                0,
-                dp2px(32f),
-                1f
-            ).apply {
-                marginStart = dp2px(4f)
-            }
-            text = "清除进度"
-            textSize = 11f
-            isAllCaps = false
-            setOnClickListener {
-                clearSingleTutorial(item)
-            }
-        }
-
-        buttonRow.addView(passBtn)
-        buttonRow.addView(clearBtn)
-
-        container.addView(titleRow)
-        container.addView(descText)
-        container.addView(historyText)
         container.addView(buttonRow)
-
         card.addView(container)
 
         return card
     }
 
-    // ============ 通过教程 ============
+    // ==================== 单篇操作 ====================
 
-    private fun passTutorial(item: TutorialItem) {
-        if (item.isPager) {
-            SharedPreferencesUtil.putBoolean("tutorial_pager_${item.tag}", false)
-        } else {
-            val xmlArray = resources.getStringArray(item.xmlArrayId)
-            if (xmlArray.isNotEmpty()) {
-                SharedPreferencesUtil.putBoolean("tutorial_history_${item.tag}", true)
-                SharedPreferencesUtil.putInt("tutorial_ver_${item.tag}", xmlArray.size)
-            }
-        }
-        MsgUtil.showMsg(getString(R.string.msg_tutorial_passed, item.name))
-        recreate()
+    private fun passTutorial(tutorial: Tutorial) {
+        TutorialStore.markRead(tutorial)
+        afterProgressChanged(getString(R.string.msg_tutorial_passed, tutorial.title))
     }
 
-    // ============ 清除单个教程进度 ============
-
-    private fun clearSingleTutorial(item: TutorialItem) {
-        if (item.isPager) {
-            SharedPreferencesUtil.removeValue("tutorial_pager_${item.tag}")
-        } else {
-            SharedPreferencesUtil.removeValue("tutorial_ver_${item.tag}")
-            SharedPreferencesUtil.removeValue("tutorial_history_${item.tag}")
-        }
-        MsgUtil.showMsg(getString(R.string.msg_tutorial_progress_cleared, item.name))
-        recreate()
+    private fun clearTutorial(tutorial: Tutorial) {
+        TutorialStore.clear(tutorial.id)
+        afterProgressChanged(getString(R.string.msg_tutorial_progress_cleared, tutorial.title))
     }
 
-    // ============ 一键通过所有 ============
+    /** 「重看」：只负责打开，不动已读状态（看完由 [TutorialPagerActivity] 自己 markRead）。 */
+    private fun replayTutorial(tutorial: Tutorial) {
+        TutorialPagerActivity.start(this, listOf(tutorial))
+    }
+
+    private fun passHint(page: String) {
+        TutorialStore.markHintShown(page)
+        afterProgressChanged(getString(R.string.msg_tutorial_passed, hintTitle(page)))
+    }
+
+    private fun resetHint(page: String) {
+        TutorialStore.clearHint(page)
+        afterProgressChanged(getString(R.string.msg_tutorial_progress_cleared, hintTitle(page)))
+    }
+
+    // ==================== 批量操作 ====================
 
     private fun passAllTutorials() {
-        for (item in tutorialItems) {
-            if (item.isPager) {
-                SharedPreferencesUtil.putBoolean("tutorial_pager_${item.tag}", false)
-            } else {
-                val xmlArray = resources.getStringArray(item.xmlArrayId)
-                if (xmlArray.isNotEmpty()) {
-                    SharedPreferencesUtil.putBoolean("tutorial_history_${item.tag}", true)
-                    SharedPreferencesUtil.putInt("tutorial_ver_${item.tag}", xmlArray.size)
-                }
-            }
-        }
+        for (tutorial in Tutorials.all) TutorialStore.markRead(tutorial)
+        for (page in TutorialStore.HINT_PAGES) TutorialStore.markHintShown(page)
         MsgUtil.showMsg(getString(R.string.msg_tutorialmanageractivity_001))
         recreate()
     }
 
-    // ============ 清除所有教程进度 ============
-
     private fun clearAllTutorials() {
-        for (item in tutorialItems) {
-            if (item.isPager) {
-                SharedPreferencesUtil.removeValue("tutorial_pager_${item.tag}")
-            } else {
-                SharedPreferencesUtil.removeValue("tutorial_ver_${item.tag}")
-                SharedPreferencesUtil.removeValue("tutorial_history_${item.tag}")
-            }
-        }
+        for (tutorial in Tutorials.all) TutorialStore.clear(tutorial.id)
+        for (page in TutorialStore.HINT_PAGES) TutorialStore.clearHint(page)
         MsgUtil.showMsg(getString(R.string.msg_tutorialmanageractivity_002))
         recreate()
     }
 
-    // ============ 重置页面滑动引导 ============
-
     private fun clearPagerTutorials() {
-        val pagerKeys = arrayOf(
-            "SearchActivity", "VideoInfoActivity", "UserInfoActivity",
-            "OpusInfoActivity", "DynamicInfoActivity"
-        )
-        for (key in pagerKeys) {
-            SharedPreferencesUtil.removeValue("tutorial_pager_$key")
-        }
+        TutorialStore.clearAllHints()
         MsgUtil.showMsg(getString(R.string.msg_tutorialmanageractivity_003))
         recreate()
+    }
+
+    // ==================== 辅助 ====================
+
+    private fun afterProgressChanged(message: String) {
+        MsgUtil.showMsg(message)
+        recreate()
+    }
+
+    /** 页面滑动提示的展示名。没登记的宿主页退回类名，保证新加的页面至少能被看到。 */
+    private fun hintTitle(page: String): String = when (page) {
+        "SearchActivity" -> getString(R.string.tutorial_hint_search)
+        "VideoInfoActivity" -> getString(R.string.tutorial_hint_video_info)
+        "UserInfoActivity" -> getString(R.string.tutorial_hint_user_info)
+        "OpusInfoActivity" -> getString(R.string.tutorial_hint_opus_info)
+        "DynamicInfoActivity" -> getString(R.string.tutorial_hint_dynamic_info)
+        else -> page
     }
 
     private fun dp2px(dp: Float): Int {

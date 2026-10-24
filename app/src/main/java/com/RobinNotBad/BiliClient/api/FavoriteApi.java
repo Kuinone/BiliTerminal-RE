@@ -1,9 +1,5 @@
 package com.RobinNotBad.BiliClient.api;
 
-import com.RobinNotBad.BiliClient.R;
-
-import com.RobinNotBad.BiliClient.BiliTerminal;
-
 import android.util.Log;
 import android.util.Pair;
 
@@ -36,93 +32,79 @@ public class FavoriteApi {
     /** 排序：按投稿时间 */
     public static final String ORDER_PUBTIME = "pubtime";
 
-    /**
-     * 老接口 {@code x/space/fav/arc} 的 order 取值与新接口不同：收藏时间是 {@code fav_time} 而不是 {@code mtime}。
-     * 其余两个取值（view / pubtime）两边一致。
-     */
-    public static String legacyOrder(String order) {
-        return ORDER_FAV_TIME.equals(order) ? "fav_time" : order;
-    }
-
-    /** 默认收藏夹的视频上限 */
+    /** 默认收藏夹的视频上限（v3 接口不返回上限，按服务端约定） */
     public static final int MAX_COUNT_DEFAULT_FOLDER = 50000;
-    /** 用户自建收藏夹的视频上限 */
+    /** 用户自建收藏夹的视频上限（v3 接口不返回上限，按服务端约定） */
     public static final int MAX_COUNT_CUSTOM_FOLDER = 1000;
 
     /**
-     * 老接口 {@code space.bilibili.com/ajax/fav/getBoxList} 的 {@code max_count} 对自建收藏夹长期返回
-     * {@code 999}——**比实际能装的数量少 1**（26.10.16 实测：一个已有 1000 条的收藏夹被服务端标成
-     * {@code max_count=999}，界面显示 {@code 1000/999}）。该字段没有任何别的语义，所以把 {@code 999}
-     * 与缺失（{@code <= 0}）一并视为「不可信」，回落到本工程约定值。
-     */
-    private static final int LEGACY_CUSTOM_FOLDER_MAX_COUNT = 999;
-
-    /**
-     * 归一化收藏夹视频上限：只信任服务端给的非历史值，其余（历史值 {@code 999} / 缺失 / 非法）按
-     * {@link #MAX_COUNT_DEFAULT_FOLDER} 与 {@link #MAX_COUNT_CUSTOM_FOLDER} 推断。
+     * 收藏夹的默认标记：{@code attr} 二进制第 1 位为 0 表示默认收藏夹。
      *
-     * <p>纯函数，供单测直接调用；服务端若将来把上限改大并同步了字段，这里会自动跟随。
-     *
-     * @param serverMaxCount 服务端 {@code max_count}，缺失或非法传 {@code 0}
-     * @param isDefault      是否默认收藏夹
+     * <p>v3 接口（created/list、list-all）只给 {@code attr}，没有 getBoxList 的 {@code fav_box=0}
+     * 可用；纯函数，供单测直接调用。
      */
-    public static int resolveMaxCount(int serverMaxCount, boolean isDefault) {
-        if (serverMaxCount == LEGACY_CUSTOM_FOLDER_MAX_COUNT || serverMaxCount <= 0) {
-            return isDefault ? MAX_COUNT_DEFAULT_FOLDER : MAX_COUNT_CUSTOM_FOLDER;
-        }
-        return serverMaxCount;
+    public static boolean isDefaultFolder(int attr) {
+        return (attr & 2) == 0;
     }
 
+    /**
+     * 收藏夹是否私密：{@code attr} 二进制第 0 位为 1 表示私有收藏夹。
+     *
+     * <p>v3 接口没有独立的 {@code privacy} 字段，位定义见
+     * {@code bilibili-API/docs/fav/info.md} 的「attr 属性位二进制值表」（bit0：0 公开 / 1 私有，
+     * bit1：0 默认 / 1 其他）。该位表写在 created/list-all 小节，folder/info 只标注 attr 为
+     * 「属性位」，两者是同一个 attr 字段；按同一语义解析，不依赖未文档化的 privacy 字段
+     * （字段缺失时会被当成 0=公开，反而把私密夹误判成公开）。
+     *
+     * <p>纯函数，供单测直接调用。
+     */
+    public static boolean isPrivateFolder(int attr) {
+        return (attr & 1) != 0;
+    }
+
+    /** 收藏夹视频上限：默认 50000，自建 1000（v3 接口不返回 max_count） */
+    public static int maxCountOf(boolean isDefault) {
+        return isDefault ? MAX_COUNT_DEFAULT_FOLDER : MAX_COUNT_CUSTOM_FOLDER;
+    }
+
+    /**
+     * 获取某个用户（自己或他人）的收藏夹列表。
+     *
+     * <p>数据源已从 {@code space.bilibili.com/ajax/fav/getBoxList} 迁到
+     * {@code x/v3/fav/folder/created/list}：v3 直接返回 {@code id}（即 media_id）与封面，
+     * 不再需要「老接口 + list-all 两次请求拼 media_id」；按 {@code has_more} 分页拉全。
+     *
+     * @param mid 目标用户 mid（自己取本地保存的 mid）
+     */
     public static ArrayList<FavoriteFolder> getFavoriteFolders(long mid) throws IOException, JSONException {
-        String url = "https://space.bilibili.com/ajax/fav/getBoxList?mid=" + mid;
-        JSONObject result = NetWorkUtil.getJson(url);
-        JSONObject data = result.getJSONObject("data");
         ArrayList<FavoriteFolder> folderList = new ArrayList<>();
-        java.util.Map<Long, Long> fidToMediaIdMap = new java.util.HashMap<>();
-        
-        try {
-            String v3Url = "https://api.bilibili.com/x/v3/fav/folder/created/list-all?type=2&up_mid=" + mid;
-            JSONObject v3Result = NetWorkUtil.getJson(v3Url);
-            JSONObject v3Data = v3Result.optJSONObject("data");
-            if (v3Data != null && v3Data.has("list") && !v3Data.isNull("list")) {
-                JSONArray v3List = v3Data.getJSONArray("list");
-                for (int j = 0; j < v3List.length(); j++) {
-                    JSONObject v3Folder = v3List.getJSONObject(j);
-                    long v3Fid = v3Folder.optLong("fid", 0);
-                    long v3MediaId = v3Folder.optLong("id", 0);
-                    if (v3Fid > 0 && v3MediaId > 0) {
-                        fidToMediaIdMap.put(v3Fid, v3MediaId);
-                    }
-                }
-            }
-        } catch (Exception e) {
-            Log.e("debug-获取mediaId失败", e.getMessage());
-        }
-        
-        if (data.has("list") && !data.isNull("list")) {
-            JSONArray list = data.getJSONArray("list");
+        int pn = 1;
+        while (true) {
+            String url = "https://api.bilibili.com/x/v3/fav/folder/created/list" + new NetWorkUtil.FormData()
+                    .setUrlParam(true)
+                    .put("up_mid", mid)
+                    .put("pn", pn)
+                    .put("ps", 100);
+            JSONObject result = NetWorkUtil.getJson(url);
+            if (result.optInt("code", -1) != 0) break;
+            JSONObject data = result.optJSONObject("data");
+            if (data == null) break;
+            JSONArray list = data.optJSONArray("list");
+            if (list == null || list.length() == 0) break;
             for (int i = 0; i < list.length(); i++) {
                 JSONObject folder = list.getJSONObject(i);
 
                 FavoriteFolder favoriteFolder = new FavoriteFolder();
 
-                favoriteFolder.id = folder.getLong("fav_box");
-                favoriteFolder.name = folder.getString("name");
+                favoriteFolder.id = folder.optLong("fid", 0);
+                // v3 直接给 media_id，不再按「fid + mid 后两位」手拼
+                favoriteFolder.mediaId = folder.optLong("id", favoriteFolder.id);
+                favoriteFolder.name = folder.optString("title");
+                favoriteFolder.cover = folder.optString("cover", "");
+                favoriteFolder.videoCount = folder.optInt("media_count", 0);
+                favoriteFolder.isDefault = isDefaultFolder(folder.optInt("attr", 0));
+                favoriteFolder.maxCount = maxCountOf(favoriteFolder.isDefault);
 
-                if (!folder.isNull("videos"))
-                    favoriteFolder.cover = folder.getJSONArray("videos").getJSONObject(0).getString("pic");
-                else favoriteFolder.cover = "";
-
-                favoriteFolder.videoCount = folder.getInt("count");
-                favoriteFolder.isDefault = (i == 0 || favoriteFolder.id == 0);
-                // 服务端 max_count 对自建收藏夹返回 999（历史值），不能直接用，见 resolveMaxCount
-                favoriteFolder.maxCount = resolveMaxCount(folder.optInt("max_count", 0), favoriteFolder.isDefault);
-
-                Long mediaId = fidToMediaIdMap.get(favoriteFolder.id);
-                if (mediaId != null) {
-                    favoriteFolder.mediaId = mediaId;
-                }
-                
                 Log.e("debug-收藏夹ID", String.valueOf(favoriteFolder.id));
                 Log.e("debug-收藏夹mediaId", String.valueOf(favoriteFolder.mediaId));
                 Log.e("debug-收藏夹名称", favoriteFolder.name);
@@ -132,6 +114,8 @@ public class FavoriteApi {
                 Log.e("debug-收藏夹", "----------------");
                 folderList.add(favoriteFolder);
             }
+            if (!data.optBoolean("has_more", false)) break;
+            pn++;
         }
         return folderList;
     }
@@ -171,13 +155,67 @@ public class FavoriteApi {
                 favoriteFolder.cover = folder.optString("cover", "");
                 favoriteFolder.videoCount = folder.optInt("media_count", 0);
                 favoriteFolder.maxCount = 0;                          // 他人收藏夹无上限概念
-                favoriteFolder.isDefault = (attr & 2) == 0;           // attr 位1：0=默认收藏夹
+                favoriteFolder.isDefault = isDefaultFolder(attr);     // attr 位1：0=默认收藏夹
                 folderList.add(favoriteFolder);
             }
             hasMore = data.optBoolean("has_more", false);
             pn++;
         }
         return folderList;
+    }
+
+    /**
+     * 解析 {@code x/v3/fav/folder/info} 的响应（纯函数，供单测直接调用）。
+     *
+     * <p>只取编辑页需要预填的 title/intro/privacy，以及详情页要用的 id/mediaId/media_count/attr。
+     * 字段依据：{@code bilibili-API/docs/fav/info.md} 的 data 对象表（`:31-51`，含
+     * attr/title/intro/media_count，<b>没有 privacy 字段</b>）；privacy 由 attr 的 bit0 解析
+     * （同文档「attr 属性位二进制值表」，`:185-191`）。
+     *
+     * @param result 接口根对象（含 code/message/data）
+     * @return 解析结果（intro 缺失时为空串，privacy 只会是 0/1）
+     * @throws JSONException code!=0、data 为空或字段类型异常时抛出——调用方不得用默认值兜底覆盖
+     */
+    public static FavoriteFolder parseFolderInfo(JSONObject result) throws JSONException {
+        if (result == null) throw new JSONException("收藏夹信息为空");
+        int code = result.optInt("code", -1);
+        if (code != 0) {
+            String message = result.optString("message", "");
+            throw new JSONException("获取收藏夹信息失败 code=" + code
+                    + (message.isEmpty() ? "" : " message=" + message));
+        }
+        JSONObject data = result.optJSONObject("data");
+        if (data == null) throw new JSONException("收藏夹信息为空：data=null");
+
+        int attr = data.optInt("attr", 0);
+        FavoriteFolder folder = new FavoriteFolder();
+        folder.id = data.optLong("fid", 0);
+        // v3 的 data.id 就是 media_id（mlid），优先用它；缺省时退回 fid
+        folder.mediaId = data.optLong("id", folder.id);
+        folder.name = data.optString("title", "");
+        folder.cover = data.optString("cover", "");
+        folder.intro = data.optString("intro", "");
+        folder.videoCount = data.optInt("media_count", 0);
+        folder.isDefault = isDefaultFolder(attr);
+        folder.maxCount = maxCountOf(folder.isDefault);
+        folder.privacy = isPrivateFolder(attr) ? 1 : 0;
+        return folder;
+    }
+
+    /**
+     * 获取收藏夹详情：编辑页用它预填标题/简介/隐私，避免拿列表数据（或 Intent）里的空值覆盖服务端数据。
+     *
+     * <p>接口：{@code GET https://api.bilibili.com/x/v3/fav/folder/info?media_id=}，
+     * 依据 {@code bilibili-API/docs/fav/info.md:5-51}；Cookie 认证，查询私密收藏夹必须本人登录（`:13`）。
+     *
+     * @param mediaId 收藏夹完整 id（media_id）
+     * @throws JSONException code!=0（如 11010 内容不存在、-403 权限不足）时抛出，调用方应禁用保存并提示
+     */
+    public static FavoriteFolder getFolderInfo(long mediaId) throws IOException, JSONException {
+        String url = "https://api.bilibili.com/x/v3/fav/folder/info" + new NetWorkUtil.FormData()
+                .setUrlParam(true)
+                .put("media_id", mediaId);
+        return parseFolderInfo(NetWorkUtil.getJson(url));
     }
 
     /**
@@ -269,73 +307,85 @@ public class FavoriteApi {
         return new Pair<>(result.optInt("code", -1), has_more);
     }
 
-    public static int getFolderVideos(long mid, long fid, int page, ArrayList<VideoCard> videoList) throws IOException, JSONException {
-        return getFolderVideos(mid, fid, page, videoList, ORDER_FAV_TIME);
-    }
-
-    /**
-     * 老接口（{@code x/space/fav/arc}，已停用，仅在没有 media_id 时兜底）。
-     *
-     * @param order 新接口风格的排序常量，内部会过 {@link #legacyOrder(String)} 转成老取值
-     */
-    public static int getFolderVideos(long mid, long fid, int page, ArrayList<VideoCard> videoList, String order) throws IOException, JSONException {
-        String url = "https://api.bilibili.com/x/space/fav/arc?vmid=" + mid
-                + "&ps=30&fid=" + fid + "&tid=0&keyword=&pn=" + page + "&order=" + legacyOrder(order);
-
-        JSONObject result = NetWorkUtil.getJson(url);
-        JSONObject data = result.getJSONObject("data");
-        if (data.has("archives") && !data.isNull("archives")) {
-            JSONArray archives = data.getJSONArray("archives");
-            if (archives.length() != 0) {
-                for (int i = 0; i < archives.length(); i++) {
-                    JSONObject video = archives.getJSONObject(i);
-                    String title = video.getString("title");
-                    String cover = video.getString("pic");
-                    long aid = video.getLong("aid");
-
-                    JSONObject owner = video.getJSONObject("owner");
-                    String upName = owner.getString("name");
-
-                    JSONObject stat = video.getJSONObject("stat");
-                    String view = StringUtil.toWan(stat.getLong("view")) + "观看";
-                    videoList.add(new VideoCard(title, upName, view, cover, aid, ""));
-                }
-                return 0;
-            } else return 1;
-        } else return -1;
-    }
-
     public static boolean getFavouriteOpus(ArrayList<Opus> list, int page) throws IOException, JSONException {
-        String url = "https://api.bilibili.com/x/polymer/web-dynamic/v1/opus/favlist?page_size=10&page=" + page;
+        String url = "https://api.bilibili.com/x/polymer/web-dynamic/v1/opus/feed/fav" + new NetWorkUtil.FormData()
+                .setUrlParam(true)
+                .put("page_size", 20)
+                .put("page", page);
         JSONObject result = NetWorkUtil.getJson(url);
-        Log.e("OpusFav", result.toString());
-        boolean hasMore = result.getJSONObject("data").getBoolean("has_more");
-        if (!hasMore) Log.e("图文", "没有更多啦");
-        JSONArray items = result.getJSONObject("data").getJSONArray("items");
+        JSONObject data = result.optJSONObject("data");
+        // 新接口在部分账号/风控下会返回非 0，回退旧 favlist（旧接口 page_size 上限 10）
+        if (result.optInt("code", -1) != 0 || data == null) return getFavouriteOpusLegacy(list, page);
 
-        for (int i = 0; i < items.length(); i++) {
-            JSONObject item = items.getJSONObject(i);
-            Opus opus = new Opus();
-            opus.content = item.optString("content");
-            opus.cover = item.optString("cover");
-            opus.title = item.optString("title");
-            if (opus.title.isEmpty()) opus.title = opus.content;
-            opus.id = Long.parseLong(item.getString("opus_id"));
-            opus.pubTime = item.optString("time_text");
-            list.add(opus);
+        boolean hasMore = data.optBoolean("has_more", false);
+        JSONArray items = data.optJSONArray("items");
+        if (items != null) {
+            for (int i = 0; i < items.length(); i++) {
+                JSONObject item = items.getJSONObject(i);
+                Opus opus = new Opus();
+                opus.content = item.optString("content");
+                opus.cover = parseOpusCover(item);
+                opus.title = item.optString("title");
+                if (opus.title.isEmpty()) opus.title = opus.content;
+                String opusId = item.optString("opus_id", item.optString("id", ""));
+                try {
+                    opus.id = Long.parseLong(opusId);
+                } catch (NumberFormatException e) {
+                    continue;   // 没有 id 的脏条目跳过，别让整页失败
+                }
+                opus.pubTime = item.optString("pub_time", item.optString("time_text", ""));
+                list.add(opus);
+            }
         }
-
         return hasMore;
     }
 
-    public static void getFavoriteState(long aid, ArrayList<String> folderList, ArrayList<Long> fidList, ArrayList<Boolean> stateList, ArrayList<Integer> countList, ArrayList<Integer> maxCountList) throws IOException, JSONException {
+    /** 图文封面：新接口给 {@code {"url": ...}} 对象，旧接口给字符串，两代都兼容 */
+    private static String parseOpusCover(JSONObject item) {
+        JSONObject cover = item.optJSONObject("cover");
+        return cover != null ? cover.optString("url", "") : item.optString("cover", "");
+    }
+
+    /** 旧图文收藏接口（{@code opus/favlist}），仅在新接口不可用时兜底 */
+    private static boolean getFavouriteOpusLegacy(ArrayList<Opus> list, int page) throws IOException, JSONException {
+        String url = "https://api.bilibili.com/x/polymer/web-dynamic/v1/opus/favlist?page_size=10&page=" + page;
+        JSONObject result = NetWorkUtil.getJson(url);
+        JSONObject data = result.optJSONObject("data");
+        if (data == null) return false;
+        JSONArray items = data.optJSONArray("items");
+        if (items != null) {
+            for (int i = 0; i < items.length(); i++) {
+                JSONObject item = items.getJSONObject(i);
+                Opus opus = new Opus();
+                opus.content = item.optString("content");
+                opus.cover = parseOpusCover(item);
+                opus.title = item.optString("title");
+                if (opus.title.isEmpty()) opus.title = opus.content;
+                try {
+                    opus.id = Long.parseLong(item.optString("opus_id", ""));
+                } catch (NumberFormatException e) {
+                    continue;
+                }
+                opus.pubTime = item.optString("time_text", item.optString("pub_time", ""));
+                list.add(opus);
+            }
+        }
+        return data.optBoolean("has_more", false);
+    }
+
+    /**
+     * 查询「这个视频被收藏在哪些收藏夹里」。
+     *
+     * @param mediaIdList 与服务端 {@code list} 一一对应的 media_id：点选后的写操作要用它，v3 不再手拼
+     */
+    public static void getFavoriteState(long aid, ArrayList<String> folderList, ArrayList<Long> fidList, ArrayList<Long> mediaIdList, ArrayList<Boolean> stateList, ArrayList<Integer> countList, ArrayList<Integer> maxCountList) throws IOException, JSONException {
         String url = "https://api.bilibili.com/x/v3/fav/folder/created/list-all?type=2&jsonp=jsonp&rid=" + aid + "&up_mid=" + SharedPreferencesUtil.getLong("mid", 0);
         JSONObject result = NetWorkUtil.getJson(url);
         JSONObject data = result.getJSONObject("data");
-        parseFavoriteState(data, folderList, fidList, stateList, countList, maxCountList);
+        parseFavoriteState(data, folderList, fidList, mediaIdList, stateList, countList, maxCountList);
     }
 
-    public static void parseFavoriteState(JSONObject data, ArrayList<String> folderList, ArrayList<Long> fidList, ArrayList<Boolean> stateList, ArrayList<Integer> countList, ArrayList<Integer> maxCountList) throws JSONException {
+    public static void parseFavoriteState(JSONObject data, ArrayList<String> folderList, ArrayList<Long> fidList, ArrayList<Long> mediaIdList, ArrayList<Boolean> stateList, ArrayList<Integer> countList, ArrayList<Integer> maxCountList) throws JSONException {
         if (data == null) return;
         if (!data.has("list") || data.isNull("list")) return;
         JSONArray list = data.getJSONArray("list");
@@ -343,41 +393,55 @@ public class FavoriteApi {
             JSONObject folder = list.getJSONObject(i);
             folderList.add(folder.getString("title"));
             fidList.add(folder.getLong("fid"));
+            mediaIdList.add(folder.optLong("id", 0));
             stateList.add(folder.getInt("fav_state") == 1);
             countList.add(folder.optInt("media_count", 0));
-            maxCountList.add(i == 0 ? MAX_COUNT_DEFAULT_FOLDER : MAX_COUNT_CUSTOM_FOLDER);
+            // attr 缺失时退回老判据「第一条是默认收藏夹」
+            int attr = folder.optInt("attr", -1);
+            maxCountList.add(maxCountOf(attr >= 0 ? isDefaultFolder(attr) : i == 0));
         }
     }
 
+    /** 收藏内容统一写入口（x/v3/fav/resource/batch-deal） */
+    private static final String URL_RESOURCE_BATCH_DEAL = "https://api.bilibili.com/x/v3/fav/resource/batch-deal";
+
     /**
-     * 构造收藏夹操作的 media_id：规则为 fid + 创建者 mid 的后两位（不足两位补零）。
-     * 旧实现 strMid.substring(strMid.length()-2) 在未登录（mid=0）或 mid 为个位数时直接越界崩溃。
+     * 收藏内容批量写操作：{@code add_media_ids} 是要加的收藏夹，{@code del_media_ids} 是要删的收藏夹，
+     * 两者可同时传（服务端一次完成）；{@code resources} 是 {@code aid:2} 逗号串。
+     *
+     * <p>替代已废弃的 {@code medialist/gateway/coll/resource/deal}（老「收藏」）与
+     * {@code medialist/gateway/coll/resource/batch/del}（老「取消收藏」）。
      */
-    static String buildMediaId(long fid, long mid) {
-        return fid + String.format("%02d", mid % 100);
-    }
-
-    public static int addFavorite(long aid, long fid) throws IOException, JSONException {
-        long mid = SharedPreferencesUtil.getLong("mid", 0);
-        String addFid = buildMediaId(fid, mid);
-        String url = "https://api.bilibili.com/medialist/gateway/coll/resource/deal";
-        String per = "rid=" + aid + "&type=2&add_media_ids=" + addFid + "&del_media_ids=&csrf=" + NetWorkUtil.currentCsrf();
-
-        JSONObject result = new JSONObject(Objects.requireNonNull(NetWorkUtil.post(url, per, NetWorkUtil.webHeaders).body()).string());
-        Log.e("debug-添加收藏", result.toString());
+    private static int dealFavorites(long mediaId, String resources, String addIds, String delIds) throws IOException, JSONException {
+        if (mediaId <= 0 || resources == null || resources.isEmpty()) return -400;
+        NetWorkUtil.FormData formData = new NetWorkUtil.FormData()
+                .put("resources", resources)
+                .put("add_media_ids", addIds == null ? "" : addIds)
+                .put("del_media_ids", delIds == null ? "" : delIds)
+                .put("csrf", NetWorkUtil.currentCsrf());
+        JSONObject result = new JSONObject(Objects.requireNonNull(NetWorkUtil.post(URL_RESOURCE_BATCH_DEAL, formData.toString(), NetWorkUtil.webHeaders).body()).string());
+        Log.e("debug-收藏操作", result.toString());
         return result.getInt("code");
     }
 
+    /**
+     * 收藏视频到指定收藏夹。
+     *
+     * @param mediaId 目标收藏夹 media_id（来自 v3 列表接口，不再按 fid 手拼）
+     */
+    public static int addFavorite(long aid, long mediaId) throws IOException, JSONException {
+        if (aid <= 0) return -400;
+        return dealFavorites(mediaId, aid + ":2", String.valueOf(mediaId), "");
+    }
 
-    public static int deleteFavorite(long aid, long fid) throws IOException, JSONException {
-        long mid = SharedPreferencesUtil.getLong("mid", 0);
-        String delFid = buildMediaId(fid, mid);    //fid后面要加上mid的后两位而不是定值
-        String url = "https://api.bilibili.com/medialist/gateway/coll/resource/batch/del";
-        String per = "resources=" + aid + ":2&media_id=" + delFid + "&csrf=" + NetWorkUtil.currentCsrf();
-
-        JSONObject result = new JSONObject(Objects.requireNonNull(NetWorkUtil.post(url, per, NetWorkUtil.webHeaders).body()).string());
-        Log.e("debug-删除收藏", result.toString());
-        return result.getInt("code");
+    /**
+     * 从指定收藏夹取消收藏。
+     *
+     * @param mediaId 目标收藏夹 media_id（来自 v3 列表接口，不再按 fid 手拼）
+     */
+    public static int deleteFavorite(long aid, long mediaId) throws IOException, JSONException {
+        if (aid <= 0) return -400;
+        return dealFavorites(mediaId, aid + ":2", "", String.valueOf(mediaId));
     }
 
     public static int addFolder(String title, String intro, int privacy) throws IOException, JSONException {
@@ -411,6 +475,7 @@ public class FavoriteApi {
         String url = "https://api.bilibili.com/x/v3/fav/folder/del";
         NetWorkUtil.FormData formData = new NetWorkUtil.FormData()
                 .put("media_ids", String.valueOf(mediaId))
+                .put("platform", "web")
                 .put("csrf", NetWorkUtil.currentCsrf());
         String data = formData.toString();
         JSONObject result = new JSONObject(Objects.requireNonNull(NetWorkUtil.post(url, data, NetWorkUtil.webHeaders).body()).string());
@@ -462,15 +527,7 @@ public class FavoriteApi {
      * @return 服务端 code（0 成功）
      */
     public static int batchDeleteResources(long mediaId, List<VideoCard> cards) throws IOException, JSONException {
-        String resources = buildResources(cards);
-        if (mediaId <= 0 || resources.isEmpty()) return -400;
-        NetWorkUtil.FormData formData = new NetWorkUtil.FormData()
-                .put("resources", resources)
-                .put("media_id", mediaId)
-                .put("platform", "web")
-                .put("csrf", NetWorkUtil.currentCsrf());
-        JSONObject result = new JSONObject(Objects.requireNonNull(NetWorkUtil.post("https://api.bilibili.com/x/v3/fav/resource/batch-del", formData.toString(), NetWorkUtil.webHeaders).body()).string());
-        return result.getInt("code");
+        return dealFavorites(mediaId, buildResources(cards), "", String.valueOf(mediaId));
     }
 
     private static int dealResources(String url, long srcMediaId, long tarMediaId, List<VideoCard> cards) throws IOException, JSONException {
@@ -488,7 +545,7 @@ public class FavoriteApi {
         return result.getInt("code");
     }
 
-    /** 收藏内容批量操作的错误码文案（copy / move / batch-del 通用） */
+    /** 收藏内容批量操作的错误码文案（batch-deal / copy / move 通用） */
     public static String resourceErrorMsg(int code) {
         switch (code) {
             case 0:

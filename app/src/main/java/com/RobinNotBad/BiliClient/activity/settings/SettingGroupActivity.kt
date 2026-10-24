@@ -529,7 +529,10 @@ class SettingGroupActivity : RefreshListActivity() {
         // 这里显示「用户配置/按 API 分档的默认目录」，不是运行时降级目录：降级时设置页
         // 不该预填一个临时的应用专属路径，否则用户会以为自己配置的路径被覆盖了。
         input("缓存路径", getString(R.string.setting_lab_path_video), SettingsKeys.SAVE_PATH_VIDEO, "input_string", FileUtil.getConfiguredVideoDownloadPath().toString())
-        input("图片下载路径", getString(R.string.setting_lab_path_pictures), SettingsKeys.SAVE_PATH_PICTURES, "input_string", FileUtil.getPicturePath().toString())
+        // 图片默认目录在 Android 10+ 是应用专属（安全审计 P2-2：公共 Pictures/ 要全盘权限，
+        // 手表 ROM 往往又打不开授权页），下载完成会经 MediaStore 发布进相册；
+        // 这里展示的是「配置/默认」，用户手动改成公共目录时仍可走下面的授权页。
+        input("图片下载路径", getString(R.string.setting_lab_path_pictures), SettingsKeys.SAVE_PATH_PICTURES, "input_string", FileUtil.getConfiguredPictureDownloadPath().toString())
         // 公共目录在 Android 11+ 需要「所有文件访问」权限；手机一般能直达授权页，
         // 手表 ROM 往往没有该页面（issue #42），打不开时会提示，而下载链路已能自动降级。
         nav(

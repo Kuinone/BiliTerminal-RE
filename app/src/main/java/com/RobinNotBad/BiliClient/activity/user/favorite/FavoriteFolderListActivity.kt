@@ -49,7 +49,8 @@ class FavoriteFolderListActivity : RefreshListActivity() {
                         val intent = Intent(this, FavoriteFolderEditActivity::class.java)
                         intent.putExtra("mediaId", folder.mediaId)
                         intent.putExtra("title", folder.name)
-                        intent.putExtra("intro", "")
+                        // 简介/隐私由编辑页按 mediaId 拉 folder/info 回填：列表接口没有这两个字段，
+                        // 在这里传空串会让保存把简介清空、隐私重置成公开
                         intent.putExtra("isDefault", folder.isDefault)
                         startActivityForResult(intent, 1)
                     }

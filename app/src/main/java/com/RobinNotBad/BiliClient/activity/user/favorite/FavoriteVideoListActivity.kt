@@ -24,7 +24,6 @@ import com.RobinNotBad.BiliClient.util.TerminalDialog
 class FavoriteVideoListActivity : RefreshListActivity() {
 
     private var mid: Long = 0
-    private var fid: Long = 0
     private var mediaId: Long = 0
     private var folderName: String = UiText.of("收藏夹")
 
@@ -67,7 +66,6 @@ class FavoriteVideoListActivity : RefreshListActivity() {
 
         val intent = intent
         mid = intent.getLongExtra("mid", 0)
-        fid = intent.getLongExtra("fid", 0)
         mediaId = intent.getLongExtra("mediaId", 0)
         folderName = intent.getStringExtra("name") ?: UiText.of("收藏夹")
 
@@ -75,8 +73,8 @@ class FavoriteVideoListActivity : RefreshListActivity() {
 
         videoList = ArrayList()
 
-        // 自己的收藏夹现在也会带 mediaId（排序/复制/移动都要它）；
-        // 没带 readOnly 的旧调用方按原逻辑兜底：有 media_id 就当他人收藏夹只读
+        // 自己的收藏夹也带 mediaId（排序/复制/移动/删除都要它）；
+        // readOnly 由调用方显式指定，没指定时按「有 media_id 就是他人收藏夹」兜底
         readOnly = intent.getBooleanExtra("readOnly", mediaId > 0)
         writable = !readOnly && mediaId > 0
 
@@ -224,10 +222,9 @@ class FavoriteVideoListActivity : RefreshListActivity() {
         if (videoList.isEmpty()) showEmptyView()
     }
 
-    /** 按当前排序拉一页 */
+    /** 按当前排序拉一页（v3 接口只认 media_id，没有 media_id 就没法取内容） */
     private fun fetch(page: Int): Int =
-        if (mediaId > 0) FavoriteApi.getFolderVideosNew(mediaId, page, videoList, sortOrder)
-        else FavoriteApi.getFolderVideos(mid, fid, page, videoList, sortOrder)
+        if (mediaId > 0) FavoriteApi.getFolderVideosNew(mediaId, page, videoList, sortOrder) else -1
 
     private fun loadFirstPage() {
         CenterThreadPool.run {
@@ -263,8 +260,7 @@ class FavoriteVideoListActivity : RefreshListActivity() {
                 // 多选模式下点击 = 勾选/取消勾选
                 toggleSelected(position)
             } else if (virtualCollection) {
-                val folderId = if (mediaId > 0) mediaId else fid
-                playFavoriteVirtualCollection(position, videoCard.aid, folderId, folderName)
+                playFavoriteVirtualCollection(position, videoCard.aid, mediaId, folderName)
             } else {
                 // 关掉虚拟合集时回到默认行为：进视频详情页
                 TerminalContext.getInstance().enterVideoDetailPage(this, videoCard.aid, videoCard.bvid, "video")
@@ -292,43 +288,10 @@ class FavoriteVideoListActivity : RefreshListActivity() {
             showReadOnlyMenu(position)
             return true
         }
-        // 拿不到 media_id 的老链路：以前是「4 秒内连点两次长按」直接删，手势不可发现且没有确认。
-        // 现在一次长按就弹确认框，删哪一条按 aid 重新定位（见 confirmLegacyRemove）。
-        val card = videoList.getOrNull(position) ?: return false
-        confirmLegacyRemove(card)
+        // 兜底：拿不到 media_id 时按只读处理（v3 接口下正常不会走到这里，
+        // 老 x/space/fav/arc 链路已随接口迁移整体移除）
+        showReadOnlyMenu(position)
         return true
-    }
-
-    /**
-     * 老链路（拿不到 media_id）的「取消收藏」：先确认再删。
-     *
-     * 删除位置在确认回调里按 aid 重新找：确认框开着的时候列表可能已经刷新过，
-     * 用长按那一刻记下的下标会删错行。
-     */
-    private fun confirmLegacyRemove(card: VideoCard) {
-        TerminalDialog.confirm(
-            context = this,
-            title = UiText.of("取消收藏"),
-            message = UiText.fmt("确定把《%1\$s》从收藏夹里去掉吗？", card.title),
-            confirmText = UiText.of("取消收藏"),
-            confirmIsDanger = true
-        ) {
-            CenterThreadPool.run {
-                try {
-                    val delResult = FavoriteApi.deleteFavorite(card.aid, fid)
-                    runOnUiThread {
-                        if (delResult == 0) {
-                            MsgUtil.showMsg(UiText.of("删除成功"))
-                            removeItem(card)
-                        } else {
-                            MsgUtil.showMsg(UiText.fmt("删除失败，错误码：%1\$s", delResult))
-                        }
-                    }
-                } catch (e: Exception) {
-                    report(e)
-                }
-            }
-        }.show()
     }
 
     /** 别人收藏夹（只读）的长按菜单：只有「视频详情」这一项。 */
@@ -417,7 +380,7 @@ class FavoriteVideoListActivity : RefreshListActivity() {
         ) {
             CenterThreadPool.run {
                 try {
-                    val code = FavoriteApi.deleteFavorite(card.aid, fid)
+                    val code = FavoriteApi.deleteFavorite(card.aid, mediaId)
                     runOnUiThread {
                         if (code == 0) {
                             MsgUtil.showMsg(UiText.of("已取消收藏"))

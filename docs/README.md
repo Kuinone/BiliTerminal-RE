@@ -51,6 +51,7 @@
 | [`review/real-device-regression-checklist.md`](review/real-device-regression-checklist.md) | 发版前真机回归清单（248 条，含第十三节视觉面；条目只增不改，失效就地标注作废） | 每个发行版 |
 | [`review/device-test-plan.md`](review/device-test-plan.md) | 待执行的真机/联网测试计划（T/D 两组） | 执行时勾选 |
 | [`review/agent-test-guide.md`](review/agent-test-guide.md) | Debug 包的 agent 测试手册：调试桥命令、可观测性设施、已知限制与设计原则 | 增删调试能力 / 调试桥命令时 |
+| [`review/compare-with-re-biliterminal-261024.md`](review/compare-with-re-biliterminal-261024.md) | 与同源分支 `cyq114514/Re-BiliTerminal`（1.2.3fix）的六维对比审计：91 条问题（P0×2 / P1×20 / P2×69）、定量总表、P0–P2 路线图、四轮核验；**按目标设备口径（旧版安卓手表）评分** | 再次对比 / 排期取建议时；结论基于 2026-10-24 双方 HEAD |
 | [`superpowers/plans/2026-08-27-new-features-roadmap.md`](superpowers/plans/2026-08-27-new-features-roadmap.md) | 功能路线图 + 从各报告回迁的仍未落地项 | 排期 / 落地后 |
 | [`superpowers/specs/2026-09-10-player-core-merge.md`](superpowers/specs/2026-09-10-player-core-merge.md) | 播放器核合并设计与 S4/S5/S6 待做项 | 动播放器时 |
 | [`superpowers/specs/2026-10-11-player-network-resilience.md`](superpowers/specs/2026-10-11-player-network-resilience.md) | 播放器弱网 / 直播 / 长视频：同类产品与官方做法调研 + P0–P2 建议清单（§2.4 是本仓库 `.so` 的选项存在性实测） | 动播放器网络 / 缓冲参数时 |
