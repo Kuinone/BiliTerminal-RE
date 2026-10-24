@@ -1,8 +1,11 @@
 package com.RobinNotBad.BiliClient.api;
 
+import android.content.Context;
 import android.os.Build;
+import android.provider.Settings;
 import android.text.TextUtils;
 
+import com.RobinNotBad.BiliClient.BiliTerminal;
 import com.RobinNotBad.BiliClient.BuildConfig;
 import com.RobinNotBad.BiliClient.model.Announcement;
 import com.RobinNotBad.BiliClient.model.ApiResult;
@@ -21,6 +24,8 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.UUID;
 
@@ -66,11 +71,11 @@ public class TerminalApi {
     };
 
     /**
-     * 内存档位（安全审计 P2-9）。
+     * 内存档位（对比审计 P2-9 的隐私收敛部分）。
      *
-     * <p>以前崩溃报告直接上报 {@code ram_total}/{@code ram_avail} 的精确字节数，等于把机型指纹
-     * 又补上一项，而统计上只关心「大概多大内存」。现在只报一个档位，0 表示取不到。
-     * 档位数值**不要重排**：服务端一旦开始读，改数值会让历史数据对不上。
+     * <p>崩溃报告不再上报精确的 {@code ram_total}/{@code ram_avail} 字节数（那等于给机型
+     * 再加一枚指纹），只报一个档位，0 表示取不到。档位数值**不要重排**：服务端一旦
+     * 开始读，改数值会让历史数据对不上。
      */
     public static final int RAM_LEVEL_UNKNOWN = 0;
 
@@ -84,6 +89,26 @@ public class TerminalApi {
     public static final int RAM_LEVEL_HIGH = 3;
 
     /**
+     * 把总内存字节数折算成档位：按整 GiB 取整，{@code < 2} 低、{@code < 4} 中、否则高；
+     * 取不到（{@code <= 0}）返回 {@link #RAM_LEVEL_UNKNOWN}。
+     *
+     * <p>纯函数，不碰 {@code android.*}，JVM 单测可直接覆盖。
+     */
+    public static int ramLevel(long totalMemBytes) {
+        if (totalMemBytes <= 0) return RAM_LEVEL_UNKNOWN;
+        long gib = totalMemBytes / (1024L * 1024L * 1024L);
+        if (gib < 2) return RAM_LEVEL_LOW;
+        if (gib < 4) return RAM_LEVEL_MID;
+        return RAM_LEVEL_HIGH;
+    }
+
+    /**
+     * 设备键的固定盐。改它等于把所有设备变成"新设备"（唯一设备数会翻一倍），**别随便改**。
+     * 它不需要保密（就写在客户端里），作用只是让这个哈希不与别处对 ANDROID_ID 的哈希撞车。
+     */
+    public static final String DEVICE_KEY_SALT = "rebiliterminal-device-key-v1";
+
+    /**
      * 当前隐私说明版本号。
      *
      * <p>只要用户可见的隐私文案（收集什么、不收集什么、怎么关）有实质变化，就必须 +1：
@@ -91,8 +116,7 @@ public class TerminalApi {
      * 改这个号的时候，`strings.xml` 里的 {@code privacy_consent_message}、
      * {@code about_to_uncle}、{@code text_setup_introduction} 三处要一起改。
      *
-     * <p><b>v2（26.10.14）</b>：新增设备级去重键 {@code device_key}（由 ANDROID_ID 派生，已于
-     * 26.10.24 移除，见下）。此前那三处文案
+     * <p><b>v2（26.10.14）</b>：新增设备级去重键 {@link #getDeviceKey()}。此前那三处文案
      * 都写着"不读取 ANDROID_ID 等任何设备唯一标识"，而新方案正是要拿它派生出哈希，
      * 属于**实质变化**，所以必须升版并同步改掉那三句 —— 否则就是自相矛盾。
      *
@@ -101,13 +125,6 @@ public class TerminalApi {
      * **「收集什么」的实质变化**，所以必须升版并同步改那三处文案 + {@code desc_setting_crash_auto}。
      * 注意「已脱敏」是这句承诺的一部分：`util/LogSanitizer` 在日志**入缓冲之前**就把登录凭据等
      * 敏感参数的值替换成了占位符，文案里的这句话有代码兜着。
-     *
-     * <p><b>26.10.24（安全审计 P2-9）</b>：移除设备级去重键 {@code device_key}
-     * （原先由 ANDROID_ID 派生，随遥测 / 反馈 / 崩溃三条链上报）。采集面这次是**只减不增**，
-     * 不构成需要重新征求同意的实质变化，所以 {@link #PRIVACY_VERSION} 保持 3。
-     * 遗留问题：{@code strings.xml} 里 {@code privacy_consent_message}、{@code about_to_uncle}、
-     * {@code text_setup_introduction} 仍写着「ANDROID_ID 派生哈希」——现在属于**多披露**
-     * （说了要收、其实已不收），不是虚假采集；下次动文案时一并删掉那几句，再决定要不要升版。
      */
     public static final int PRIVACY_VERSION = 3;
 
@@ -140,40 +157,15 @@ public class TerminalApi {
     }
 
     /**
-     * 把总内存字节数折算成档位（安全审计 P2-9）。
-     *
-     * <p>只保留「低 / 中 / 高」三档 + 未知：崩溃报告不再携带精确的 {@code ram_total}
-     * / {@code ram_avail}，需要区分「小内存手表上的 OOM」时看这个档位就够了。
-     * 分档按整 GiB 向下取整：2 GiB 机型（实际 totalMem 约 1.8 GiB）落在低档，
-     * 4 GiB 机型落在中档，与用户对「几 G 内存」的直觉一致。
-     *
-     * <p>纯函数：不碰 {@code android.*}，JVM 单测可直接钉边界。
-     *
-     * @param totalMemBytes {@link android.app.ActivityManager.MemoryInfo#totalMem}；
-     *                      取不到时传 0 或负数
-     */
-    public static int ramLevel(long totalMemBytes) {
-        if (totalMemBytes <= 0) return RAM_LEVEL_UNKNOWN;
-        long gib = totalMemBytes / (1024L * 1024L * 1024L);
-        if (gib < 2) return RAM_LEVEL_LOW;
-        if (gib < 4) return RAM_LEVEL_MID;
-        return RAM_LEVEL_HIGH;
-    }
-
-    /**
      * 启动上报的载荷。
      *
-     * <p>{@code is_coexist} 让后台能分开看两个版本的装机量；服务端对这个字段有默认值，
-     * 老客户端不带也能正常计数。
-     *
-     * <p><b>不再带 {@code device_key}</b>（安全审计 P2-9）：那个值是 {@code sha256(ANDROID_ID + 盐)}
-     * 的前 32 位，等于一个跨版本稳定的设备指纹，与「只收匿名 install_id」的承诺不符。
-     * 服务端 {@code dev_key_of()} 在没有 {@code device_key} 时会回落到 {@code install_id}，
-     * 所以计数、日活去重都照常工作；代价只是同一台手机上的普通版 / 共存版不再合并成一台设备。
+     * <p>{@code device_key} 用于把同一台手机上的普通版与共存版合并成一台设备；
+     * {@code is_coexist} 让后台能分开看两个版本的装机量。两者服务端都有默认值，
+     * 所以老客户端不带它们也能正常计数。
      */
     public static JSONObject buildPingPayload(String installId, int versionCode, String versionName,
                                               boolean isBeta, int sdk, String brand,
-                                              String device, String abi,
+                                              String device, String abi, String deviceKey,
                                               boolean isCoexist) throws JSONException {
         JSONObject data = new JSONObject();
         data.put("install_id", safe(installId));
@@ -184,6 +176,7 @@ public class TerminalApi {
         data.put("brand", safe(brand));
         data.put("device", safe(device));
         data.put("abi", safe(abi));
+        data.put("device_key", safe(deviceKey));
         data.put("is_coexist", isCoexist);
         return data;
     }
@@ -196,17 +189,15 @@ public class TerminalApi {
      * 未勾选时传 {@code null}/空串，这里经 {@link #safe(String)} 落成**空串而不是 JSON null**
      * ——服务端一律按字符串落库，字段缺失与 null 都会变成脏数据。老客户端不发这个字段，
      * 行为与以前完全一致。
-     *
-     * <p><b>不再带 {@code device_key}</b>（安全审计 P2-9）：身份只留匿名 install_id + 可选的 mid，
-     * 不再夹带 ANDROID_ID 派生值。后台按 install_id 统计反馈数，服务端 {@code dev_key_of()}
-     * 也会回落到 install_id，所以「我的反馈」在同一安装内不受影响。
      */
-    public static JSONObject buildFeedbackPayload(String installId, String category,
+    public static JSONObject buildFeedbackPayload(String installId, String deviceKey, String category,
                                                   String content, String log, String contact, long mid,
                                                   int versionCode, String versionName, int sdk,
                                                   String brand, String device) throws JSONException {
         JSONObject data = new JSONObject();
         data.put("install_id", safe(installId));
+        // 冗余一份设备键：后台要按设备统计反馈数，而 feedback 未必能和 installs 关联上
+        data.put("device_key", safe(deviceKey));
         data.put("category", normalizeCategory(category));
         data.put("content", safe(content));
         // 附带的应用日志（可空，落成空串）；服务端对它是可选的
@@ -245,29 +236,27 @@ public class TerminalApi {
      * 匿名 install_id、异常类名与消息（与堆栈分开）、出错线程、崩溃前的页面轨迹、
      * 系统版本 / product / model / ABI / 内存档位 / 运行时长。堆栈本身仍是主体。
      *
-     * <p><b>内存只报档位</b>（安全审计 P2-9）：{@code ram_level} 取值见 {@link #ramLevel(long)}；
+     * <p><b>内存只报档位</b>（对比审计 P2-9）：{@code ram_level} 取值见 {@link #ramLevel(long)}；
      * {@code ram_total}/{@code ram_avail} 仍然写进载荷，但**恒为 0**。服务端这两列本来就
      * {@code DEFAULT 0}，控制台遇到 0 会显示成「—」，所以不用改后端也不会凭空显示出错误的 MB 数。
      * 保留这两个字段名是为了不破老服务端的解析（它只按字段存在与否取值），
      * 等后端开始读 {@code ram_level} 后再删。
      *
-     * <p><b>不再带 {@code device_key}</b>（同一条审计项）：服务端 {@code dev_key_of()} 会回落到
-     * {@code install_id}，计数与日活去重照常；代价只是同机两个 flavor 不再合并成一台设备。
-     *
      * <p>{@code is_coexist} 与启动上报同源：两个 flavor 在「崩溃」这个维度上也要能分开统计，
      * 缺了它就只剩 ping 那一路能区分版本。做成参数而不是在方法里直接读 {@code BuildConfig}，
      * 是为了让这枚纯函数能在 JVM 单测里钉住「true / false 都原样落进载荷」。
      */
-    public static JSONObject buildCrashPayload(String installId, long mid,
+    public static JSONObject buildCrashPayload(String installId, String deviceKey, long mid,
                                                String exception, String message, String thread,
                                                String stack, String log, String extra,
                                                int versionCode, String versionName, int sdk,
                                                String release, String brand, String device,
                                                String product, String model, String abi,
-                                               int ramLevel, long uptimeSec,
-                                               boolean isCoexist) throws JSONException {
+                                               int ramLevel,
+                                               long uptimeSec, boolean isCoexist) throws JSONException {
         JSONObject data = new JSONObject();
         data.put("install_id", safe(installId));
+        data.put("device_key", safe(deviceKey));
         data.put("mid", mid);
         data.put("exception", safe(exception));
         data.put("message", safe(message));
@@ -300,14 +289,15 @@ public class TerminalApi {
      * <p>保留它是为了让既有调用点与 JVM 单测不必跟着改签名；**新代码应显式传
      * {@code is_coexist}**，单测也才能覆盖两个分支。
      */
-    public static JSONObject buildCrashPayload(String installId, long mid,
+    public static JSONObject buildCrashPayload(String installId, String deviceKey, long mid,
                                                String exception, String message, String thread,
                                                String stack, String log, String extra,
                                                int versionCode, String versionName, int sdk,
                                                String release, String brand, String device,
                                                String product, String model, String abi,
-                                               int ramLevel, long uptimeSec) throws JSONException {
-        return buildCrashPayload(installId, mid, exception, message, thread, stack, log,
+                                               int ramLevel,
+                                               long uptimeSec) throws JSONException {
+        return buildCrashPayload(installId, deviceKey, mid, exception, message, thread, stack, log,
                 extra, versionCode, versionName, sdk, release, brand, device, product, model,
                 abi, ramLevel, uptimeSec, BuildConfig.COEXIST);
     }
@@ -406,22 +396,10 @@ public class TerminalApi {
     // ==================== install_id ====================
 
     /**
-     * 已下线的设备键偏好名（26.10.24，安全审计 P2-9）。
-     *
-     * <p>只作为「墓碑」存在：老版本把 {@code sha256(ANDROID_ID + 盐)} 存在这个键下，
-     * 新版本不再采集，但升级用户的 SharedPreferences 里还留着那个哈希，{@link #getInstallId()}
-     * 顺手清掉。等绝大多数用户升级过一轮后可以删掉这段迁移。
-     */
-    private static final String LEGACY_DEVICE_KEY_PREF = "terminal_device_key";
-
-    /**
      * 取（必要时生成）匿名安装标识：一个随机 UUID。
      *
      * <p>与 B 站账号无关、不含任何设备指纹，卸载重装即换新。首次调用时写入
      * {@link SettingsKeys#TELEMETRY_INSTALL_ID}。
-     *
-     * <p>顺带清理老版本遗留的设备键偏好（见 {@link #LEGACY_DEVICE_KEY_PREF}）：
-     * 那个哈希已无人读取，留着只是把「一个稳定的设备标识」继续放在本机。
      */
     public static String getInstallId() {
         String id = SharedPreferencesUtil.getString(SettingsKeys.TELEMETRY_INSTALL_ID, "");
@@ -429,10 +407,71 @@ public class TerminalApi {
             id = UUID.randomUUID().toString().replace("-", "");
             SharedPreferencesUtil.putString(SettingsKeys.TELEMETRY_INSTALL_ID, id);
         }
-        if (!TextUtils.isEmpty(SharedPreferencesUtil.getString(LEGACY_DEVICE_KEY_PREF, ""))) {
-            SharedPreferencesUtil.removeValue(LEGACY_DEVICE_KEY_PREF);
-        }
         return id;
+    }
+
+    /**
+     * 设备级去重键：{@code sha256(ANDROID_ID + 固定盐)} 的前 32 位。
+     *
+     * <p><b>为什么需要它</b>：普通版与共存版的包名不同，{@link #getInstallId()} 存在各自包内的
+     * SharedPreferences 里，天然是两个值。只靠 install_id，一台手机装两个版本就会被算成两台设备。
+     *
+     * <p><b>为什么它有效</b>：Android 8.0+ 的 ANDROID_ID 按 (应用签名, 用户, 设备) 派生，
+     * 而两个 flavor 用的是**同一个签名**，所以取值相同；8.0 以下它是设备级唯一值，同样相同。
+     * <b>若将来两个 flavor 改用不同签名，这个去重会立刻失效</b> —— 换签名前先想清楚。
+     *
+     * <p><b>隐私</b>：原始 ANDROID_ID 只在内存里过一下，**绝不上报、也不落盘**，存下来的只有
+     * 加盐哈希。取不到就返回空串，服务端会回落到 install_id 计数（不会把所有人挤进同一个空分组）。
+     * 恢复出厂或切换系统用户会得到新值，此时视为一台新设备，可接受。
+     */
+    public static String getDeviceKey() {
+        String cached = SharedPreferencesUtil.getString(SettingsKeys.TELEMETRY_DEVICE_KEY, "");
+        if (!TextUtils.isEmpty(cached)) return cached;
+        String raw = "";
+        try {
+            Context context = BiliTerminal.context;
+            if (context != null) {
+                raw = Settings.Secure.getString(context.getContentResolver(), Settings.Secure.ANDROID_ID);
+            }
+        } catch (Exception e) {
+            // 某些定制 ROM 会抛异常；拿不到就算了，统计不能因此崩
+            Logu.w("read ANDROID_ID failed: " + e);
+        }
+        if (TextUtils.isEmpty(raw)) return "";
+        String key = hashDeviceKey(raw);
+        if (TextUtils.isEmpty(key)) return "";
+        SharedPreferencesUtil.putString(SettingsKeys.TELEMETRY_DEVICE_KEY, key);
+        return key;
+    }
+
+    /**
+     * 把原始 ANDROID_ID 折算成设备键：{@code sha256(id + 盐)} 的前 32 位十六进制。
+     *
+     * <p>抽成独立方法，是为了让 JVM 单测能直接验证它的**形状**（确实是哈希、长度固定、
+     * 同输入稳定复现），而不用碰 Android 运行时。因此这里**不得**使用任何 {@code android.*} 类
+     * —— 单测里那些类都是 not mocked，一碰就炸。
+     */
+    static String hashDeviceKey(String rawAndroidId) {
+        if (rawAndroidId == null || rawAndroidId.length() == 0) return "";
+        String key = sha256(rawAndroidId + DEVICE_KEY_SALT);
+        return key.length() > 32 ? key.substring(0, 32) : key;
+    }
+
+    /** 十六进制小写 SHA-256；失败返回空串（调用方按"没有设备键"处理）。 */
+    private static String sha256(String input) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] bytes = digest.digest(input.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(bytes.length * 2);
+            for (byte b : bytes) {
+                sb.append(Character.forDigit((b >> 4) & 0xF, 16));
+                sb.append(Character.forDigit(b & 0xF, 16));
+            }
+            return sb.toString();
+        } catch (Exception e) {
+            Logu.w("sha256 failed: " + e);
+            return "";
+        }
     }
 
     /**
@@ -605,6 +644,7 @@ public class TerminalApi {
                     Build.BRAND,
                     Build.DEVICE,
                     firstAbi(),
+                    getDeviceKey(),
                     BuildConfig.COEXIST);
             return post("/telemetry/ping", payload).optInt("code", -1) == 0;
         } catch (Exception e) {
@@ -625,7 +665,7 @@ public class TerminalApi {
                                            String contact, long mid) {
         try {
             JSONObject payload = buildFeedbackPayload(
-                    getInstallId(), category, content, log, contact, mid,
+                    getInstallId(), getDeviceKey(), category, content, log, contact, mid,
                     BuildConfig.VERSION_CODE, BuildConfig.VERSION_NAME,
                     Build.VERSION.SDK_INT, Build.BRAND, Build.DEVICE);
             JSONObject result = post("/feedback/submit", payload);

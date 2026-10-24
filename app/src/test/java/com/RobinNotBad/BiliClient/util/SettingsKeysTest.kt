@@ -48,8 +48,7 @@ class SettingsKeysTest {
             "terminal_telemetry_enable" to SettingsKeys.TELEMETRY_ENABLE,
             "terminal_install_id" to SettingsKeys.TELEMETRY_INSTALL_ID,
             "terminal_telemetry_last_day" to SettingsKeys.TELEMETRY_LAST_REPORT_DAY,
-            // 26.10.24（安全审计 P2-9）：terminal_device_key 已下线，不再有常量可锁；
-            // 老用户本机残留值由 TerminalApi.getInstallId() 顺手清理，且没有任何地方再读它。
+            "terminal_device_key" to SettingsKeys.TELEMETRY_DEVICE_KEY,
             "terminal_privacy_consent_version" to SettingsKeys.PRIVACY_CONSENT_VERSION,
             "terminal_privacy_prompted_version" to SettingsKeys.PRIVACY_PROMPTED_VERSION,
             "terminal_crash_report_auto" to SettingsKeys.CRASH_REPORT_AUTO,

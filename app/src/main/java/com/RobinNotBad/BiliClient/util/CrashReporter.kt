@@ -67,8 +67,8 @@ object CrashReporter {
         uptimeSec: Long,
         extra: String? = null
     ): JSONObject {
-        // 安全审计 P2-9：只取总内存用于**分档**，不再上报精确的 ram_total / ram_avail。
-        // 精确字节数等于给机型再加一枚指纹，而统计只关心「手表 / 手机大概多大内存」。
+        // 只取总内存用于**分档**，不上报精确 ram_total / ram_avail（对比审计 P2-9：
+        // 精确字节数等于给机型再加一枚指纹，统计只关心「手表 / 手机大概多大内存」）。
         // 档位规则在 TerminalApi.ramLevel（纯函数，有 JVM 单测）；取不到就是 UNKNOWN(0)。
         val ramLevel = try {
             val manager = context?.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
@@ -89,6 +89,7 @@ object CrashReporter {
 
         return TerminalApi.buildCrashPayload(
             /* installId = */ TerminalApi.getInstallId(),
+            /* deviceKey = */ TerminalApi.getDeviceKey(),
             /* mid = */ mid,
             /* exception = */ exception,
             /* message = */ message,

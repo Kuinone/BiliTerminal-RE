@@ -23,7 +23,7 @@
 - **依赖仓库**：`settings.gradle` 已把 aliyun 的 `google` / `public` / `gradle-plugin` 三个镜像前置，`google()`/`mavenCentral()`/jitpack 仅作兜底。
 - **改了 `res/` 文件集合时**：`:app:clean` 与后续命令**必须分两次 Gradle 调用**，且带 `--no-build-cache --no-configuration-cache`，否则会回放陈旧资源（症状是 `Unresolved reference 'R.layout.xxx'`）。
 - **版本一致性**：`:app:verifyVersionConsistency` 以 `strings.xml` 的 `update_log_current` 为锚点校验版本一致性；发版说明也由 CI 从它抽取（抽不到直接拒绝发版）。
-- **单测（静态计数，26.10.24 对比审计修复后实测）**：**83 个测试类 / 901 个用例**，两个 flavor 完全相同（同源码），0 失败 0 错误 0 跳过。计数方式：`app/src/test/` 下 `*Test.kt|java` 计数（另有共享假实现 `util/FakeSharedPreferences.kt`），`app/build/test-results/testStandardDebugUnitTest/TEST-*.xml` 的 `tests=` 求和。用例数一律以机器产出为准，队友口述数字不进入文档。
+- **单测（静态计数，26.10.24 对比审计两批修复后实测）**：**87 个测试类 / 935 个用例**，两个 flavor 完全相同（同源码），0 失败 0 错误 0 跳过。计数方式：`app/src/test/` 下 `*Test.kt|java` 计数（另有共享假实现 `util/FakeSharedPreferences.kt`），`app/build/test-results/testStandardDebugUnitTest/TEST-*.xml` 的 `tests=` 求和。用例数一律以机器产出为准，队友口述数字不进入文档。
 - **26.10.10 那一轮的构建记录（历史，留作「改 minSdk / 重跑 release 链路」时的验证口径）**：`minSdk 24 → 19` 全部改动（含 jsoup 1.16.1、7 个 `res/drawable-v21` 资源）落盘后，按「`clean` → `assembleRelease` → `lintRelease` → 单测」四步跑完（均带 `--no-configuration-cache`，`clean` 与 `assemble` 分两次调用），四步全 `BUILD SUCCESSFUL`（37s / 2m13s / 1m25s / 39s）。当时单测汇总 **49 suites / 460 tests / 0 failures**（任务名当时还是 `testDebugUnitTest`，现已带 flavor 前缀），最新 XML 时间 `2026-10-09T22:59:04`（晚于当轮 APK 出包时间 22:56:58，覆盖了当轮全部源码改动）。`:app:lintRelease` 的 **`NewApi` 从 22 条降到 2 条**，且这 2 条就是 `PlayerActivity.kt:1981` 的已知假阳性。发版前仍建议再跑一次确认。
 - **「自动跳过片头片尾」已恢复上线（26.10.22）**：26.10.10 的紧急撤回**已解除**，`SkipOpEdPrefs.FEATURE_ENABLED` 回到 `true`，设置入口与搜索索引均已恢复；口径按用户拍板改为**默认关闭**（`DEFAULT_ENABLED = false`，老用户存档里显式写的值仍然优先）。恢复细节见 §3.3「恢复记录」，乱跳的三个根因修复见 §3.55。
 - **本轮基建改动（26.10.10）**：**`minSdk 24 → 21 → 19（Android 4.4）`**，唯一落点是 `app/build.gradle:21`。两级下调的成本不同，分开记：
@@ -39,6 +39,12 @@
 ## 2. 未完成待办
 
 ### 2.1 真机未验证（无设备 / 无登录态）
+
+- [ ] **图片保存改造（对比审计 §3.3 P2-2，第二批）真机未验证**：Android 10+ 默认目录改为应用专属、下载完成经 MediaStore 发布进 `Pictures/哔哩终端/`。用例：看图页下载图片 → 相册可见、无 0 字节残留；再下载同一张覆盖不产生两份；自定义公共目录时行为不变；API 28 及以下仍落公共 Pictures。日志判据 `adb logcat -s PictureMediaStore`。
+- [ ] **直播弹幕 wss 校验（§3.3 P2-6）真机未验证**：正常直播间能连、能收弹幕；`host_list` 缺失/异常时应提示而不是继续裸连；握手 Cookie 只剩 `SESSDATA` 后，需确认长连接鉴权仍成功。
+- [ ] **深链白名单（§3.3 P2-7）真机未验证**：`bilibili://video/...` 等自定义 scheme 仍能跳转；`https://bilibili.com/...`、`https://b23.tv/...` 能进 `GetIntentActivity`；站外链接被拒且不再打 `debug-host` 日志。
+- [ ] **极验参数校验（§3.3 P2-8）真机未验证**：滑块验证仍能正常出图、完成登录；服务端返回异常 `gt`/`challenge` 时提示而不是白屏/崩。
+- [ ] **遥测内存档位化需真机观察（§3.3 P2-9 部分）**：客户端崩溃载荷已改为只报 `ram_level` 档位（`ram_total/ram_avail` 恒 0），`device_key` 按产品需求**保留采集**（26.10.24 决定回退删除），隐私文案维持 v2 口径；真机上确认崩溃页/控制台按新字段展示正常即可。
 
 - [ ] **登录页扫码中途退出的竞态（§3.38）真机未复现**：修法是「判活搬进 Runnable + 文案走 application context」，判据已由 R8 mapping 还原（崩点 `QRLoginFragment.kt:284`）。真机用例：扫码页在「已扫码，等待手机确认」时点「跳过 / 返回」/ 按表冠退出，反复若干次，不应再出 `Fragment … not attached to a context`。
 - [ ] **缓存页空态行的真机观感（§3.34）**：只在 380×380 表盘模拟器上跑过，未在真手表上确认「未分类视频 0 个 + 啥都木有~」两行的字号/间距是否合适。
@@ -1428,6 +1434,8 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
 | 四十九 | 26.10.16：反馈对话——用户可追加说明 | 服务端 `feedback_comment` 表（`SCHEMA_VERSION` 2→3，**v3 刻意无 DDL**）+ `POST /terminal/feedback/reply` + 归属判据 `_MINE_SQL` 与 `/feedback/mine` **共用同一份** + 追加即把 `handled` 打回 0（reopen 语义）+ `_db_feedback_thread` 合并两侧消息 + 管理台 `user_reply_count` 与对话抽屉；客户端 `TerminalDialog.input()`（+`Sheet.addInput`）、`FeedbackReply.author`、`submitFeedbackReply`（走新增 `postWithHeaders`）、`FeedbackDetailActivity` 时间线与「追加说明」入口、`FeedbackListActivity` 结果码重拉 | 部分遗留（跨设备 `X-Mid` 追加、发送失败重开预填未真机覆盖，见 §3.21） |
 | 五十 | 26.10.19：线上崩溃两路清剿（#43–#49） | A 路：#43–#47/#49 无 message NPE = `UserDynamicFragment.continueLoading` 里 `adapter!!`（首屏加载失败 → adapter 从未创建 → 空列表拖动翻页）；三处 `runOnUiThread` 加 `isAdded && view != null` + `adapter?.`，`setRefreshing(false)` 进 `finally`，顺带修 `UserVideoFragment` 插入起点漏 `+1`。B 路：#48 `libijksdl.so` 加载失败 = `UnsatisfiedLinkError`（`Error`）冒到主线程 + `IjkMediaPlayer()` 构造会二次加载；新增 `player/IjkNativeLibs.kt`（失败锁死 + 诊断上传），`PlayerActivity` / `IjkPlayerBridge` / `VideoPlayerCore` / `ShortVideoPlayerActivity` 全部改判返回值并降级 | 部分遗留（构建与两 flavor 单测全绿，**未真机复现**；见 §3.29） |
 | 五十一 | 26.10.24：对比审计后的第一批修复（清单见 `docs/review/compare-with-re-biliterminal-261024.md`） | P0-1 图片管线 Cookie 外发：新增 `util/ImageRequestPolicy.kt` + `helper/CustomGlideModule.kt` 应用层/网络层双过滤（站外去 Cookie/Referer/Origin）；P0-2 收藏夹编辑丢隐私/简介：新增 `FavoriteApi.getFolderInfo()` + `attr` bit0 解析，编辑页改为先回填再保存；P1-1 下载通知权限硬门禁 → `DownloadNotificationGate` 改为并行请求不阻断；P1-2 教程键名统一到 `TutorialStore`（`tutorial_ver_<id>`）+ 管理页重写；P1-3 动态「仅自己可见/关闭评论」接线；P1-4 发版 tag 校验（`build-release.yml` 增 `verify-version` job）；P1-5 下载服务 START_STICKY 重启续跑（`DownloadServiceRecovery`）；新增「无极调音」（`PlayerVolumePolicy` + 播放器滑条，短按音量键仍调系统音量）；`strings.xml` +34 条 | 部分遗留（报告 91 条中已修 7 条：P0 2/2、P1 5/20；其余 84 条未动。`assembleDebug` 双 flavor 成功；`testStandardDebugUnitTest` 83 suites / 901 tests / 0 failures、`testCoexistDebugUnitTest` 通过；**播放器/UI 时序改动未真机验证**；afdiancdn 去 Referer 是否 403 待真机） |
+
+| 五十二 | 26.10.24：对比审计 §3.3 安全组五条 P2 加固 + P2-9 部分（清单见 `docs/review/compare-with-re-biliterminal-261024.md` §13.0 第二批） | 图片目录：默认改应用专属 + `PictureMediaStore.publishToGallery()` 发布进 `Pictures/哔哩终端`（API 29+ 走 MediaStore + `IS_PENDING`，旧系统 `scan`），`FileUtil.getConfiguredPictureDownloadPath()`/`PictureSavePolicy` 分档，manifest 注明 MANAGE 只服务用户自定义公共目录；Cookie：`CookieDomainPolicy` 严格域校验（equals/子域点后缀）+ 响应 host 校验（fail-closed）；直播弹幕：wss host 必须 B 站域、端口校验，握手只带 `SESSDATA`；深链：`DeepLinkPolicy` 限定 http/s 到 bilibili.com 子域与 b23.tv，删 `debug-host` 日志；极验：`CaptchaParamPolicy` 白名单 + `JSONObject.quote`；遥测：精确内存只报档位（`TerminalApi.ramLevel`），`device_key` 按产品需求**保留采集**（26.10.24 用户决定回退该子项） | `assembleDebug` 双 flavor 成功；单测 87 suites / 935 tests / 0 failures（新增 4 个测试类 + 重写 `TerminalApiTest`）；**图片发布/直播弹幕/深链/极验均未真机验证**（见 §2.1） |
 
 ## 5. 仍待回迁 / 仅见于归档的长期结论
 

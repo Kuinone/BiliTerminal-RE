@@ -178,7 +178,13 @@ if (Build.VERSION.SDK_INT >= 26 && !activity.getPackageManager().canRequestPacka
 | P2-6 | 直播弹幕连接不校验服务端返回的 wss 域名，并下发含 `bili_jct` 的全量 Cookie | `activity/player/PlayerActivity.kt:2683-2696` | 同类问题存在（`CookieGenerator` 播放链路仍带完整 Cookie） | 解析 `host_list` 后校验域名后缀，Cookie 只带必要项 |
 | P2-7 | 导出深链入口注册全部 http/https scheme，无 host/path 限定，且残留调试日志 | `app/src/main/AndroidManifest.xml:163-178` | 同样只注册 scheme（共性问题） | 限定 host 为 `bilibili.com`/`b23.tv`，清理调试日志 |
 | P2-8 | 极验 WebView 把服务端返回的 `gt`/`challenge` 直接拼进 JS 字符串 | `activity/settings/login/CaptchaWebViewActivity.kt:200-203` | 用 `JSONObject.quote` 转义并注释缘由 | 改用 `JSONObject.quote(...)`；对 URL 参数做白名单校验 |
-| P2-9 | 遥测采集面比对方宽：`ANDROID_ID` 派生 `device_key`、内存/ABI、崩溃日志 | `api/TerminalApi.java:383-405`、`:134-150`、`:211-241` | `install_id` 用随机 UUID，明确不采 AndroidID/账号 | 评估去掉 `device_key`（用 install_id + 服务端去重）；隐私文案逐字覆盖；`ram_*` 只留等级 |
+| P2-9 | 遥测采集面比对方宽：`ANDROID_ID` 派生 `device_key`、内存/ABI、崩溃日志 | `api/TerminalApi.java:383-405`、`:134-150`、`:211-241` | `install_id` 用随机 UUID，明确不采 AndroidID/账号 | 评估去掉 `device_key`（用 install_id + 服务端去重）；隐私文案逐字覆盖；`ram_*` 只留等级。**26.10.24 定案：`device_key` 按产品需求保留采集（不整改），仅落实「精确内存改档位」；隐私文案维持 v2 口径** |
+
+> **修后状态（26.10.24 第二批，`d0c703b` + `revert`）**：P2-2 / P2-5 / P2-6 / P2-7 / P2-8 五条已落地，P2-9 部分落地（精确内存改为档位；`device_key` 采集按产品需求保留）——
+> 图片默认目录改应用专属 + MediaStore 发布进相册（MANAGE 只在用户自定义公共目录时才可能需要）；
+> Cookie 域校验改为 `equals` / 子域点后缀 + 响应 host 校验；直播弹幕校验 wss 域名与端口、握手只带 `SESSDATA`；
+> 深链 http/https 限定 B 站域与 `b23.tv`；极验参数白名单 + `JSONObject.quote`；遥测内存只报档位，`device_key` 仍由 `ANDROID_ID` 哈希派生并上报。
+> 逐条落点见 13.0，单测见 `CookieDomainPolicyTest`/`DeepLinkPolicyTest`/`CaptchaParamPolicyTest`/`PictureSavePolicyTest`/`TerminalApiTest`。
 
 ### 3.4 对方 readme「安全加固」四条核实
 
@@ -265,7 +271,7 @@ implementation 'com.squareup.okhttp3:okhttp:4.12.0'
 | 编号 | 问题 | 我方证据 | 对方对照 | 建议 |
 | --- | --- | --- | --- | --- |
 | P2-1 | ABI 策略领先但有三处风险：arm64 缺 `libndkbitmap.so`；CI 产物名与 `pickApkUrl` 强耦合；universal 12.2MB | `app/libs/arm64-v8a/` 4 个 so vs 32 位 5 个；`DanmakuFlameMaster/src/main/java/tv/cjump/jni/NativeBitmapFactory.java:38-44` | 无 arm64，纯 64 位设备装不上 | 补 arm64 `libndkbitmap` 或显式记录降级原因；构建时校验三 ABI so 文件名集合一致 |
-| P2-2 | 存储模型：targetSdk 34 下 `requestLegacyExternalStorage` 已是死配置；Android 10 上图片保存只能落私有目录 | `app/src/main/AndroidManifest.xml:22`、`util/FileUtil.java:334-337` | 无 MANAGE，路径策略更保守 | 改 MediaStore + 私有目录；与 3.3 P2-2 合并 |
+| P2-2 | 存储模型：targetSdk 34 下 `requestLegacyExternalStorage` 已是死配置；Android 10 上图片保存只能落私有目录 | `app/src/main/AndroidManifest.xml:22`、`util/FileUtil.java:334-337` | 无 MANAGE，路径策略更保守 | **26.10.24 已修（`d0c703b`）**：图片默认目录改应用专属，下载完成经 MediaStore 发布进 `Pictures/哔哩终端`；MANAGE 降为「自定义公共目录」才可能用到 |
 | P2-3 | 媒体通知：「系统媒体控件」默认关闭且无 `MediaStyle`（MediaSession 本身已实现，约 30 处） | `activity/player/PlayerActivity.kt:2712-2720`、`service/PlaybackService.kt` | 有 MediaSessionHelper 隔离（API21+ 才加载） | 补 `MediaStyle` + 默认开启开关；MediaSession 抽到 `@RequiresApi(21)` 的 bridge 里 |
 | P2-4 | 设备形态：107 处屏幕方向全锁（对手表是合理默认，对手机是限制）、仅 1 处 `windowSoftInputMode`、无 `values-night` | `AndroidManifest.xml`（107 处 `screenOrientation`） | 88 处方向锁、0 处输入法适配 | 手表保持锁定；若继续「顺带适配手机」，声明 resizeable 并只在手机配置下解除方向锁；输入密集页补 `adjustResize` |
 | P2-5 | Android 12+ 系统 Splash 与自定义启动页叠加，双闪（仅 Android 12+ 生效，旧手表看不到） | `activity/SplashActivity.kt:80-99` | 同样问题（共性问题） | 用 `SplashScreen` API 或 `windowSplashScreen*` 主题 |
@@ -874,15 +880,15 @@ override fun attachBaseContext(base: Context) {
 | 启动网络错峰 | 无（0 延迟并发） | 2–2.9s 错峰 | 对方领先 |
 | 启动耗时埋点 | 0 | 3 处 | 对方领先 |
 
-> 本表是修复前基线（17212e3）的快照。26.10.24 第一批修复落地后：`strings.xml` 1876 条、测试 83 个类 / **901 个用例**（`@Test` 901）；主代码文件/行数与空 catch 等其余指标未变。
+> 本表是修复前基线（17212e3）的快照。26.10.24 两批修复落地后：`strings.xml` 1876 条、测试 **87 个类 / 935 个用例**（`@Test` 935）；主代码文件/行数与空 catch 等其余指标未变。
 
 ## 13. 建议路线图
 
-> 修复进度（26.10.24 晚）：13.1 的两项 P0 与 13.2 的 A/B/C/D/E 中若干条已按本报告落地（图片管线按域过滤、收藏夹回填、下载通知门禁、教程键统一、动态可见范围、发版 tag 校验、下载续跑，另按 §5.1 实现「无极调音」）；逐项跟踪见 `docs/review/fix-progress.md` 第 51 条。**其余 84 条（P1 剩 15、P2 剩 69）尚未修**，详见 13.0。
+> 修复进度（26.10.24 晚，两批）：13.1 的两项 P0、13.2 的若干条与 §3.3 的 P2-2/P2-5/P2-6/P2-7/P2-8 已按本报告落地（图片管线按域过滤、收藏夹回填、下载通知门禁、教程键统一、动态可见范围、发版 tag 校验、下载续跑、无极调音；以及图片目录/域校验/深链/极验五项 P2 加固；§3.3 P2-9 只落地「精确内存改档位」，`device_key` 采集按产品需求保留）；逐项跟踪见 `docs/review/fix-progress.md` 第 51、52 条。**已修 12 条（P0 2/2、P1 5/20、P2 5/69），其余 79 条（P1 剩 15、P2 剩 64）尚未修**，详见 13.0。
 
-### 13.0 第一批修复的逐条状态（26.10.24）
+### 13.0 已修复条目的逐条状态（26.10.24）
 
-已修 7 条（P0 2/2、P1 5/20），另完成 §5.1 的功能缺口 P1-1：
+**第一批**（7 条：P0 2/2、P1 5/20，另完成 §5.1 的功能缺口 P1-1）：
 
 | 报告编号 | 内容 | 落点提交 |
 | --- | --- | --- |
@@ -895,10 +901,22 @@ override fun attachBaseContext(base: Context) {
 | 10.2（P1） | START_STICKY 后下载不续跑 | `6a947a6` |
 | 5.1（P1-1） | 无极调音 0~100%（新增实现） | `13db917` |
 
+**第二批**（§3.3 五条 P2 + P2-9 部分，提交 `d0c703b` + `revert(privacy)`）：
+
+| 报告编号 | 内容 | 落点文件 |
+| --- | --- | --- |
+| 3.3 P2-2 | 默认图片目录改应用专属 + MediaStore 发布进相册，MANAGE 降为「自定义公共目录」才可选申请 | `util/PictureSavePolicy.kt`、`util/FileUtil.java`、`util/PictureMediaStore.kt`、`activity/DownloadActivity.kt`、`AndroidManifest.xml` |
+| 3.3 P2-5 | `Set-Cookie` 严格域校验（equals/子域点后缀）+ 响应 host 必须是 B 站域，fail-closed | `util/CookieDomainPolicy.kt`、`util/NetWorkUtil.java` |
+| 3.3 P2-6 | 直播弹幕 wss 域名/端口校验，握手 Cookie 只带 `SESSDATA` | `activity/player/PlayerActivity.kt` |
+| 3.3 P2-7 | 深链 http/https 限定 B 站域与 `b23.tv`，删调试日志 | `util/DeepLinkPolicy.kt`、`activity/GetIntentActivity.kt`、`AndroidManifest.xml` |
+| 3.3 P2-8 | 极验 `gt`/`challenge` 白名单 + `JSONObject.quote` 转义 | `util/CaptchaParamPolicy.kt`、`activity/settings/login/CaptchaWebViewActivity.kt` |
+| 3.3 P2-9 | 只落地「精确内存只报档位」；`device_key`（ANDROID_ID 哈希）按产品需求保留采集，隐私文案维持 v2 口径 | `api/TerminalApi.java`、`util/CrashReporter.kt` |
+
 未修清单（按报告章节编号）：
 
-- §3.2（P1 更新链完整性 + 安装授权）、§3.3 P2-2 / P2-5 / P2-6 / P2-7 / P2-8 / P2-9
-- §4.4（P1 OkHttp 4.12 与 minSdk 19）、§4.5 P2-1～P2-6
+- §3.2（P1 更新链完整性 + 安装授权）
+- §3.3 P2-9 的 `device_key` 采集部分（产品需求明确保留，不作整改）
+- §4.4（P1 OkHttp 4.12 与 minSdk 19）、§4.5 P2-1、P2-3～P2-6（P2-2 已修）
 - §5.1 P1-2 / P1-3 / P1-4 / P1-5、P2-1～P2-6
 - §6.2、§6.3（P1）；§6.4 P2-1～P2-7
 - §7.1、§7.2、§7.3、§7.5（P1）；§7.6 P2-1～P2-3
@@ -958,6 +976,7 @@ override fun attachBaseContext(base: Context) {
    - 复核中发现并修正 2 处表述不够精确：①`clip_info_list` 的解析位置实际在对方 `api/PlayerApi.java:65-67/376`，`SegmentSkipController` 只消费 `ClipInfo`，报告已补全引用；②附录 A 的 `AndroidManifest.xml`、`NativeBitmapFactory.java` 路径补全为仓库内全路径。
    - 复核后全仓 `markdownlint-cli2` 跑通（0 错误）；除本报告与 `docs/README.md` 索引外，未改动我方源码。
 4. **口径复核轮（用户反馈后）**：用户指出本项目目标是「旧版安卓手表」，初稿按现代设备标准的评分口径不成立；已新增 §1.4 目标设备画像，重评兼容性（2.1、第 4 章），把 OkHttp 4.12 与 minSdk 19 的冲突升为旧手表头号运行时风险，targetSdk 34 适配改述为「前瞻加分」，并重排 4.x 小节、路线图与交叉引用；91 条问题与 P0/P1/P2 计数不变。
+5. **修复验证轮（两批修复后）**：第一批（`87800a9` 等 9 个提交）与第二批（`d0c703b`）各自跑过 `:app:assembleDebug`（standard/coexist 双 flavor 通过）与两个 flavor 的 JVM 单测；第二批后实测 **87 suites / 935 tests / 0 failures**（新增 `CookieDomainPolicyTest`、`DeepLinkPolicyTest`、`CaptchaParamPolicyTest`、`PictureSavePolicyTest` 及重写的 `TerminalApiTest`）。§13.0 的落点提交与文件均按实际 `git log`/工作树核对。播放器、下载续跑、图片发布进相册等系统集成链路**仍未真机验证**，见 `fix-progress.md` 第 51、52 条的状态列。
 
 ### 14.2 无法核实或标注为推测的事项
 
@@ -970,7 +989,7 @@ override fun attachBaseContext(base: Context) {
 | 我方 native 崩溃比例、弱网丢失率 | 【推测】 | 无 `ApplicationExitInfo`/哨兵数据，无法量化 |
 | 对方 9.02MB 与 11.44MB 的精确分解 | 估算 | lib/dex/res 分解未逐项精确核对（已标注） |
 | 已验证机型/系统版本清单 | 缺失 | 仓库只有零散机型记录（XTC `monaco_go Z10` 等），没有「已支持设备矩阵」，评分只能按文档与代码推断 |
-| 真机/模拟器验证 | 未做 | 报告全部结论基于静态审计 + 构建；唯一实测是对方仓库可构建（debug 2m27s 成功、release unsigned 成功） |
+| 真机/模拟器验证 | 部分 | 报告结论基于静态审计 + 构建；两批修复做了编译与 JVM 单测（87 类/935 例全绿），但播放器、下载续跑、图片发布进相册等系统集成链路未真机验证 |
 
 ### 14.3 方法学局限
 
