@@ -1413,6 +1413,12 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
 - **用户反馈修复（26.10.24 当天，两处）**：① 「排序按钮消失和出现的时机、动画没跟随搜索框」——旧实现是搜索框 `translationY` 滑 300ms、按钮自己瞬间 GONE，且 `ViewPager` 锚在按钮下面（按钮 GONE 那一下列表整块往下跳）。现在两者由**同一条 `ValueAnimator` 按同一进度收放真实高度**（`SearchActivity.applyTopChrome`，`CHROME_ANIM_MS = 200`），列表跟着平滑补位；自然高度只在 `wrap_content` 时采样并缓存，避免把动画中间值记成自然高度。② 「第二次点搜索框时按钮没消失，挡住候选词」——历史 / 建议浮层与按钮占的是同一条（都锚在 `searchbar` 下方），按钮是 MaterialButton 带海拔，画在浮层上面。现在浮层一律走 `showHistoryDropdown()` / `showSuggestionsDropdown()` / `hideDropdowns()` 三个入口，浮层开着时按钮置 `INVISIBLE`（**让画面不让位置**，列表不整体上移，浮层正好盖住它）。
   - **模拟器实测**：点搜索框 → 候选词第一行完整可见、按钮不再压在上面；滚动 → 搜索框与排序条同时收缩（把时长临时调到 1500ms 抓过中间帧，两者同比例变形）、结束时列表紧贴顶栏；回滚 → 一起展开；切到「番剧」分类按钮消失、切回「视频」恢复；`logcat` 0 条 `FATAL EXCEPTION`。
   - **验证**：`:app:assembleDebug`（coexist）通过；两 flavor 单测各 **87 套 / 941 例 / 0 失败**（纯 UI 改动，未新增用例）；markdownlint 40 文件 0 issue。
+- **第二轮审查（26.10.25，外部评审）修掉的 P1 + 文档失实**：
+  - **风控直接回 HTML 拦截页时回退链根本没启动**：`SearchApi` 只在拿到**已解析 JSON** 后才判 `shouldFallback`，而风控被拦时 B 站还可能直接回一张 `<!DOCTYPE html>` 的「出错啦」页——那会让 `NetWorkUtil.getJson` 的 doctype 重试耗尽后抛 `IOException`（或非 JSON 抛 `JSONException`），请求层就失败了，页面只显示「网络错误」，排序按钮也进不了风控态。实测形态见 `docs/review/agent-test-guide.md`（`412` + `<!DOCTYPE html>`）。新增 `SearchApi.fallbackToLegacy(keyword, legacyUrl, primary)`：请求层失败时同样兜一次旧接口；旧接口给出明确结论（风控 / 服务端错误码）就用它，两边都失败时**主链路是网络层失败就如实上抛**（真断网别诬陷成风控）、主链路是合法 JSON 的风控降级则抛 `RiskControlException`。
+  - **`getJsonOnce` 名不副实**：它原本仍走 `get()` → `executeWithDoctypeRetry`，而风控页正是 HTML，等于又重试 5 次——注释里「只发一次」是错的。现在改成**直连一次**（自己建 `Request`，不经过 doctype 重试），调用点只有 `SearchApi` 的回退链路。
+  - 清理审查指出的失实/死代码：`SearchSortOptions.SLOT_COUNT` 零引用且注释指向已废弃的 4 格排序条（删）；`SearchApi.resultOrThrow` 上叠加的两段 javadoc（合并）；`refreshSortBar` 的 KDoc 说「点它只提示」但实现会真的 `retry()`（改注释）；`SearchFragment` 未使用的 `ColorScheme` import（删）。
+  - 文档对齐：`FEATURES.md` 的排序按钮说明改成「点它会真的重试一次」；`bilibili-api-notes.md` §3.14 补「三种风控形态都会回退」与「`getJsonOnce` 连 doctype 重试也跳过」；`architecture-map.md` §6 的 http 明文清单移除 `SearchApi`（已改 `httpsUrl()`）。
+  - **验证**：`:app:assembleDebug` 通过；两 flavor 单测各 **87 套 / 941 例 / 0 失败**；markdownlint 40 文件 0 issue。**HTML 风控回退这条新分支没法主动触发**（要 B 站真回拦截页），靠既有纯函数判据 + 构建与单测兜底，如实记在这里。
 - **未做**：用户 / 直播的排序（它们的 `order` 是另一套键：`fans`/`level`、`online`/`live_time`），以及「最多弹幕 / 最多评论」两档（手表屏上弹窗列表已经够长）。
 
 ## 4. 历史章节索引
