@@ -57,6 +57,12 @@ public class SearchApi {
 
         JSONObject all = NetWorkUtil.getJson(ConfInfoApi.signWBI(url)); // 得到一整个json
 
+        if (shouldFallback(all)) {
+            // 风控只拦 wbi 那条，退到旧接口（不带签名）再试一次
+            Object legacyResult = resultOrThrow(keyword, NetWorkUtil.getJson(legacySearchAllUrl(keyword, page)));
+            return legacyResult == null ? null : (JSONArray) legacyResult;
+        }
+
         if (all.isNull("data"))
             return null;
         JSONObject data = all.getJSONObject("data"); // 搜索列表中的data项又是一个json，把它提出来
@@ -64,13 +70,6 @@ public class SearchApi {
         // optString 而非 getString：个别风控/降级响应里没有 seid 字段，getString 会抛 JSONException
         // 把整页搜索结果一起带走
         putSeid(keyword, data.optString("seid", ""));
-
-        if (isRiskControl(data)) {
-            // 风控只拦 wbi 那条，退到旧接口（不带签名）再试一次
-            JSONObject legacy = NetWorkUtil.getJson(legacySearchAllUrl(keyword, page));
-            Object legacyResult = resultOrThrow(keyword, legacy);
-            return legacyResult == null ? null : (JSONArray) legacyResult;
-        }
 
         if (hasResult(data))
             return data.getJSONArray("result"); // 其实这还不是我们要的结果，下面的函数对它进行再次拆解 这里做了判空
@@ -101,17 +100,16 @@ public class SearchApi {
 
         JSONObject all = NetWorkUtil.getJson(ConfInfoApi.signWBI(url)); // 得到一整个json
 
+        if (shouldFallback(all)) {
+            // 风控只拦 wbi 那条，退到旧接口（不带签名）再试一次
+            return resultOrThrow(keyword, NetWorkUtil.getJson(legacySearchTypeUrl(keyword, page, type, order)));
+        }
+
         if (all.isNull("data"))
             return null;
         JSONObject data = all.getJSONObject("data"); // 搜索列表中的data项又是一个json，把它提出来
 
         putSeid(keyword, data.optString("seid", ""));
-
-        if (isRiskControl(data)) {
-            // 风控只拦 wbi 那条，退到旧接口（不带签名）再试一次
-            JSONObject legacy = NetWorkUtil.getJson(legacySearchTypeUrl(keyword, page, type, order));
-            return resultOrThrow(keyword, legacy);
-        }
 
         if (hasResult(data))
             return data.get("result"); // 其实这还不是我们要的结果，下面的函数对它进行再次拆解 这里做了判空
@@ -139,9 +137,23 @@ public class SearchApi {
     }
 
     /**
-     * 搜索接口的**风控降级响应**（26.10.24 实测抓到）：`code` 仍是 0，但 `data` 里
-     * **既没有 `result` 也没有 `seid`**，只有一个 `v_voucher`——
-     * `{"code":0,"message":"OK","data":{"v_voucher":"voucher_…"}}`。
+     * 要不要走旧接口回退。**两种风控形态都要认**（26.10.24 审查发现漏了第二种）：
+     * <ul>
+     *   <li>`code` 是 `-412`（IP 被风控）/ `-352`（wbi 校验失败）——这类响应往往连 `data` 都没有，
+     *       以前会在 {@code if (all.isNull("data")) return null;} 处静默返回 null，页面只剩空列表；</li>
+     *   <li>`code` 是 0，但 `data` 里只有 `v_voucher`（既无 `result` 也无 `seid`）。</li>
+     * </ul>
+     */
+    private static boolean shouldFallback(JSONObject all) {
+        int code = all.optInt("code", 0);
+        if (code == -412 || code == -352) return true;
+        JSONObject data = all.optJSONObject("data");
+        return data != null && isRiskControl(data);
+    }
+
+    /**
+     * 搜索结果的风控降级**内容**判据：`data` 里**既没有 `result` 也没有 `seid`**，只有一个
+     * `v_voucher`——`{"code":0,"message":"OK","data":{"v_voucher":"voucher_…"}}`。
      * <p>
      * 判据只认 `v_voucher`：真正"没有匹配结果"的搜索会返回带 `result` 的响应（数组可能为空），
      * 不能因为 `result` 为空就当成风控。
@@ -155,7 +167,10 @@ public class SearchApi {
      * 让页面把「搜索被B站风控了，过一会儿再试」告诉用户，而不是给一个空列表。
      */
     private static Object resultOrThrow(String keyword, JSONObject all) throws JSONException, RiskControlException {
-        if (all == null || all.isNull("data")) return null;
+        if (all == null) return null;
+        int code = all.optInt("code", 0);
+        if (code == -412 || code == -352) throw new RiskControlException(ApiErrorText.searchRejected());
+        if (all.isNull("data")) return null;
         JSONObject data = all.getJSONObject("data");
         putSeid(keyword, data.optString("seid", ""));
         if (isRiskControl(data)) throw new RiskControlException(ApiErrorText.searchRejected());

@@ -72,6 +72,10 @@ class SearchVideoFragment : SearchFragment() {
                     videoCardAdapter!!.notifyItemRangeInserted(lastSize, list.size)
                 }
             } catch (e: Exception) {
+                // 与成功分支同一个判据：旧排序的失败也不该动状态
+                // （风控链路比正常链路慢，最坏情况是新排序已经刷出来了、旧请求才抛异常，
+                //  那时把按钮锁成「不可用」就冤枉了——26.10.24 审查发现）
+                if (orderAtRequest != sortOrder) return@run
                 if (e is SearchApi.RiskControlException) markSortBlocked(true)
                 e.printStackTrace()
                 loadFail(e)

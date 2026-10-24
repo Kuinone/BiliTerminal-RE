@@ -63,6 +63,8 @@ class SearchArticleFragment : SearchFragment() {
                     }
                 } else bottom = true
             } catch (e: Exception) {
+                // 旧排序的失败同样不该动状态（见 SearchVideoFragment 同处注释）
+                if (orderAtRequest != sortOrder) return@run
                 if (e is SearchApi.RiskControlException) markSortBlocked(true)
                 report(e)
             }

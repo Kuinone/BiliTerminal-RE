@@ -16,6 +16,7 @@ import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 
 import com.RobinNotBad.BiliClient.BiliTerminal
 import com.RobinNotBad.BiliClient.R
+import com.RobinNotBad.BiliClient.api.SearchApi
 import com.RobinNotBad.BiliClient.listener.OnLoadMoreListener
 import com.RobinNotBad.BiliClient.ui.widget.recycler.CustomGridManager
 import com.RobinNotBad.BiliClient.ui.widget.recycler.CustomLinearManager
@@ -211,6 +212,13 @@ open class SearchFragment : Fragment() {
     }
 
     fun report(e: Throwable) {
+        // 风控不是网络错误：`MsgUtil.err` 对任何 IOException 一律换成「网络错误」，
+        // 而 RiskControlException 正是它的子类，不在这里拦一道的话
+        // 「搜索被B站风控了…」只会进 logcat（26.10.24 审查发现）。
+        if (e is SearchApi.RiskControlException) {
+            MsgUtil.showMsg(e.message.orEmpty())
+            return
+        }
         MsgUtil.err(e)
     }
 
@@ -239,6 +247,8 @@ open class SearchFragment : Fragment() {
         this.keyword = keyword
         this.refreshable = true
         bottom = false
+        // 换了关键词就重新给一次机会：上一次被风控锁住的按钮不该一直锁着
+        markSortBlocked(false)
     }
 
     fun refresh() {
@@ -246,6 +256,20 @@ open class SearchFragment : Fragment() {
         refreshable = false
         setRefreshing(true)
         refreshListener!!.onRefresh()
+    }
+
+    /**
+     * 重试当前排序的第一页（清空重拉）。**主线程调用。**
+     *
+     * 给「因B站风控不可用」那个按钮用：不重试的话风控态下既刷不了新页（下拉刷新关着、
+     * 同一个关键词再点搜索会短路），也没有别的入口能解除锁定（26.10.24 审查发现）。
+     */
+    fun retry() {
+        markSortBlocked(false)
+        page = 1
+        bottom = false
+        setRefreshing(true)
+        onSortChanged(sortOrder)
     }
 
     protected open fun refreshInternal() {

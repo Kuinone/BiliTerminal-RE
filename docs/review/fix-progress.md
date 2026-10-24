@@ -1384,6 +1384,11 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
   - 切到**专栏**：按钮文案里的档位变成「阅读量」；切到**用户**、**番剧**：按钮消失。
   - 列表下滑 → 搜索框与排序按钮一起收起、列表顶到顶栏下；回滑恢复。
   - 全程 `logcat` 里 `FATAL EXCEPTION` / `AndroidRuntime` **0 条**。
+- **子代理审查（26.10.24）修掉的 4 条**：
+  - **过期请求的失败会把按钮锁死**：成功分支有 `orderAtRequest != sortOrder` 就丢弃，`catch` 里却没有同样的判断——风控链路比正常链路慢，最坏情况是新排序已经刷出来了、旧请求才抛 `RiskControlException`，于是按钮被冤枉成「不可用」。两处 `catch` 开头补同一个判据。
+  - **`-412` / `-352` 形态漏了**：以前只在 `data` 有 `v_voucher` 时才回退，而 `code=-412` 的响应往往连 `data` 都没有，会走 `if (all.isNull("data")) return null;` 静默返回空列表。新增 `shouldFallback(all)` 同时认两种形态（含 `NetWorkUtil` 重试 5 次后原样返回的 `-412`），旧接口也一样认。
+  - **风控文案被吞成「网络错误」**：`MsgUtil.err` 对任何 `IOException` 一律换成 `err_network`，而 `RiskControlException` 正是它的子类 → 「搜索被B站风控了…」只会进 logcat。改为在 `SearchFragment.report()` 里先拦一道（5 个搜索分类共用）。
+  - **风控态没有重试入口**：按钮只弹提示、下拉刷新关着、同关键词再点搜索会短路，锁定后再也解不开。现在点按钮会真的重拉第一页（`SearchFragment.retry()`），且 `update(keyword)` 换了关键词时会复位。
 - **未做**：用户 / 直播的排序（它们的 `order` 是另一套键：`fans`/`level`、`online`/`live_time`），以及「最多弹幕 / 最多评论」两档（手表屏上弹窗列表已经够长）。
 
 ## 4. 历史章节索引

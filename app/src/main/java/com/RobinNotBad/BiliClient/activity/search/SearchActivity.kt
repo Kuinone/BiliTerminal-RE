@@ -600,6 +600,9 @@ class SearchActivity : InstanceActivity() {
             sortButton.text = getString(R.string.text_search_sort_blocked)
             sortButton.setOnClickListener {
                 MsgUtil.showMsg(getString(R.string.msg_search_sort_retry_later))
+                // 不能只弹提示不干活：风控态下下拉刷新是关的、同关键词再搜也会短路，
+                // 不给一条真正的重试路径的话按钮就永久锁死了（26.10.24 审查发现）
+                fragment.retry()
             }
             sortButton.visibility = View.VISIBLE
             return
