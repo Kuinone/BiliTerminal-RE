@@ -207,6 +207,11 @@ class SearchActivity : InstanceActivity() {
                         (fragmentCurr as SearchFragment).refresh()
                     }
                     refreshSortBar()
+                    // FragmentStateAdapter 是懒创建的：首次切到某个分类时 findFragmentByTag
+                    // 可能还是 null，那一刻 refreshSortBar 只能判成「本分类不支持排序」把按钮收掉，
+                    // 而 sortBarEligible 是缓存值，之后没人重算——按钮会一直缺到下一次切页。
+                    // 下一帧补算一次即可（幂等，按当时的 currentItem 算，不会自旋）。
+                    viewPager.post { refreshSortBar() }
                 }
             })
 

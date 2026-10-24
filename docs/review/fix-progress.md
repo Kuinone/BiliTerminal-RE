@@ -1418,7 +1418,8 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
   - **`getJsonOnce` 名不副实**：它原本仍走 `get()` → `executeWithDoctypeRetry`，而风控页正是 HTML，等于又重试 5 次——注释里「只发一次」是错的。现在改成**直连一次**（自己建 `Request`，不经过 doctype 重试），调用点只有 `SearchApi` 的回退链路。
   - 清理审查指出的失实/死代码：`SearchSortOptions.SLOT_COUNT` 零引用且注释指向已废弃的 4 格排序条（删）；`SearchApi.resultOrThrow` 上叠加的两段 javadoc（合并）；`refreshSortBar` 的 KDoc 说「点它只提示」但实现会真的 `retry()`（改注释）；`SearchFragment` 未使用的 `ColorScheme` import（删）。
   - 文档对齐：`FEATURES.md` 的排序按钮说明改成「点它会真的重试一次」；`bilibili-api-notes.md` §3.14 补「三种风控形态都会回退」与「`getJsonOnce` 连 doctype 重试也跳过」；`architecture-map.md` §6 的 http 明文清单移除 `SearchApi`（已改 `httpsUrl()`）。
-  - **验证**：`:app:assembleDebug` 通过；两 flavor 单测各 **87 套 / 941 例 / 0 失败**；markdownlint 40 文件 0 issue。**HTML 风控回退这条新分支没法主动触发**（要 B 站真回拦截页），靠既有纯函数判据 + 构建与单测兜底，如实记在这里。
+  - **切到首次访问的分类时排序按钮可能一直不出现**（审查「疑点 A」的加固）：`FragmentStateAdapter` 是懒创建的，`onPageSelected` 里 `findFragmentByTag("f$position")` 可能还是 null，那一刻 `refreshSortBar` 只能判成「本分类不支持排序」把按钮收掉，而 `sortBarEligible` 是缓存值、之后没人重算。现在 `onPageSelected` 之后 `viewPager.post { refreshSortBar() }` 补算一次（幂等，按当时的 currentItem 算，不会自旋）。审查侧的观察是「切 tab 时整体收起、上滑一次即恢复」，判断为 main 既有逻辑而非本功能引入；这条补算属于顺手加固，不是回归修复。
+  - **验证**：`:app:assembleDebug` 通过；两 flavor 单测各 **87 套 / 941 例 / 0 失败**；markdownlint 40 文件 0 issue。**HTML 风控回退这条新分支没法主动触发**（要 B 站真回拦截页），靠既有纯函数判据 + 构建与单测兜底，如实记在这里；本轮也**未上设备实测**（模拟器已关闭，且这条路径模拟器同样复现不了）。
 - **未做**：用户 / 直播的排序（它们的 `order` 是另一套键：`fans`/`level`、`online`/`live_time`），以及「最多弹幕 / 最多评论」两档（手表屏上弹窗列表已经够长）。
 
 ## 4. 历史章节索引
