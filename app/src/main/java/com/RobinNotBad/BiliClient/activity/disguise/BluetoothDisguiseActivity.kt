@@ -55,12 +55,6 @@ class BluetoothDisguiseActivity : AppCompatActivity() {
      *
      * 用 `postDelayed` 而不是系统的 `setOnLongClickListener`：手表上很多 ROM 的长按延迟被调过，
      * 这里要的是"够久、试不出来"，所以自己计时，并在 `ACTION_UP` / `ACTION_CANCEL` 时取消。
-     */
-    /**
-     * 长按标题 2 秒退出伪装。
-     *
-     * 用 `postDelayed` 而不是系统的 `setOnLongClickListener`：手表上很多 ROM 的长按延迟被调过，
-     * 这里要的是"够久、试不出来"，所以自己计时，并在 `ACTION_UP` / `ACTION_CANCEL` 时取消。
      *
      * **`ACTION_DOWN` 必须返回 true**：返回 false 时这个 View 没有成为触摸目标，
      * 系统不再给它派发后续的 `UP` / `CANCEL`，`removeCallbacks` 永远执行不到 ——

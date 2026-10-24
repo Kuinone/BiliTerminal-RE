@@ -20,6 +20,7 @@
 | 改教程系统 | [`tutorial-system-redesign.md`](tutorial-system-redesign.md) | 重做进行中，旧链路未删完——**动之前先读它** |
 | 改菜单设置 / 启动页 | [`superpowers/specs/2026-10-20-menu-start-page.md`](superpowers/specs/2026-10-20-menu-start-page.md) | 启动页单选（默认推荐、失效写回）与说明块折叠/长按隐藏的需求、验收与设计 |
 | 改短视频取流 | [`superpowers/specs/2026-10-21-short-video-feed-protocol.md`](superpowers/specs/2026-10-21-short-video-feed-protocol.md) | 取流参数、分页状态归属、横屏过滤与跨批去重、降级池策略；动 `ShortVideoFeedApi` 前先读 |
+| 改伪装页 / 顶栏双击手势 | [`superpowers/specs/2026-10-22-disguise-mode.md`](superpowers/specs/2026-10-22-disguise-mode.md) | 需求与验收口径、三个存储键、手势层接线点、两种样式的退出方式、已知取舍（单击多等 0.3 秒 / 忘了暗号只能强杀） |
 | 改用户看到的任何文案 | 直接改 `app/src/main/res/values/strings.xml` | **用户可见文案已集中到这一处**（26.10.19 完成，见 [`copy-inventory/STRINGS-MIGRATION.md`](copy-inventory/STRINGS-MIGRATION.md) 第九节）；想知道某句话原本出现在哪个页面/干什么用，查 [`copy-inventory/`](copy-inventory/README.md) 的 7 份清单（1012 条）；改之前先读 [`copy-inventory/GUIDE.md`](copy-inventory/GUIDE.md) 的红线 |
 | 看用户能用到什么 | [`FEATURES.md`](FEATURES.md) | 用户视角功能总表（对应用户文档，不含实现细节） |
 | 查 B 站接口字段 | [`../bilibili-API/`](../bilibili-API/) | 上游接口文档快照（**注意上游已关停，见 `bilibili-api-notes.md` §1 的合规风险**） |
@@ -31,12 +32,12 @@
 
 | 分册 | 内容 | 触发时机 |
 | --- | --- | --- |
-| [`agents/dev-conventions.md`](agents/dev-conventions.md) | 列表页 / 菜单 / 横滑翻页 / 设置项与子页面 / 外观设置 / 弹窗 / 排序分区 / 请求解析分离 / 用户可见文案 | 写界面与功能时 |
+| [`agents/dev-conventions.md`](agents/dev-conventions.md) | 列表页 / 菜单 / 横滑翻页 / 设置项与子页面 / 外观设置 / 弹窗 / 伪装页 / 排序分区 / 请求解析分离 / 用户可见文案 | 写界面与功能时 |
 | [`agents/security.md`](agents/security.md) | exported、https 与明文白名单、allowBackup、调试页只进 Debug、DUMP 权限、调试开关即改即生效 | 动清单 / 网络 / 备份 / 调试入口时 |
 | [`agents/build.md`](agents/build.md) | 构建任务名与 flavor、build_tui.py、adb / 模拟器、工具链、gradle.properties、build cache 回放、增量编译坏掉、量体积与 APK 构成、原生库 | 构建 / 单测 / 装包 / 构建报怪错时 |
 | [`agents/release.md`](agents/release.md) | Release 说明硬要求、relay 中转、附件名白名单、老客户端 config.json、build_only | 发版 / 改更新日志时 |
 | [`agents/workflow.md`](agents/workflow.md) | 小步提交、一律推 main 与 commit 格式、改完必须自测（MuMu）、小改动不必上模拟器的判据 | 准备提交 / 准备说"应该没问题"时 |
-| [`agents/pitfalls.md`](agents/pitfalls.md) | 仍存在的已知坑：API 重复解析、跨包 id、notifyItemRangeInserted、通知 ID、下载锁、播放器 / 弹幕 / 保亮屏 / 原生库 / 主线程判活 | 改这些易踩区之前 |
+| [`agents/pitfalls.md`](agents/pitfalls.md) | 仍存在的已知坑：API 重复解析、跨包 id、notifyItemRangeInserted、通知 ID、下载锁、播放器 / 弹幕 / 保亮屏 / 原生库 / 主线程判活、伪装与顶栏手势 | 改这些易踩区之前 |
 | [`agents/docs.md`](agents/docs.md) | 改完同步文档的落点表、markdownlint 命令与豁免、copy-inventory 逐字素材 | 每个改动收尾时 |
 
 ## 文档清单（活）
@@ -55,6 +56,7 @@
 | [`superpowers/specs/2026-10-11-player-network-resilience.md`](superpowers/specs/2026-10-11-player-network-resilience.md) | 播放器弱网 / 直播 / 长视频：同类产品与官方做法调研 + P0–P2 建议清单（§2.4 是本仓库 `.so` 的选项存在性实测） | 动播放器网络 / 缓冲参数时 |
 | [`superpowers/specs/2026-10-20-menu-start-page.md`](superpowers/specs/2026-10-20-menu-start-page.md) | 菜单启动页与菜单设置说明改造：需求、验收标准、存储键与行结构设计 | 改菜单设置 / 启动流程时 |
 | [`superpowers/specs/2026-10-21-short-video-feed-protocol.md`](superpowers/specs/2026-10-21-short-video-feed-protocol.md) | 竖屏短视频取流协议修订：参数约定、会话级分页状态、横屏过滤、跨批去重、降级池与验收标准 | 改短视频取流 / 排查短视频页内容异常时 |
+| [`superpowers/specs/2026-10-22-disguise-mode.md`](superpowers/specs/2026-10-22-disguise-mode.md) | 伪装与安全：双击顶栏触发、两种样式与各自退出方式、三个存储键、手势层三个接线点、验收标准与已知取舍 | 改伪装页 / 顶栏双击手势时 |
 | [`tutorial-system-redesign.md`](tutorial-system-redesign.md) | 教程系统重做（含 §五 待办 4 项） | 动教程时 |
 | [`copy-inventory/README.md`](copy-inventory/README.md) | 全仓文案清单总索引（7 份、1012 条：`A` 应用身份 / `L` 更新日志 / `T` 教程 / `S` 设置项 / `U` 页面静态文案 / `M` 运行时提示 / `E` 彩蛋） | 改文案时按需打开对应那一份，改完在「改写」栏回填 |
 | [`copy-inventory/GUIDE.md`](copy-inventory/GUIDE.md) | 文案改写指南：同一句话的多出处、四种改法、十条红线、手表字数常识、自查清单、FAQ、**怎么把新文案交给 agent** | **动手改文案前先读这一份**，比总索引更先看 |

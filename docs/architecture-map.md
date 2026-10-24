@@ -1337,7 +1337,7 @@ CenterThreadPool.supplyAsyncWithLiveData { fetch...().getOrThrow() }
 
 ### 7.53 顶栏双击：必须自己接管触摸，用 `performClick()` 回放原动作（26.10.22，issue #22）
 
-- **场景**：双击顶栏一键切到伪装页（假计算器 / 假「蓝牙已断开」，见 `docs/FEATURES.md` §19 与 `docs/review/fix-progress.md` §3.59）。
+- **场景**：双击顶栏一键切到伪装页（假计算器 / 假「蓝牙已断开」，见 `docs/FEATURES.md` §19、`docs/superpowers/specs/2026-10-22-disguise-mode.md` 与 `docs/review/fix-progress.md` §3.59）。
 - **为什么不能只加一个 `OnDoubleTapListener`**：顶栏单击的语义是「返回上一页 / 打开菜单」，长按是「打开菜单列表」。双击的**第一次抬手已经是一次完整 click** —— 若还让 View 自己发 click，页面先被 `finish()`，第二次点击根本落不到同一个 View 上。
 - **正确做法**（`BaseActivity.setupTopbarDoubleTapDisguise`）：
   - `OnTouchListener` 返回 `true` 消费全部触摸（View 不再自己发 click/longclick），事件喂给 `GestureDetector`；

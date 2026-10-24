@@ -1305,6 +1305,7 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
 
 ### 3.59 新增「伪装与安全」：双击顶栏切到假计算器 / 假蓝牙提示（issue #22，26.10.22）
 
+- **需求与验收口径见 `docs/superpowers/specs/2026-10-22-disguise-mode.md`**（Gitee 侧 issue #22，GitHub 镜像上没有该编号；技术坑见 `docs/architecture-map.md` §7.53、`docs/agents/pitfalls.md`「伪装与顶栏手势」）。
 - **需求**（issue #22，用户定的三条口径）：① 两种样式都做、可在设置里选；② 计算器的退出方式是「输入暗号再按 `=`」；③ 做成设置开关、**默认关**；触发方式为**双击顶栏**。
 - **新增**：
   - `util/DisguisePrefs.kt`：开关 / 样式（`calculator` / `bluetooth`）/ 暗号（4~8 位数字）与纯函数 `normalizeCode`、`matchesSecret`。暗号**只允许数字**，否则计算器上敲不出来 = 用户把自己锁在伪装页里，只能强杀应用。
@@ -1314,7 +1315,7 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
   - `activity/disguise/DisguiseLauncher`：按设置选样式的唯一入口。
   - `BaseActivity.setupTopbarDoubleTapDisguise`：顶栏手势层，技术结论见 `docs/architecture-map.md` §7.53。
   - 设置：新分组 `GROUP_DISGUISE`（「伪装与安全」）+ `SettingMainActivity` 一级入口 + `SettingsIndex` 搜索条目；`strings.xml` 全部文案；清单两个 Activity 均 `exported="false"` 并各带伪装主题。
-- **单测**：`CalculatorEngineTest` 12 例（空表达式、单数字、加减、乘除优先、小数显示、整除不带 `.0`、末尾运算符、连续运算符、除零、非法输入、`*` `/` 等价、负数）、`DisguisePrefsTest` 7 例（合法/裁空格/长度/非数字/匹配/非法暗号恒不匹配/样式合法性）。合并上游后的全量基线是 **79 类 / 841 例 / 0 失败**。
+- **单测**：`CalculatorEngineTest` 14 例（空表达式、单数字、加减、乘除优先、小数显示、整除不带 `.0`、末尾运算符、连续运算符、除零、非法输入、`*` `/` 等价、负数续算、`5×-2`）、`DisguisePrefsTest` 7 例（合法/裁空格/长度/非数字/匹配/非法暗号恒不匹配/样式合法性），伪装相关共 **21 例**。合并上游后的全量基线是 **79 类 / 841 例 / 0 失败**。
 - **模拟器实测（MuMu Android 15 x86_64，coexist debug，用户本人操作）**：双击顶栏 → `WindowManagerShell` 日志确认 `CalculatorDisguiseActivity` 在 display 22 打开；输入暗号按 `=` → `disguise>暗号命中，退出伪装` 并回到原页面；全程 **0 条 `FATAL EXCEPTION` / `AndroidRuntime` 异常**；`BaseActivity>setupTopbarDoubleTapDisguise: 顶栏双击伪装已就绪` 在每个页面正常打印。
 - **手表端**：**维护者已人工实测通过**（26.10.23，维护者自述）：双击顶栏可切到伪装页、计算器能算、暗号能退出、蓝牙样式轻点不再误退出。仍缺设备侧验证的是「单击顶栏那个 0.3 秒双击判定窗口在手表上的手感」与「半透明蓝牙提示页在圆屏上的布局」——这两条只能在圆屏真机上肉眼判断。
 
