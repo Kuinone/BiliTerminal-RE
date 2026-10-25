@@ -14,11 +14,13 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import androidx.multidex.MultiDex
+import com.RobinNotBad.BiliClient.activity.SplashActivity
 import com.RobinNotBad.BiliClient.activity.base.InstanceActivity
 import com.RobinNotBad.BiliClient.activity.settings.UpdateActivity
 import com.RobinNotBad.BiliClient.activity.user.info.UserInfoActivity
 import com.RobinNotBad.BiliClient.api.DynamicApi
 import com.RobinNotBad.BiliClient.api.MessageApi
+import com.RobinNotBad.BiliClient.model.UpdateConfig
 import com.RobinNotBad.BiliClient.tutorial.TutorialStore
 import com.RobinNotBad.BiliClient.util.BangumiUpdateChecker
 import com.RobinNotBad.BiliClient.util.CenterThreadPool
@@ -106,6 +108,55 @@ class BiliTerminal : Application() {
             SharedPreferencesUtil.removeValue("force_update_version_name")
             SharedPreferencesUtil.removeValue("force_update_description")
             SharedPreferencesUtil.removeValue("force_update_download_url")
+        }
+
+        /**
+         * 非强制更新时「待自动打开更新页」的版本信息（26.10.25）。
+         *
+         * 检查更新是异步的，结果可能在**启动页还在播动画时**返回：此刻直接 startActivity，
+         * 启动页随后拉起首屏的动作会把它盖在下面，用户根本看不到。所以先记下，
+         * 等前台页就绪（[onActivityResumed] 回调）再打开。
+         */
+        @Volatile
+        private var pendingAutoOpenUpdate: UpdateConfig? = null
+
+        /**
+         * 记下「发现新版本（非强制）」并尝试立刻打开更新页。
+         *
+         * 「一个版本只自动跳一次」由调用方按 `update_last_new_version` 过滤（该键在更新页
+         * 打开时写入）；页面拉不起来时才退回原来那条「发现新版本」Toast，至少让用户知道有新版。
+         */
+        private fun requestAutoOpenUpdatePage(config: UpdateConfig) {
+            pendingAutoOpenUpdate = config
+            tryShowAutoOpenUpdatePage()
+        }
+
+        /**
+         * 前台页就绪时打开挂起的更新页。
+         *
+         * 启动页（[SplashActivity]）不算就绪：它稍后还会 startActivity(首屏)，此时打开的
+         * 更新页会被盖住；已在更新页时也不再叠一层。
+         */
+        private fun tryShowAutoOpenUpdatePage() {
+            val config = pendingAutoOpenUpdate ?: return
+            val activity = getCurrentActivity() ?: return
+            if (activity is SplashActivity) return
+            pendingAutoOpenUpdate = null
+            if (activity is UpdateActivity) return
+            try {
+                val intent = Intent(activity, UpdateActivity::class.java)
+                intent.putExtra("has_config", true)
+                intent.putExtra("version_code", config.versionCode)
+                intent.putExtra("version_name", config.versionName)
+                intent.putExtra("description", config.description)
+                intent.putExtra("download_url", config.downloadUrl)
+                intent.putExtra("force_update", false)
+                activity.startActivity(intent)
+                Logu.i("更新检查", "发现新版本 ${config.versionName}，已自动打开更新页")
+            } catch (e: Exception) {
+                Logu.w("更新检查", "自动打开更新页失败：${e.message}")
+                MsgUtil.showMsg(UiText.of("发现新版本 ") + config.versionName)
+            }
         }
 
         @JvmStatic
@@ -376,6 +427,9 @@ class BiliTerminal : Application() {
                     // 26.10.14：同时留一个弱引用给调试桥——agent 靠它回答「现在停在哪个页面」，
                     // 这是纯 UI 自动化做不到的（手表上 uiautomator 又慢又常拿不到窗口）。
                     currentActivityRef = WeakReference(activity)
+                    // 26.10.25：检查更新结果可能在启动页期间就返回，那时不能直接跳更新页
+                    // （会被启动页随后的首屏盖住），挂起到这里——首屏 resumed 后再打开。
+                    tryShowAutoOpenUpdatePage()
                 }
 
                 override fun onActivityPaused(activity: Activity) {}
@@ -488,10 +542,15 @@ class BiliTerminal : Application() {
                             } else {
                                 clearForceUpdate()
                                 val lastNewVersion = SharedPreferencesUtil.getInt("update_last_new_version", 0)
-                                if (config.versionCode != lastNewVersion) {
-                                    CenterThreadPool.runOnUiThread {
-                                        MsgUtil.showMsg(UiText.of("发现新版本 ") + config.versionName)
-                                    }
+                                // 26.10.25 用户要求：发现新版本时不再只弹一条 Toast（手表上很容易错过），
+                                // 而是直接跳到「检查更新/下载」页，用户点「下载更新」即可。
+                                if (UpdateManager.shouldAutoOpenUpdatePage(
+                                        config,
+                                        UpdateManager.getCurrentVersion(),
+                                        lastNewVersion
+                                    )
+                                ) {
+                                    CenterThreadPool.runOnUiThread { requestAutoOpenUpdatePage(config) }
                                 }
                             }
                         } else {

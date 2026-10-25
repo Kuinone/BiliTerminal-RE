@@ -23,8 +23,8 @@
 | 关于页「本次更新」区块 | `activity/settings/AboutActivity.kt:78-86` | 把 `update_log_current` 全部条目用 `\n` 拼成一大段，塞进一个可长按复制的 TextView；上面标题是「本次更新 (版本名)」 |
 | 更新日志页（历史） | `activity/settings/UpdateHistoryActivity.kt` | 顶部一排**版本号选项卡**（`26.10.16`、`26.10.14`…），下面渲染「Re：哔哩终端 26.10.16」+ 该版本所有行。**没有预览、没有分页，一屏滚动** |
 | 检查更新页 | `activity/settings/UpdateActivity.kt` + `res/layout/activity_update.xml` | 标题「发现新版本」、版本行、新版本说明卡片、底部两个按钮；下载时换成进度条 + 取消/重试 |
-| 强制更新 | `BiliTerminal.kt:352-363` 拦截所有 Activity | 任何页面被强行拉起检查更新页，且底部按钮变成「退出应用」 |
-| 启动时的更新提示 | `BiliTerminal.kt:491`（Toast）、`AppInfoApi.java:84-94` | 非强制更新只弹一条 Toast「发现新版本 X」；升级后启动还会顺手删掉旧安装包 |
+| 强制更新 | `BiliTerminal.kt:404-420` 拦截所有 Activity | 任何页面被强行拉起检查更新页，且底部按钮变成「退出应用」 |
+| 启动时的更新提示 | `BiliTerminal.kt:507-565`（检查更新）、`AppInfoApi.java:84-94` | 非强制更新**自动跳到更新页**「发现新版本 X」（26.10.25 起；页面拉不起来才退回 Toast）；升级后启动还会顺手删掉旧安装包 |
 
 渲染规则补充（改文案时会直接受影响）：
 
@@ -379,11 +379,11 @@
 
 ## 四、强制更新与启动时的提示（6 条）
 
-### L-032 启动时发现新版本（非强制）Toast
+### L-032 启动时发现新版本（非强制）
 
-- **位置**：`app/src/main/java/com/RobinNotBad/BiliClient/BiliTerminal.kt:491`（`MsgUtil.showMsg("发现新版本 " + config.versionName)`）
-- **出现在哪**：应用启动后，底部 Snackbar。**同一个 versionCode 只弹一次**（跟 SP 里的 `update_last_new_version` 比对，`:488-489`）
-- **用途**：不打扰地提示有新版
+- **位置**：`app/src/main/java/com/RobinNotBad/BiliClient/BiliTerminal.kt:158`（`MsgUtil.showMsg(UiText.of("发现新版本 ") + config.versionName)`）——**只在自动打开更新页失败时兜底**；正常路径在 `BiliTerminal.kt:545-555`：判定要自动跳后挂起 `pendingAutoOpenUpdate`，等前台页就绪（`onActivityResumed`）再打开 `UpdateActivity`。
+- **出现在哪**：应用启动后，底部 Snackbar。26.10.25 起正常情况下**不再出现这条提示**——发现非强制新版本会自动跳到更新页（页面本身文案见本文件第二节）；**同一个 versionCode 只自动跳一次**（跟 SP 里的 `update_last_new_version` 比对，该键由更新页 `showUpdateInfo()` 写入）。
+- **用途**：自动打开更新页失败时，至少提示用户有新版。
 - **原文**：
 
 > 发现新版本 %s
@@ -426,7 +426,7 @@
 
 - **位置**：名称在 `app/src/main/java/com/RobinNotBad/BiliClient/activity/settings/SettingPrefActivity.kt:53`（字面量）；说明在 `app/src/main/res/values/strings.xml:59`（`R.string.text_update_background_check_desc`）
 - **出现在哪**：设置 → 播放与界面 →（`SettingPrefActivity` 的 switch 分组）一个开关，默认 `true`
-- **用途**：关掉它 = `BiliTerminal.checkAppUpdate()` 直接 return（`BiliTerminal.kt:452`）
+- **用途**：关掉它 = `BiliTerminal.checkAppUpdate()` 直接 return（`BiliTerminal.kt:508`）
 - **原文**：
 
 > 后台自动检查更新
@@ -1042,7 +1042,7 @@
   - `app/src/main/java/com/RobinNotBad/BiliClient/activity/settings/AboutActivity.kt:62-95`（本次更新区块）。
   - `app/src/main/java/com/RobinNotBad/BiliClient/util/ToolsUtil.java:54-61`（`getUpdateLog`）。
   - `app/src/main/java/com/RobinNotBad/BiliClient/api/AppInfoApi.java:70-108`（版本升级分支）。
-  - `app/src/main/java/com/RobinNotBad/BiliClient/BiliTerminal.kt:325-364`（强制更新拦截）、`:451-504`（后台检查更新）。
+  - `app/src/main/java/com/RobinNotBad/BiliClient/BiliTerminal.kt:404-420`（强制更新拦截）、`:507-565`（后台检查更新）。
   - `app/src/main/java/com/RobinNotBad/BiliClient/util/UpdateManager.kt`（grep 中文串，异常消息另见 06）、`util/UpdateRelease.kt`（grep）。
   - grep 复核：`update_tip` / `update_log_current` / `update_history_log` / `update_log_items` / `text_update` / `warning_debug` / `text_new_version_released` / `getUpdateLog` 全仓交叉验证引用情况。
 - **明确排除 / 交给别人的**：

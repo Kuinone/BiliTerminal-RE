@@ -313,7 +313,7 @@ GET https://api.bilibili.com/x/...&dm_img_list=…&dm_img_inter=…&dm_cover_img
 
 ## 6. 已知限制与坑
 
-下表**每一条都是 Android 12 真机实测踩出来的**，不是推测。
+下表**每一条都是实测踩出来的**（真机 Android 12 为主，模拟器条目已注明），不是推测。
 
 | 现象 | 原因 | 处理 |
 | --- | --- | --- |
@@ -328,6 +328,7 @@ GET https://api.bilibili.com/x/...&dm_img_list=…&dm_img_inter=…&dm_cover_img
 | `http` 命令偶发超时 | 刻意把超时压到连接 5s / 读 8s 且不重试——它跑在广播的 `goAsync()` 窗口里，按默认的 8s+16s×5 次重试会直接把广播拖成 ANR | 属预期；长耗时请求不要走这个命令 |
 | 日志里 `Log.d` 之类的内容不见了 | 那是 38 个文件里的裸 `android.util.Log`，不走 `Logu`、不落盘 | 用 `adb logcat` 全量看，或后续收口 |
 | 装了 `standardDebug` 后正式版没了 | 包名相同、签名不同，安装时覆盖/卸载了正式版 | 改用 `coexistDebug`（见 §2.1） |
+| 模拟器里应用报 `Unable to resolve host "gitee.com"`，`adb shell ping 10.0.2.3` 也不通（**模拟器条目**） | AVD 冷启动后 Wi-Fi 默认没连上（`wlan0` DOWN、`ip route` 为空），**不是应用缺陷**；26.10.25 Wear 模拟器实测 | `adb shell svc wifi enable`，再 `adb shell cmd wifi connect-network AndroidWifi open`（网络名用 `cmd wifi list-networks` 确认）；`ip addr` 看到 `wlan0` 拿到 `10.0.2.16/24` 即通 |
 
 ---
 

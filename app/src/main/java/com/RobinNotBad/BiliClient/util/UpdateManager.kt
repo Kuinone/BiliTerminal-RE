@@ -82,6 +82,27 @@ private const val BETA_TEXT_MAX_BYTES = 2L * 1024 * 1024
     }
 
     /**
+     * 发现新版本后是否要**自动跳到更新/下载页**（26.10.25 用户要求）。
+     *
+     * 纯函数（不碰 Context / SharedPreferences），便于 JVM 单测。三个条件缺一不可：
+     * 1. 不是强制更新——强制更新由启动拦截链路直接拉起更新页，这里再跳会重复；
+     * 2. 发行版确实比已装版本新；
+     * 3. 这个版本还没被提示过——`update_last_new_version` 由更新页打开时写入，
+     *    所以「一个版本只自动跳一次」；用户看过却选择暂不更新，就不再反复打扰。
+     *
+     * @param installedVersionCode 当前已安装版本（见 [getCurrentVersion]）
+     * @param lastSeenVersion 上次打开更新页时记下的版本号（`update_last_new_version`）
+     */
+    fun shouldAutoOpenUpdatePage(
+        config: UpdateConfig,
+        installedVersionCode: Int,
+        lastSeenVersion: Int
+    ): Boolean =
+        !config.isForceUpdate &&
+            config.versionCode > installedVersionCode &&
+            config.versionCode != lastSeenVersion
+
+    /**
      * 内测包解析：用户输入的纯数字内测码 → 分享站上的 APK 直链。
      *
      * 分享站有两个域名（[BetaUpdate.HOSTS]），哪个域名有包就从哪个下载：

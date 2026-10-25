@@ -1530,6 +1530,24 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
 - **实测（MuMu Android 15 x86_64 / coexist debug）**：菜单页 `^`（自身，收起菜单）；「设置」`⌄`、「我的」`⌄` 且点顶栏打开 `MenuActivity` ✓；「TO DO清单」`‹` 且点顶栏返回 `SettingMainActivity` ✓；「更多」仍是 `‹` 且返回 ✓；`logcat` 0 条 `FATAL EXCEPTION`。
 - 规则已记进 `docs/agents/pitfalls.md`「基类与列表」。
 
+### 3.69 启动时发现新版本自动跳到更新页（26.10.25，用户要求）
+
+- **缘起**：用户要求「先同步远端仓库，之后修改，当发现新版本的时候自动跳转到下载页面」。手表屏小，此前非强制更新只在启动时闪一条 Toast「发现新版本 x.y.z」（`BiliTerminal.kt` 旧 `:491`），用户很容易错过、也就不会去更新。
+- **改法（3 个文件）**：
+  - `util/UpdateManager.kt:96` 新增纯函数 `shouldAutoOpenUpdatePage(config, installedVersionCode, lastSeenVersion)`：**非强制** 且 `config.versionCode > installedVersionCode` 且 `config.versionCode != lastSeenVersion` 才返回 true。不碰 `Context` / `SharedPreferences`，直接 JVM 单测。
+  - `BiliTerminal.kt` 非强制分支（现 `:545-555`）不再直接弹 Toast：条件满足时 `CenterThreadPool.runOnUiThread { requestAutoOpenUpdatePage(config) }`。`requestAutoOpenUpdatePage()`（`:129`）把版本存进 `@Volatile pendingAutoOpenUpdate`（`:121`）再尝试打开；`tryShowAutoOpenUpdatePage()`（`:140`）在前台 Activity 就绪时 `startActivity(UpdateActivity)`，extras 与强制更新链路一致（`has_config` / `version_code` / `version_name` / `description` / `download_url` / `force_update=false`）；页面拉不起来时退回原来那条 Toast（`:158`）。
+  - `onActivityResumed`（`:432`）末尾再调一次 `tryShowAutoOpenUpdatePage()`——**检查更新是异步的，结果可能在启动页还在播动画时返回**，那时直接 `startActivity` 会被启动页随后拉起首屏的动作盖住；`SplashActivity` 不算就绪，已在 `UpdateActivity` 上也不再叠一层。
+  - 「一个版本只自动跳一次」不加新状态：更新页 `showUpdateInfo()` 本来就写 `update_last_new_version`，这里直接复用（用户看过没更新就不再反复打扰）。强制更新链路（`forceUpdateBlocking` + `onActivityPreCreated` 拦截）未改。
+  - 新增 `app/src/test/java/com/RobinNotBad/BiliClient/util/UpdateManagerAutoOpenTest.kt` 6 例：首次见到新版 / 上次记录更旧 → 跳；强制更新 / 已看过 / 同版本 / 更旧发行版 → 不跳。
+- **验证**：
+  - 构建：`:app:assembleDebug` 双 flavor 成功；`:app:testStandardDebugUnitTest`、`:app:testCoexistDebugUnitTest` 成功，`UpdateManagerAutoOpenTest` 6 例 0 失败。
+  - 设备侧（SDK AVD `wear5`，Android 14 / 466×466 圆屏，`coexistDebug` universal 包；**临时**把 `versionCode` 降到 `2610230` 造出「已装 < Gitee 最新 `2610240`」，测完已改回 `2610242`）：
+    - 首启：`logcat` 有 `更新检查>发现新版本 26.10.24，已自动打开更新页`；前台 Activity = `UpdateActivity`，页面显示「发现新版本 / 版本 26.10.24 (2610240) / 取消 / 下载更新」。
+    - 更新页打开后 `default.xml` 里 `update_last_new_version=2610240`；杀进程再启动，前台停在 `RecommendActivity`、无自动打开日志 → 「一版一次」生效。
+    - 环境坑：AVD 启动后 Wi-Fi 默认没连（`wlan0` DOWN、`ip route` 为空），应用报 `Unable to resolve host "gitee.com"`；`adb shell svc wifi enable` + `adb shell cmd wifi connect-network AndroidWifi open` 连上 `10.0.2.16` 后才能测（已记进 `docs/review/agent-test-guide.md` §6）。
+- **遗留**：①**启动期若恰好有新公告**（`TerminalApi.checkAnnouncement` 把服务端返回的未读公告逐条 `MsgUtil.showText`，只记最大 id），公告页会叠在更新页之上，按返回逐层退出后才能看到更新页——这是既有启动公告行为，本次不改（用延迟/重排去抢时序太脆弱）；用户已读过最新公告（常态）时不出现。②真手表未验证，只有 SDK AVD。
+- **文档**：`docs/FEATURES.md` §14.15 与「后台检查更新」、`docs/copy-inventory/02-update-log.md` L-032、`docs/architecture-map.md`（启动链路 + 改功能注意）。
+
 ## 4. 历史章节索引
 
 > 完整正文在 `docs/archive/review/fix-progress-history.md`。**编号在历史上有重复**（`## 二十二` / `## 二十九` 各出现两次、`## 30.` 是阿拉伯数字写法，原为不打断既有交叉引用而保持不动），下表**以归档文件的物理行序为准**。

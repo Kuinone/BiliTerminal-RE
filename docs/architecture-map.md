@@ -192,6 +192,8 @@ BiliTerminal.onCreate()
    ├─ ErrorCatch.init / applyLogSwitches()
    ├─ 后台异步：动态更新数、消息未读数（仅已登录 mid != 0）
    └─ checkAppUpdate()                          ← 读 Gitee（失败回落 GitHub）的 releases/latest
+        │                                         强制更新 → 立即拦截拉起 UpdateActivity
+        └─ 非强制更新 → 挂起待跳，等前台页就绪（onActivityResumed）再打开 UpdateActivity
         ↓
 SplashActivity（LAUNCHER，typewriter 动画）
    ├─ Debug 包先要悬浮窗权限（UETool）
@@ -213,6 +215,7 @@ SplashActivity（LAUNCHER，typewriter 动画）
 - **`CatchActivity` 跑在 `:error_activity` 独立进程**（26.10.04 批次 3，`AndroidManifest.xml` 的 `android:process`）。主进程已崩溃时，同进程再启 Activity 容易被一起带走，所以崩溃页必须自给自足：它**不会**经过 `PerformanceManager.init`、`ErrorCatch.init`、未读轮询、更新检查。往 `CatchActivity` 加依赖前先确认那个依赖不要求这些初始化。判进程用 `BiliTerminal.currentProcessName()`（读 `/proc/self/cmdline`——`minSdk 19` 用不了 API 28 的 `Application.getProcessName()`）。
 - 首屏由**用户自定义菜单顺序**决定，不是硬编码 `RecommendActivity`。改导航时注意 `loadMenuEnabled()`。
 - `onActivityPreCreated` 的强制更新拦截会 **finish 掉任意 Activity**，调试时若被"莫名其妙踢到更新页"，检查 `force_update_required` 这个 SharedPreferences 键。
+- **启动期不要直接 `startActivity`**：更新检查是异步的，结果可能在启动页还在播动画时返回，此时打开的页面随后会被首屏盖住。非强制更新的自动跳页因此走 `BiliTerminal` 的 `pendingAutoOpenUpdate` + `onActivityResumed`（`SplashActivity` 不算就绪），一个版本只跳一次（键 `update_last_new_version`）。加同类"启动后自动跳页"功能时照抄这条，别在后台回调里直接拉页面。
 - **公告只有一个源**：客户端已**不再直连上游** `api.biliterminal.cn` 的公告接口。上游公告改由自建服务端拉取、管理员在控制台**逐条**审核后透传（`source=relay`），启动差量弹窗与「公告列表」都只读 `TerminalApi.checkAnnouncement()` / `getOwnAnnouncementList()`。**别在客户端重新加回「两路合并」**（26.10.23 已整体删除）。
 
 ---
