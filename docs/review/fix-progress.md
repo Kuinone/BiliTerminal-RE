@@ -1467,8 +1467,9 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
 - **验证（MuMu 模拟器，Android 12 / x86，`wm size 320x320` + `wm density 160` 模拟圆屏，26.10.25）**：
   - 圆屏开（5% / 3%）：内容区 `[16,9][304,302]`；`top [16,9][304,35]`、`text_title [79,18][241,35]`（= 16 + 7×9）、`videoprogress [16,216][304,236]`、`text_progress [16,238][304,253]`、`bottom_buttons [16,253][304,302]`。竖屏视频算出 157×279（9:16 内接圆），像素测量视频占列 81..237 与公式一致，四角距圆心 ≈160，底栏各按钮中心距圆心 ≈142~143（均 <160）。
   - 圆屏关：`top [0,0][320,25]`、`text_title [8,4][312,21]`（XML 原值）、竖屏视频 180×320 满高 —— 与改动前完全一致（无回归）。
+  - 合入前的最终构建（已删掉 `onStart()` 热刷新钩子）在同一模拟器上复跑：`top`/`videoprogress`/`text_progress`/`bottom_buttons` 坐标与上面逐字一致，16:9 横屏视频同样按内接圆（279×157）居中，播放正常。
   - `.\gradlew.bat :app:assembleDebug` 与 `.\gradlew.bat :app:testStandardDebugUnitTest` 均通过。
-- **遗留**：①真手表 / 真圆屏设备未验证（本机只有 MuMu 模拟器）；②没有加 `onStart()` 热刷新钩子——`MenuActivity.killAndJump()` 会先 finish 下层页面，从设置页回到短视频页必然是新实例（冷启动路径），root padding 与内缩都随新实例一次性生效；③验证后期 B 站短视频信息流接口偶发 `API error code=-400: 请求错误`（`ShortVideoFeedApi.x/v2/feed/index/story` 与动态兜底都失败），与本次改动无关，但会让复测暂时只能看错误页。
+- **遗留**：①真手表 / 真圆屏设备未验证（本机只有 MuMu 模拟器）；②没有加 `onStart()` 热刷新钩子——`MenuActivity.killAndJump()` 会先 finish 下层页面，从设置页回到短视频页必然是新实例（冷启动路径），root padding 与内缩都随新实例一次性生效；③验证后期 B 站短视频信息流接口偶发 `API error code=-400: 请求错误`（`ShortVideoFeedApi.x/v2/feed/index/story` 与动态兜底都失败），与本次改动无关；重试后恢复，最终构建复测正常。
 
 ## 4. 历史章节索引
 
