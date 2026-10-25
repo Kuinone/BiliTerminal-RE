@@ -817,6 +817,8 @@
          统一走 `api/ApiErrorText.kt`，要改去那里改一处。 -->
     <string name="msg_network_error_retry">网络错误，请重试</string>
     <string name="msg_unknown_error">未知错误</string>
+    <!-- 启动时没有网络：直接落到缓存页（见 SplashActivity 的断网兜底） -->
+    <string name="msg_splash_offline_to_cache">无网络，已进入缓存页</string>
     <!-- ===== 更新下载异常与链接解析（12.4 文案迁移：八批） ===== -->
     <string name="text_update_verify_failed">安装包校验失败：%1$s</string>
     <string name="text_update_download_error">下载出错：%1$s</string>

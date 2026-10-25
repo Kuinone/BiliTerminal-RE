@@ -347,7 +347,7 @@ CenterThreadPool.supplyAsyncWithLiveData { fetch...().getOrThrow() }
 
 ## 6. 网络层
 
-### 6.1 `NetWorkUtil`（`util/NetWorkUtil.java`，709 行，唯一出口）
+### 6.1 `NetWorkUtil`（`util/NetWorkUtil.java`，997 行，唯一出口）
 
 - **单例 OkHttpClient**，`followRedirects(false)` + 自定义拦截器手写重定向（`b23.tv` 短链走 `RedirectHandler` 回调）。
 - **DNS 强制 IPv4**（`Inet4Selector`，注释称 IPv6 请求有异常）。
@@ -358,6 +358,7 @@ CenterThreadPool.supplyAsyncWithLiveData { fetch...().getOrThrow() }
 - **风控重试**：`executeJsonWithRiskRetry` 对 `code == -352 / -412` 重试；`executeWithDoctypeRetry` 对返回 `<!doctype`（被风控拦成 HTML）的响应重试。重试次数/间隔读 SharedPreferences（`api_retry_max_times`、`api_retry_interval_seconds`）。**注意调试桥的 `http` 命令不用这个默认重试**：它跑在广播的 `goAsync()` 窗口里，按 8s+16s×5 次重试会直接把广播拖成 ANR，所以另建了一个连接 5s / 读 8s 的短超时 client。
 - **隐私模式**：`getJsonPrivacy()` 用 `buildGuestCookieString()` 剔除 `SESSDATA/bili_jct/DedeUserID/sid` 等登录 Cookie。
 - **参数构造**：`FormData` 类，内部 `URLEncoder.encode`，默认**不**自动加 `access_key`（注释：web 接口带 access_key 会触发风控）。
+- **连通性判断（26.10.25）**：`isNetworkAvailable(Context)`（`:693`）只做本地查询（`ConnectivityManager.getActiveNetworkInfo()`，不发请求、毫秒级），异常 / 取不到一律返回 `true`（fail-open，判断不出来就退回原来的失败路径）。故意用已废弃 API（`minSdk 19` 上不用 `NetworkCapabilities`）。目前唯一用途是启动页断网兜底（`SplashActivity`），**需要判断网络时别再另写一份**。
 - **裸 deflate 解压**：`decompress(byte[])`（26.09.11 起为本工程唯一实现，原先
   `DownloadService`/`DownloadActivity`/`PlayerActivity` 各有一份逐字相同的副本）。
   解压失败回退原数据；`Inflater` 持 native 资源，统一在 `finally` 里 `end()`。
@@ -1041,6 +1042,8 @@ CenterThreadPool.supplyAsyncWithLiveData { fetch...().getOrThrow() }
 **行为契约不变的部分**：channel id `biliterminal_download`、前台通知 `1027`、`notifyExit` 的 `2`、`notifyCompletion` 的 `id % 100 + 100`、download 表 11 列 / version 4、SP 键（`aria2_enabled` / `aria2_split` / `parallel_download_videos`）。**已知的可见性变化**：`DownloadProgressInfo` 的 FQN 由 `DownloadService$Companion$DownloadProgressInfo` 变为 `com.RobinNotBad.BiliClient.service.download.DownloadProgressInfo`（全仓无显式引用，按旧 FQN 反射的代码会失配）。
 
 **26.10.13 完整性补丁（C3）**：高速单连接与分片失败后的单连接回退复用 `service/download/DownloadStreamTransfer.kt`（无 Android 依赖的流写入器）。GET 长度优先；HEAD 仅在响应成功且长度有效时作提示；未知长度保留 `-1`（不能伪造为 1）。必须真实 EOF、非空且已知长度精确相等才返回 `NORMAL`；网络读失败归 `ERR_NETWORK`，写入/flush 失败归 `ERR_FILE`。阶段完成只在资源关闭成功后发布，非暂停失败只清理本次目标文件（不删任务目录、不碰旧 `video.mp4`/`audio.m4a`）；建连及关闭异常同样优先保留暂停语义。`DownloadStreamTransferTest` 覆盖真实内存流与异常注入；DASH 阶段进度与续传尚未改；本地音轨防重的播放侧补丁见 §7.4（下载替换事务仍未改）。
+
+**26.10.25 分片看门狗与降级（`docs/review/fix-progress.md` §3.63）**：新增 `service/download/SegmentDownloadPolicy.kt`（73 行，`internal object` 纯逻辑，`SegmentDownloadPolicyTest` 8 例）——阈值 `STALL_TIMEOUT_MS = 12s` / `ABORT_JOIN_TIMEOUT_MS = 3s` / `FINISH_JOIN_TIMEOUT_MS = 30s`，判定 `hasStalled` / `isPartialContent` / `isRangeIgnored` / `parseContentRangeStart` / `isContentRangeMismatch` / `shouldDisableSegmentMode`。`downFileSpeedSeg` 的轮询循环**先判停滞再算进度**：超过 12s 没有任何分片收到新字节就 `Call.cancel()` 中止并回退整文件单连接（join 预算收紧到 3s，线程没退出直接报错，绝不并发重下）；`downloadSegment` 强制 `206` + `Content-Range` 起点校验、按分片边界限制写入量、每写一块喂一次看门狗；companion 的 `@Volatile segmentModeDisabled` 是**本次进程内**的降级记忆，命中后后续任务不再分片。下载专用 OkHttpClient 强制 `HTTP/1.1`（实测同一 CDN 直链：5 条 h1.1 连接聚合 ≈ 10.4MB/s vs 5 条 h2 流 ≈ 4.9MB/s），HEAD 额外加 15s `callTimeout`。**`pausedMap` / `speedLock` / companion 锁的三条约束不变**（见上）。
 
 ### 7.28 顶部工具条滚动自动收回（26.10.05 批次 8 新增）
 

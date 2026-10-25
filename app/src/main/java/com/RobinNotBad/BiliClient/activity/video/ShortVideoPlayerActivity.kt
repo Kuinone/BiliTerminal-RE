@@ -85,6 +85,31 @@ class ShortVideoPlayerActivity : InstanceActivity() {
     var screenHeight = 0
     internal var isBottomControlVisible = true
 
+    /**
+     * 圆屏适配开关（与 `BaseActivity.setRound()`、`PlayerActivity.initUI()` 读同一个 key）。
+     *
+     * 本页顶栏在 ViewPager item 里，`BaseActivity.setRound()` 找不到 `R.id.pageName` 会整体跳过，
+     * 所以圆屏留白要由 [PageHolder.applyRoundInsets] 自己加。
+     */
+    internal val roundAdapted: Boolean
+        get() = SharedPreferencesUtil.getBoolean(SettingsKeys.UI_ROUND, false)
+
+    /** 圆屏适配的基准边距，与 `PlayerActivity.initUI()` 同口径（屏宽 3%）。 */
+    internal val roundPadding: Int
+        get() = (screenWidth * 0.03f).toInt()
+
+    /**
+     * 内容区尺寸（已扣掉 BaseActivity 给 decorView 根布局加的「界面边距 / 圆屏留白」）。
+     *
+     * 视频实际可用的区域比整屏小，用整屏尺寸算画面大小会被裁掉；两个字段由
+     * `BaseActivity.onCreate` 算好，异常情况下为 0 时退回整屏尺寸。
+     */
+    internal val contentWidth: Int
+        get() = if (window_width > 0) window_width else screenWidth
+
+    internal val contentHeight: Int
+        get() = if (window_height > 0) window_height else screenHeight
+
     /** 右侧详情三页当前对应的 aid；变化时调用 [onFeedAnchorChanged] 重绑。 */
     private var detailAnchorAid = 0L
 
@@ -411,6 +436,19 @@ class ShortVideoPagerAdapter(
         private val showSound: TextView = itemView.findViewById(R.id.showsound)
         private val speedBoostHint: TextView = itemView.findViewById(R.id.text_speed_boost)
 
+        // 圆屏适配前的原始 padding：圆屏下要在布局原有留白基础上再收进来，
+        // 关掉开关时按这份快照还原（[applyRoundInsets] 可重复调用）
+        private val baseTopPadding =
+            intArrayOf(top.paddingLeft, top.paddingTop, top.paddingRight, top.paddingBottom)
+        private val baseProgressPadding = intArrayOf(
+            videoProgress.paddingLeft, videoProgress.paddingTop,
+            videoProgress.paddingRight, videoProgress.paddingBottom
+        )
+        private val baseProgressTextPadding = intArrayOf(
+            textProgress.paddingLeft, textProgress.paddingTop,
+            textProgress.paddingRight, textProgress.paddingBottom
+        )
+
         private val playerBridge = IjkPlayerBridge(onError = { what, _ ->
             Logu.e("ShortVideo", "Player error: $what")
             mainHandler.post {
@@ -511,10 +549,56 @@ class ShortVideoPagerAdapter(
 
             isInitialized = true
 
+            applyRoundInsets()
+
             if (activity.isBottomControlVisible) {
                 bottomControl.visibility = View.VISIBLE
             } else {
                 bottomControl.visibility = View.GONE
+            }
+        }
+
+        /**
+         * 圆屏适配：把顶栏、进度条/进度文本与弹幕按圆形屏幕收进来。
+         *
+         * 本页的顶栏在 RecyclerView 的 item 里（不在 Activity 的视图树上），
+         * `BaseActivity.setRound()` 只处理带 `R.id.pageName` 的整页布局，对它无效；
+         * 此前表现为「开了圆屏适配，短视频页只有外层留白变了，顶栏返回键/左下进度文本
+         * 和底部按钮仍贴在边缘，被圆盘切掉」。这里按 `PlayerActivity.initUI()` 的圆屏分支
+         * 同口径重排（基准 margin = 屏宽 3%，顶栏横向 7 倍、进度条 4 倍、进度文本 3 倍）。
+         *
+         * 幂等：每次都按布局原始 padding 重算，开关关掉时还原。
+         */
+        fun applyRoundInsets() {
+            val round = activity.roundAdapted
+            if (round) {
+                val padding = activity.roundPadding
+                top.setPadding(padding * 7, padding, padding * 7, 0)
+                videoProgress.setPadding(
+                    padding * 4, baseProgressPadding[1], padding * 4, baseProgressPadding[3]
+                )
+                textProgress.setPadding(
+                    padding * 3, baseProgressTextPadding[1],
+                    baseProgressTextPadding[2], baseProgressTextPadding[3]
+                )
+            } else {
+                top.setPadding(baseTopPadding[0], baseTopPadding[1], baseTopPadding[2], baseTopPadding[3])
+                videoProgress.setPadding(
+                    baseProgressPadding[0], baseProgressPadding[1],
+                    baseProgressPadding[2], baseProgressPadding[3]
+                )
+                textProgress.setPadding(
+                    baseProgressTextPadding[0], baseProgressTextPadding[1],
+                    baseProgressTextPadding[2], baseProgressTextPadding[3]
+                )
+            }
+
+            // 弹幕上下让开圆盘；横向滚动照旧（弹幕从圆边淡出是圆屏的正常表现）
+            danmakuView?.let { view ->
+                val params = view.layoutParams as? FrameLayout.LayoutParams ?: return@let
+                val inset = if (round) activity.roundPadding * 3 else 0
+                params.setMargins(params.leftMargin, inset, params.rightMargin, inset)
+                view.layoutParams = params
             }
         }
 
@@ -867,6 +951,8 @@ class ShortVideoPagerAdapter(
                     )
                 }
                 danmakuManager?.init()
+                // 弹幕 View 是 initPlayer 里才取到的，此时补一次圆屏留白（bind 时它还可能是 null）
+                applyRoundInsets()
 
                 playerBridge.setOnPrepared {
                     isPrepared = true
@@ -1032,22 +1118,50 @@ class ShortVideoPagerAdapter(
 
         private fun adjustVideoSize(screenW: Int, screenH: Int) {
             if (videoWidth == 0 || videoHeight == 0) return
+            val params = textureView?.layoutParams as? FrameLayout.LayoutParams ?: return
 
-            val videoRatio = videoWidth.toFloat() / videoHeight.toFloat()
-            val screenRatio = screenW.toFloat() / screenH.toFloat()
+            // 视频可用的实际区域：itemView 已布局时用实测尺寸（含界面边距/系统栏），
+            // 还没量出来就用 BaseActivity 算好的内容区尺寸。
+            // 不能用整屏尺寸：开了界面边距/圆屏后内容区比整屏小，画面会被裁掉一截。
+            val areaW = if (itemView.width > 0) itemView.width else activity.contentWidth
+            val areaH = if (itemView.height > 0) itemView.height else activity.contentHeight
+            if (areaW <= 0 || areaH <= 0) return
 
-            val params = textureView?.layoutParams as? FrameLayout.LayoutParams
-            params?.let {
-                if (videoRatio > screenRatio) {
-                    it.width = screenW
-                    it.height = (screenW / videoRatio).toInt()
-                } else {
-                    it.width = (screenH * videoRatio).toInt()
-                    it.height = screenH
+            if (activity.roundAdapted) {
+                // 圆屏：取视频在圆形屏幕里的内接矩形（公式与 PlayerActivity.changeVideoSize 一致），
+                // 再按内容区夹一刀，避免极端长宽比下内接矩形仍超出可用区域。
+                // 直径取屏幕短边：圆屏手表是方形屏，短边即直径；非方形的手机/模拟器上也开着
+                // 圆屏适配时，用长边（例如 1440x2560 的 2560）会算出比屏幕还大的内接矩形。
+                val videoMul = videoHeight.toFloat() / videoWidth.toFloat()
+                val diameter = minOf(screenW, screenH).toDouble()
+                val mulSquare =
+                    videoHeight.toDouble() * videoHeight / (videoWidth.toDouble() * videoWidth)
+                val side = Math.sqrt(diameter * diameter / (mulSquare + 1))
+                var width = (side + 0.5).toInt()
+                var height = (side * videoMul + 0.5).toInt()
+                if (width > areaW) {
+                    height = (height.toLong() * areaW / width).toInt()
+                    width = areaW
                 }
-                it.gravity = Gravity.CENTER
-                textureView?.layoutParams = it
+                if (height > areaH) {
+                    width = (width.toLong() * areaH / height).toInt()
+                    height = areaH
+                }
+                params.width = width
+                params.height = height
+            } else {
+                val videoRatio = videoWidth.toFloat() / videoHeight.toFloat()
+                val areaRatio = areaW.toFloat() / areaH.toFloat()
+                if (videoRatio > areaRatio) {
+                    params.width = areaW
+                    params.height = (areaW / videoRatio).toInt()
+                } else {
+                    params.width = (areaH * videoRatio).toInt()
+                    params.height = areaH
+                }
             }
+            params.gravity = Gravity.CENTER
+            textureView?.layoutParams = params
         }
 
         /**

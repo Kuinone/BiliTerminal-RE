@@ -1,5 +1,9 @@
 package com.RobinNotBad.BiliClient.util;
 
+import android.content.Context;
+import android.net.ConnectivityManager;
+import android.net.NetworkInfo;
+
 import androidx.annotation.NonNull;
 
 import org.json.JSONException;
@@ -705,6 +709,31 @@ public class NetWorkUtil {
     public static void refreshHeaders() {
         // 整体替换而非原地 set：见 webHeaders 字段注释（并发读线程不能看到半成品表）
         webHeaders = buildWebHeaders();
+    }
+
+    /**
+     * 本地判断当前是否有可用网络：只查系统连接状态，**不发起任何请求**，毫秒级返回。
+     *
+     * <p>启动页用它决定「进用户自定义的启动页」还是「进缓存页」：断网时自定义启动页里的
+     * 推荐 / 动态 / 消息全在等网络，进去只看得到加载失败；缓存页读本地数据库，断网也完整可用。
+     *
+     * <p>**判断不出来就按「有网」处理**（fail-open）：没有网络状态权限、ROM 裁掉系统服务、
+     * 查询抛异常时都返回 true，让启动退回原来的失败兜底路径，而不是把用户误锁进缓存页。
+     *
+     * <p>故意用已废弃的 [ConnectivityManager#getActiveNetworkInfo]（API 1 起可用）而不是
+     * API 23 的 {@code NetworkCapabilities}：本项目 minSdk 19，老设备上后者更容易出兼容问题。
+     */
+    @SuppressWarnings("deprecation")
+    public static boolean isNetworkAvailable(Context context) {
+        try {
+            ConnectivityManager connectivityManager =
+                    (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
+            if (connectivityManager == null) return true;
+            NetworkInfo networkInfo = connectivityManager.getActiveNetworkInfo();
+            return networkInfo != null && networkInfo.isConnected();
+        } catch (Throwable t) {
+            return true;
+        }
     }
 
     public static class FormData {

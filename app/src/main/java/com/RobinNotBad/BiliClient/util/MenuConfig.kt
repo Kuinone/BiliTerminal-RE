@@ -103,6 +103,9 @@ object MenuConfig {
     /** 默认启动页：推荐（固定项，正常情况下必然在已启用列表里）。 */
     const val DEFAULT_START = "recommend"
 
+    /** 断网时的启动页：缓存（本地列表不依赖网络，断网也打得开）。 */
+    const val OFFLINE_START = "local"
+
     /**
      * 解析启动页 key：已存值仍在已启用列表里就沿用，否则退回 [DEFAULT_START]。
      * 极端情况下（启用列表里连推荐都没有）才退回列表首项，最后兜底 [DEFAULT_START]。
@@ -130,6 +133,18 @@ object MenuConfig {
         }
         return resolved
     }
+
+    /**
+     * 解析**本次启动**实际要进入的菜单页：有网走用户设置，没网一律进缓存页。
+     *
+     * 自定义启动页（推荐/动态/消息……）全都要联网，断网进去只能看到加载失败，
+     * 用户体感就是「打开应用卡在报错页」。缓存页读的是本地数据库，断网也完整可用，
+     * 所以断网时把启动目标改成 [OFFLINE_START]，网络正常时再按 [resolveStart] 进用户选的页。
+     *
+     * 只影响本次启动，不改写 `menu_start`：网络恢复后仍按用户原来的设置走。
+     */
+    fun resolveLaunchStart(enabled: List<String>, stored: String?, online: Boolean): String =
+        if (online) resolveStart(enabled, stored) else OFFLINE_START
 
     /** 保存启动页配置。 */
     fun saveStart(key: String, writeString: (String, String) -> Unit) {

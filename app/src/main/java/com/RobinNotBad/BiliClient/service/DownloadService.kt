@@ -25,7 +25,7 @@ import com.RobinNotBad.BiliClient.service.download.DownloadStreamTransfer
 import com.RobinNotBad.BiliClient.service.download.DownloadProgressStore
 import com.RobinNotBad.BiliClient.service.download.DownloadProgressInfo
 import com.RobinNotBad.BiliClient.service.download.DownloadRepository
-import com.RobinNotBad.BiliClient.service.download.SegmentResponsePolicy
+import com.RobinNotBad.BiliClient.service.download.SegmentDownloadPolicy
 import com.RobinNotBad.BiliClient.model.DownloadSection
 import com.RobinNotBad.BiliClient.model.PlayerData
 import com.RobinNotBad.BiliClient.model.SubtitleLink
@@ -53,12 +53,6 @@ import java.util.Timer
 class DownloadService : Service() {
 
     companion object {
-        /** 分片线程整批 join 的总预算（不是每片 30s，见 [waitSegments]）。 */
-        private const val SEGMENT_JOIN_BUDGET_MS = 30_000L
-
-        /** 置取消标志后给分片线程收尾的时间（一次 read 返回 + 关闭流）。 */
-        private const val SEGMENT_DRAIN_MS = 10_000L
-
         // 这几个字段会被下载协程与主线程同时读写，必须 @Volatile 保证可见性：
         // started 决定调度循环是否继续，exitCode/percent/state 决定通知与退出时的清理动作。
         @JvmStatic @Volatile var started: Boolean = false
@@ -72,6 +66,16 @@ class DownloadService : Service() {
          * 首次合法调用进来时 started 已经是 true，用它判断会把正常请求也挡掉。
          */
         @Volatile private var batchRunning: Boolean = false
+
+        /**
+         * 本次运行（进程）是否已判定"分片下载在当前网络下不可用"。
+         *
+         * 触发场景见 [SegmentDownloadPolicy]：服务端忽略 Range 回了 200 全量文件，
+         * 或分片线程长时间一个字节都收不到。一旦置位，后续任务直接走单连接下载——
+         * 否则用户每下一个文件都要先卡一轮 12s 看门狗才退化成单线程。
+         * 不复位：网络变好前重新试分片的收益远小于再卡一次的代价。
+         */
+        @Volatile private var segmentModeDisabled: Boolean = false
 
         @JvmStatic @Volatile var exitCode: Int = 0
         @JvmStatic @Volatile var percent: Float = -1f
@@ -1155,13 +1159,41 @@ class DownloadService : Service() {
         return result
     }
 
+    /** 下载专用 OkHttpClient 的缓存（每个 Service 实例一份，随批创建随批回收）。 */
+    @Volatile
+    private var downloadOkHttpClient: okhttp3.OkHttpClient? = null
+
+    /**
+     * 下载专用的 OkHttpClient：在 App 统一客户端（带 Cookie / 手动跟跳 / 登录态保存拦截器）基础上
+     * 强制 HTTP/1.1。
+     *
+     * 原因：分片下载是"多条并发请求"，而 h2 会把它们复用进同一条 TCP 连接、共享一个连接窗口，
+     * 单条连接的吞吐成为上限。实测同一个 B 站 CDN 直链（51.97MB）：
+     * 5 条 h1.1 连接聚合约 10.4MB/s，5 条 h2 流共用一条连接只有约 4.9MB/s，差一倍。
+     * 下载只关心吞吐，不需要 h2 的多路复用；多个 TCP 连接也避免了"一条流卡住拖累整条连接"。
+     */
+    private fun downloadClient(): okhttp3.OkHttpClient {
+        downloadOkHttpClient?.let { return it }
+        val built = NetWorkUtil.getOkHttpInstance().newBuilder()
+            .protocols(listOf(okhttp3.Protocol.HTTP_1_1))
+            .build()
+        downloadOkHttpClient = built
+        return built
+    }
+
     @Throws(IOException::class)
     private fun downFileSpeed(url: String, file: File, sectionId: Long = -1, baseProgress: Float = 0f, endProgress: Float = 1.0f): Int {
         if (!resetFile(file))
             return DownloadPathSpec.ERR_FILE
 
-        val client = NetWorkUtil.getOkHttpInstance()
+        val client = downloadClient()
         val headers = NetWorkUtil.webHeaders
+
+        // 本次运行已判定分片不可用：直接单连接下载。单连接不需要预知文件大小，
+        // 少发一次 HEAD 也就少一次可能卡住的往返。
+        if (segmentModeDisabled) {
+            return downFileSpeedSingle(url, file, client, headers, -1L, sectionId, baseProgress, endProgress)
+        }
 
         val headBuilder = okhttp3.Request.Builder().url(url).head()
         var i = 0
@@ -1171,8 +1203,15 @@ class DownloadService : Service() {
         }
         val headReq = headBuilder.build()
 
+        // HEAD 单独加 callTimeout：OkHttp 的 connect/read 超时管不住"连上了但一直不给响应"的情况，
+        // 而分片阶段要等 HEAD 回来才知道能不能分片；HEAD 挂住 = 用户在 20% 上干等。
+        // 一次只要响应头的 HEAD 给 15s 足够宽裕，超时就当"不知道长度"，直接走单连接。
+        val headClient = client.newBuilder()
+            .callTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+            .build()
+
         val (totalSize, supportsRange) = try {
-            client.newCall(headReq).execute().use { headRes ->
+            headClient.newCall(headReq).execute().use { headRes ->
                 // HEAD 被拒绝时，Content-Length 是错误页长度，不能拿来校验媒体文件。
                 val len = if (headRes.isSuccessful) headRes.header("Content-Length") else null
                 val size = len?.toLongOrNull()?.takeIf { it > 0 } ?: -1L
@@ -1285,6 +1324,7 @@ class DownloadService : Service() {
     private fun downFileSpeedSeg(url: String, file: File, client: okhttp3.OkHttpClient,
                                   headers: ArrayList<String>, totalSize: Long,
                                   sectionId: Long = -1, baseProgress: Float = 0f, endProgress: Float = 1.0f): Int {
+        // 预分配整个文件长度：分片线程各自 seek 到自己的区间写入，不预分配就无从随机写。
         java.io.RandomAccessFile(file, "rw").use { raf ->
             raf.setLength(totalSize)
         }
@@ -1292,14 +1332,7 @@ class DownloadService : Service() {
         // 动态分片：约每 2MB 一片，上限受用户配置的分片数约束
         val segments = DownloadProgressMath.segmentCount(totalSize, Aria2Util.getSplit())
         val segmentLen = DownloadProgressMath.segmentLen(totalSize, segments)
-
-        val totalDownloaded = java.util.concurrent.atomic.AtomicLong(0)
-        val anyFailed = java.util.concurrent.atomic.AtomicBoolean(false)
-        // 「整批放弃」标志：主循环判定失败 / 超时后置位，分片线程据此自己收尾退出。
-        // 没有它的话 join 超时后线程会继续写盘，而回退的单线程下载正用 FileOutputStream
-        // 截断重写同一个文件，两边会互相盖写，产出谁也读不了的文件
-        // （审计 audit-2026-09-24 M11-g 记的就是这条遗留）。
-        val cancelSegment = java.util.concurrent.atomic.AtomicBoolean(false)
+        val shared = SegmentSharedState(segments)
 
         val threads = java.util.ArrayList<Thread>(segments)
 
@@ -1310,20 +1343,30 @@ class DownloadService : Service() {
             val idx = i
 
             val thread = Thread({
-                downloadSegment(url, file, client, headers, start, end, idx, sectionId, totalDownloaded, anyFailed, cancelSegment)
+                downloadSegment(url, file, client, headers, start, end, idx, sectionId, shared)
             }, "DL-Segment-$idx")
             threads.add(thread)
             thread.start()
         }
+        Logu.d("DownloadService", "分片下载开始：$segments 片 / $totalSize 字节：${file.name}")
 
-        // 轮询进度，直到全部分片结束、失败、暂停或取消
-        while (completedSegments(threads) < segments && started && !anyFailed.get() && !isPaused(sectionId)) {
-            percent = DownloadProgressMath.progressForBytes(totalDownloaded.get(), totalSize, baseProgress, endProgress)
+        // 轮询进度，直到全部分片结束、失败、暂停、停滞或取消
+        var stalled = false
+        while (completedSegments(threads) < segments && started && !shared.anyFailed.get() && !isPaused(sectionId)) {
+            // 看门狗（"卡在 20%"的核心修复）：没有它，一个卡住的分片要等 OkHttp 16s 读超时
+            // × 3 次重试（最坏 48s）才失败，这期间进度一个字节都不动，用户看到的就是"卡住"。
+            // 触发后不再干等：取消在飞 Call 并退回整文件单连接下载（见下面的回退分支）。
+            if (shared.stalled(threads)) {
+                stalled = true
+                Logu.e("DownloadService", "分片下载停滞 ${SegmentDownloadPolicy.STALL_TIMEOUT_MS}ms，改用单连接：${file.name}")
+                break
+            }
+            val actualProgress = DownloadProgressMath.progressForBytes(shared.totalDownloaded.get(), totalSize, baseProgress, endProgress)
+            percent = actualProgress
 
             // 更新进度到进度映射表
             if (sectionId > 0) {
-                val actualProgress = DownloadProgressMath.progressForBytes(totalDownloaded.get(), totalSize, baseProgress, endProgress)
-                setDownloadProgress(sectionId, actualProgress, state ?: getString(R.string.text_download_in_progress), totalDownloaded.get(), totalSize)
+                setDownloadProgress(sectionId, actualProgress, state ?: getString(R.string.text_download_in_progress), shared.totalDownloaded.get(), totalSize)
             }
 
             try {
@@ -1332,36 +1375,56 @@ class DownloadService : Service() {
             }
         }
 
-        if (!waitSegments(threads, cancelSegment)) {
-            // 还有分片没退出：**绝不能**在这里回退单线程重下——那些线程还在往同一个文件里写，
-            // 两边抢写只会产出一个谁也读不了的文件。置取消标志后直接判失败，让上层按失败处理。
-            Logu.e("DownloadService", "分片线程未能在超时内退出，放弃本次分片下载（不回退单线程，避免抢写）")
-            cancelSegment.set(true)
-            val segBytes = totalDownloaded.get()
-            if (segBytes > 0) addDownloadedBytes(-segBytes)
-            if (isPaused(sectionId)) return DownloadPathSpec.ERR_PAUSED
-            // 失败时把本次分片写下的半成品删掉：它已被 setLength 撑到完整大小，
-            // 留着只是白占磁盘（弱设备上很要紧），下次重下也会被 resetFile 重建。
+        // 没收齐就退出轮询（停滞 / 失败 / 暂停 / 服务销毁）：先把分片线程彻底停掉。
+        // 用 cancel() 而不是干等：阻塞中的 socket 读只有取消能立刻打断。
+        val needAbort = stalled || shared.anyFailed.get() || !started || isPaused(sectionId)
+        if (needAbort) shared.abort()
+
+        // 等待线程结束（带超时），避免遗留写盘。
+        // 超时是"整批分片"的总预算而不是每个线程各 30s（审计 M11-g）：
+        // 原来逐个 t.join(30000)，32 个分片最坏会阻塞 16 分钟。
+        // 取消场景只给 3s（线程还在写就不能重下），正常收尾仍是 30s。
+        val joinBudget = if (needAbort) SegmentDownloadPolicy.ABORT_JOIN_TIMEOUT_MS
+                         else SegmentDownloadPolicy.FINISH_JOIN_TIMEOUT_MS
+        val joinDeadline = System.currentTimeMillis() + joinBudget
+        for (t in threads) {
+            val remain = joinDeadline - System.currentTimeMillis()
+            if (remain <= 0) break
             try {
-                if (file.exists() && !file.delete()) Logu.e("DownloadService", "清理分片半成品失败：${file.name}")
-            } catch (e: Exception) {
-                Logu.e("DownloadService", "清理分片半成品异常：${file.name}")
+                t.join(remain)
+            } catch (ignored: InterruptedException) {
             }
-            return DownloadPathSpec.ERR_NETWORK
         }
 
         // 用户暂停：直接返回暂停信号，不回退重下
         if (isPaused(sectionId)) return DownloadPathSpec.ERR_PAUSED
-        // 整批被判定放弃（上面的超时分支已置位）：不再回退单线程
-        if (cancelSegment.get()) return DownloadPathSpec.ERR_NETWORK
+        // 服务销毁（onDestroy 置 started=false）时不必再走单连接重下
+        if (!started) return DownloadPathSpec.ERR_UNKNOWN
+        // 分片线程没能在预算内退出：绝不能起单线程重下，两拨线程写同一个文件必然损坏。
+        // 宁可这次任务失败（上层会清掉进度映射并置 error），也不要写出一份坏文件。
+        if (threads.any { it.isAlive }) {
+            Logu.e("DownloadService", "分片线程 ${joinBudget}ms 内未退出，放弃本次下载：${file.name}")
+            return DownloadPathSpec.ERR_NETWORK
+        }
 
-        // 完整性校验：任一失败、下载字节不足、或落盘尺寸对不上都视为失败，回退整文件单线程重下
-        if (anyFailed.get() || totalDownloaded.get() < totalSize || file.length() != totalSize) {
+        // 结构性原因（服务端忽略 Range / 链路停滞）说明分片在当前网络下不可用，
+        // 本次进程内直接退化为单连接，避免用户每下一个文件都先卡一轮。
+        if (SegmentDownloadPolicy.shouldDisableSegmentMode(shared.rangeUnsupported.get(), stalled)) {
+            segmentModeDisabled = true
+            Logu.e("DownloadService", "本次运行不再使用分片下载（Range 不可用或链路停滞）")
+        }
+
+        // 完整性校验：任一失败、Range 不可用、停滞、下载字节不足、或落盘尺寸与总长不符都视为
+        // 失败，回退整文件单线程重下。最后那项（file.length()）是兜底：`setLength` 在某些
+        // FUSE/exFAT 存储上可能静默失败，此时即使每片都写满 expectLen，文件的实际尺寸也未必对。
+        if (stalled || shared.rangeUnsupported.get() || shared.anyFailed.get() ||
+            shared.totalDownloaded.get() < totalSize || file.length() != totalSize
+        ) {
             // 回退前必须把分片阶段已经计入的字节从全局计数里扣掉（审计 S7）：
             // downFileSpeedSingle 会用 FileOutputStream 截断重写整个文件，并再次
             // addDownloadedBytes()，不回滚就让 totalBytesDownloaded 把同一批字节算两遍，
             // sampleSpeed() 得出的速度与批次统计虚高。
-            val segBytes = totalDownloaded.get()
+            val segBytes = shared.totalDownloaded.get()
             if (segBytes > 0) addDownloadedBytes(-segBytes)
             // 进度同步退回阶段起点：单线程重下会从 0 重新推进 percent，
             // 若保留分片阶段的高位进度，进度条会先满后退。
@@ -1379,18 +1442,71 @@ class DownloadService : Service() {
         return segResult
     }
 
+    /**
+     * 一次分片下载的线程间共享状态。
+     * 只放必须跨线程共享的原子量与并发容器，避免把 Service 的实例字段牵进分片线程。
+     */
+    private class SegmentSharedState(val segments: Int) {
+        /** 全部分片累计写入的字节（某片失败重试时会扣回已写入的部分）。 */
+        val totalDownloaded = java.util.concurrent.atomic.AtomicLong(0)
+
+        /** 任一分片 3 次重试都拿不到完整数据。 */
+        val anyFailed = java.util.concurrent.atomic.AtomicBoolean(false)
+
+        /** 服务端忽略 Range（返回 200 全量，或 Content-Range 与请求分片对不上）。 */
+        val rangeUnsupported = java.util.concurrent.atomic.AtomicBoolean(false)
+
+        /** 看门狗判定停滞、或用户暂停 / 服务销毁：分片线程据此尽快退出。 */
+        val aborted = java.util.concurrent.atomic.AtomicBoolean(false)
+
+        /** 每个分片当前在飞的 Call，卡住时 cancel() 能立刻打断阻塞中的 socket 读。 */
+        val calls = java.util.concurrent.CopyOnWriteArrayList<okhttp3.Call>()
+
+        /** 每个分片最后一次收到字节的时刻（初值是起跑时刻），看门狗据此判停滞。 */
+        val lastByteAt = java.util.concurrent.atomic.AtomicLongArray(segments)
+
+        init {
+            val now = System.currentTimeMillis()
+            for (i in 0 until segments) lastByteAt.set(i, now)
+        }
+
+        fun markByte(idx: Int) {
+            lastByteAt.set(idx, System.currentTimeMillis())
+        }
+
+        /** 先置 aborted 再取消在飞请求：分片线程看到 aborted 就不会把取消当成"该重试"。 */
+        fun abort() {
+            aborted.set(true)
+            for (call in calls) {
+                try {
+                    call.cancel()
+                } catch (_: Exception) {
+                }
+            }
+        }
+
+        /** 有分片线程存活，且超过看门狗预算没收到任何新字节。 */
+        fun stalled(threads: List<Thread>): Boolean {
+            val now = System.currentTimeMillis()
+            for (i in 0 until segments) {
+                val thread = threads.getOrNull(i) ?: continue
+                if (thread.isAlive && SegmentDownloadPolicy.hasStalled(lastByteAt.get(i), now)) return true
+            }
+            return false
+        }
+    }
+
     /** 下载单个分片（最多重试 3 次），成功后累加已下载字节。 */
     private fun downloadSegment(url: String, file: File, client: okhttp3.OkHttpClient,
                                 headers: ArrayList<String>, start: Long, end: Long, idx: Int,
                                 sectionId: Long,
-                                totalDownloaded: java.util.concurrent.atomic.AtomicLong,
-                                anyFailed: java.util.concurrent.atomic.AtomicBoolean,
-                                cancelSegment: java.util.concurrent.atomic.AtomicBoolean) {
+                                shared: SegmentSharedState) {
         val expectLen = end - start + 1
         var attempts = 0
-        while (attempts < 3 && started && !anyFailed.get() && !isPaused(sectionId) && !cancelSegment.get()) {
+        while (attempts < 3 && started && !shared.anyFailed.get() && !isPaused(sectionId) && !shared.aborted.get()) {
             var written = 0L
             var ok = false
+            var call: okhttp3.Call? = null
             try {
                 val reqBuilder = okhttp3.Request.Builder()
                     .url(url)
@@ -1401,49 +1517,60 @@ class DownloadService : Service() {
                     reqBuilder.addHeader(headers[j], headers[j + 1])
                     j += 2
                 }
-                client.newCall(reqBuilder.build()).execute().use { resp ->
+                val newCall = client.newCall(reqBuilder.build())
+                call = newCall
+                shared.calls.add(newCall)
+                // 加入在飞列表后再查一次 aborted：取消方可能刚好在上一步扫过列表，
+                // 漏掉这条请求就会白等到读超时。
+                if (shared.aborted.get()) newCall.cancel()
+                newCall.execute().use { resp ->
+                    // 服务端忽略 Range 会回 200 + 整个文件：此时绝不能按分片读，
+                    // 否则每片都把整个文件读一遍（5 片 = 5 倍流量），慢网下看起来就是下载不动。
+                    if (SegmentDownloadPolicy.isRangeIgnored(resp.code)) {
+                        shared.rangeUnsupported.set(true)
+                        throw IOException("服务器忽略 Range（HTTP 200）")
+                    }
                     if (!resp.isSuccessful || resp.body == null) throw IOException("HTTP ${resp.code}")
-                    // 只认 206 + 区间起点对得上：服务端若忽略 Range 回了整个文件（200），
-                    // 从 seek(start) 一路写下去会覆盖别的分片，字节数还可能"正好对"而蒙混过关，
-                    // 最终产出错位的坏文件（26.10.25 修复「多线程下载拼不起来」）。
-                    if (!SegmentResponsePolicy.isPartialResponseUsable(
-                            resp.code, resp.header("Content-Range"), start, expectLen
-                        )
-                    ) {
-                        throw IOException("分片响应不可用：HTTP ${resp.code} range=${resp.header("Content-Range")}")
+                    // 分片响应必须是 206：不是 206 就说明拿到的不是我们要的那一段。
+                    if (!SegmentDownloadPolicy.isPartialContent(resp.code)) throw IOException("HTTP ${resp.code}")
+                    // Content-Range 带了起点就必须和请求对上（部分镜像不带这个头，此时不强判）
+                    if (SegmentDownloadPolicy.isContentRangeMismatch(resp.header("Content-Range"), start)) {
+                        shared.rangeUnsupported.set(true)
+                        throw IOException("Content-Range 与请求的分片不符")
                     }
                     val buffer = ByteArray(65536)
-                    var read: Int
                     resp.body!!.byteStream().use { inputStream ->
                         java.io.RandomAccessFile(file, "rw").use { rafInner ->
                             rafInner.seek(start)
-                            while ((inputStream.read(buffer).also { read = it }) != -1 &&
-                                started && !isPaused(sectionId) && !cancelSegment.get()
-                            ) {
-                                // 与单线程路径（DownloadStreamTransfer.copy）同一道保险：
-                                // 读出超过本片长度说明服务端在超发，多写会撑坏文件结构。
-                                if (written + read > expectLen) {
-                                    throw IOException("分片超发：$start-$end 已写 $written 又读 $read")
-                                }
-                                rafInner.write(buffer, 0, read)
-                                written += read
+                            while (written < expectLen && started && !isPaused(sectionId) && !shared.aborted.get()) {
+                                val read = inputStream.read(buffer)
+                                if (read == -1) break
+                                // 只写本片范围内的字节：服务端若超出 Range 多发了数据，
+                                // 多出来的部分绝不能覆盖下一片已经写好的内容。
+                                val toWrite = if (read.toLong() > expectLen - written) (expectLen - written).toInt() else read
+                                if (toWrite <= 0) break
+                                rafInner.write(buffer, 0, toWrite)
+                                written += toWrite
                                 // 分片内**逐块**计入进度，而不是等整片写完才加一次（审计 A2）：
                                 // 2MB 一片时整片完成前进度纹丝不动，进度条就是 2MB 一跳，
                                 // 剩余时间也跟着虚高；失败重试时下面的回滚负责扣回。
-                                totalDownloaded.addAndGet(read.toLong())
-                                addDownloadedBytes(read.toLong())
+                                shared.totalDownloaded.addAndGet(toWrite.toLong())
+                                addDownloadedBytes(toWrite.toLong())
+                                shared.markByte(idx)
                             }
                         }
                     }
                 }
-                ok = started && SegmentResponsePolicy.isSegmentComplete(written, expectLen)
+                ok = started && written == expectLen && !shared.aborted.get()
             } catch (e: Exception) {
                 ok = false
-                // 分片失败的原因（尤其"响应不可用"这类服务端行为异常）必须留痕：
-                // 它只会表现为"多线程下载慢/回退单线程"，不看日志根本查不出来。
+                // 分片失败原因必须留痕：不看日志的话，"服务端忽略 Range / 区间对不上"
+                // 只表现为"多线程慢、退回单连接"，根本查不出来。
                 if (attempts == 2) {
                     Logu.e("DownloadService", "分片 $idx（$start-$end）3 次尝试均失败：${e.message}")
                 }
+            } finally {
+                call?.let { shared.calls.remove(it) }
             }
             if (ok) {
                 // 字节已在循环里逐块计入 totalDownloaded，这里不能再加一次
@@ -1453,10 +1580,12 @@ class DownloadService : Service() {
             // 重试成功后会从分片起点整片重算，不扣就把同一段字节算成两次，sampleSpeed() 与批次统计虚高；
             // 分片阶段最终失败时 downFileSpeedSeg 还会按 totalDownloaded 回滚成功分片，两者口径保持一致。
             if (written > 0) {
-                totalDownloaded.addAndGet(-written)
+                shared.totalDownloaded.addAndGet(-written)
                 addDownloadedBytes(-written)
             }
             attempts++
+            // Range 被判不可用或整体已中止时，重试没有任何意义
+            if (shared.rangeUnsupported.get() || shared.aborted.get()) break
             if (attempts < 3) {
                 try {
                     Thread.sleep(500L * attempts)
@@ -1464,9 +1593,9 @@ class DownloadService : Service() {
                 }
             }
         }
-        // 暂停 / 整批取消直接返回，不标记失败（避免整体回退重下）
-        if (isPaused(sectionId) || cancelSegment.get()) return
-        anyFailed.set(true)
+        // 暂停 / 整体中止直接返回，不标记失败（避免整体回退重下被误判为"分片失败"）
+        if (isPaused(sectionId) || shared.aborted.get()) return
+        shared.anyFailed.set(true)
     }
 
     /** 已结束的分片线程数（用于进度轮询退出条件）。 */
@@ -1474,41 +1603,6 @@ class DownloadService : Service() {
         var n = 0
         for (t in threads) if (!t.isAlive) n++
         return n
-    }
-
-    /**
-     * 等所有分片线程真正退出，返回是否全部退出。
-     *
-     * 超时是"整批分片"的总预算而不是每个线程各 30s（审计 M11-g：原来逐个
-     * `t.join(30000)`，32 个分片最坏会阻塞 16 分钟）。但**超时后不能就这么走人**——
-     * 那些线程还在往同一个文件里写，后续若回退单线程重下，两边会互相盖写。
-     * 所以超时先置 [cancelSegment] 让它们自己收尾（线程内每读一块都会检查），
-     * 再给一小段收尾时间；仍不退出就交给调用方判失败（不回退）。
-     */
-    private fun waitSegments(threads: java.util.ArrayList<Thread>,
-                             cancelSegment: java.util.concurrent.atomic.AtomicBoolean): Boolean {
-        val joinDeadline = System.currentTimeMillis() + SEGMENT_JOIN_BUDGET_MS
-        for (t in threads) {
-            val remain = joinDeadline - System.currentTimeMillis()
-            if (remain <= 0) break
-            try {
-                t.join(remain)
-            } catch (ignored: InterruptedException) {
-            }
-        }
-        if (completedSegments(threads) >= threads.size) return true
-
-        cancelSegment.set(true)
-        val drainDeadline = System.currentTimeMillis() + SEGMENT_DRAIN_MS
-        for (t in threads) {
-            val remain = drainDeadline - System.currentTimeMillis()
-            if (remain <= 0) break
-            try {
-                t.join(remain)
-            } catch (ignored: InterruptedException) {
-            }
-        }
-        return completedSegments(threads) >= threads.size
     }
 
     @Throws(IOException::class)
