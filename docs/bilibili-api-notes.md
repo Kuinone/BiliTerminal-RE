@@ -28,6 +28,7 @@
 - B 站官方口径（正文可读的少数来源）：官方下载中心 https://app.bilibili.com/ ；腾讯应用宝 https://sj.qq.com/appdetail/tv.danmaku.bili ；小米应用商店 https://app.mi.com/details?id=tv.danmaku.bili
 - 说明：`openhome.bilibili.com/doc`、`open-live.bilibili.com/document/`、`www.bilibili.com/blackboard/help.html` 等官方页均为 JS 渲染空壳，**只能读到标题，读不到正文**。
 - 本仓库实测：其余结论均标注了 `文件:行号`，可直接核对。（归档文档另收有 Wear OS 官方文档与竞品仓库清单，与接口无关，不在此列出。）
+- **B 站官方 Android 客户端静态分析（本地逆向资料，不入库）**：对 `tv.danmaku.bili` 9.15.0 / 9.16.1 的 APK 做 apktool + jadx 反编译后抽取的接口表（574 个 Retrofit 接口类 / 1738 方法、93 个 gRPC 服务 / 743 方法）。产物在本地 `biliapp/`（已被 `.gitignore` 忽略，仓库里看不到），下文凡标「9.16.1 静态分析」的结论都出自它——**是官方实现的事实，不是实测响应**。
 
 ### 1.3 可信度分级：哪些是一手实测、哪些是二手/待核实
 
@@ -50,6 +51,7 @@
 - **官方 App 底部 Tab 的具体数量与顺序**：官方页面全是 JS 空壳，商店页仅能确认存在"我的"Tab；归档文档 §7.4 的模块划分是按官方子站与接口域反推的**模块划分**，不是 Tab 顺序断言。
 - **动态发布的完整参数取值表**（定时 / 可见范围的字段枚举）：只读到接口与部分字段名，未逐字段核对 `bilibili-API/docs/dynamic/publish.md` 全文。
 - **`-352` / `-412` / `-111` 之外的错误码语义**：见上，未逐条核对。
+- **标「9.16.1 静态分析」的接口事实**（§3 第 15 条、§6 末尾两条）：来自官方 APK 反编译出的 Retrofit 注解与 Moss 服务桩，**能证明客户端在发什么请求，不能证明服务端对这些请求的响应**。其中 §6 的 `x-bili-gaia-vtoken` 是「官方客户端会带这个头」的事实，本项目发 `batch-deal` 时偶发失败是否真由它引起，**尚未实测复现**——按「用到时须再验」对待。
 
 ## 2. 接口速查表（登录 / wbi / csrf 三列）
 
@@ -122,6 +124,11 @@
     - **回退只发一次，不走任何重试**：`NetWorkUtil.getJson` 对 `-352`/`-412` 会重试到 `api_retry_max_times`（默认 5 次），`get()` 对 `<!doctype html>` 也会重试同样次数——而风控页恰恰常是 HTML。回退请求再走一遍就是「一次搜索最多 10 个请求」，只会把限流拖得更久（26.10.24 审查指出）。所以回退用新增的 `NetWorkUtil.getJsonOnce()`：它**直连一次**，连 doctype 重试都跳过；主链路的重试行为不变。
     - **旧接口的其它错误码不能当成"没有结果"**：`-400` 之类的非零 `code` 现在会抛 `SearchApi.SearchException`（带服务端错误码，`ApiErrorText.opFailed`），页面弹出来；只有 `code == 0` 且确实没有 `result` 才算"搜不到"。
 
+15. **官方客户端的搜索主链路已经不在 REST 上了**（B 站 9.16.1 客户端静态分析，26.10.25 记录）：`grpc.biliapi.net` 上的 `bilibili.polymer.app.search.v1.Search` 提供 `SearchAll` / `SearchByType` / `SearchOGV` / `SearchComic` / `SearchReserve` / `SearchAddReserve` / `SearchDelReserve` / `SearchReserveCancel` 八个方法，`bilibili.app.interfaces.v1.Search` 另有 `Search` / `DefaultWords` / `Suggest3`；而官方 APK 的 574 个 Retrofit 接口类里**一条 `search/type` 都没有**。
+    - **对本项目的含义**：我们（和所有第三方）还在用的 `wbi/search/{all/v2,type}` 是官方**已经弃用**的路径，风控压这条上并不奇怪——§3.13/§3.14 记的「短时间连切排序就被拦」正是这个背景。
+    - **所以「退旧接口」只是兜底，不是长期方案**：真要摆脱风控得走 gRPC，但那要引入 moss/protobuf 运行时，与 `AGENTS.md`「不轻易引入新第三方库」冲突，暂不做。
+    - **搜索建议同代际**：本项目走的是 `s.search.bilibili.com/main/suggest`（老独立域名），官方对应的是 gRPC `Search/Suggest3` 与 `Search/DefaultWords`。它目前仍然可用，没有风控表现，所以不急着换。
+
 ## 4. 按接口可行性收敛的「值得做 / 不值得做」
 
 > 下表是 **26.10.04 的接口可行性判断**，不是最终产品裁决。用户裁决与此表有三处相反，以归档文档 `docs/archive/watch-optimization-research.md` §12 台账为准：① 「关注主播开播提醒」裁为**无计划**；② 漫画裁为**不做**（追漫列表无接口）；③ 「收藏夹批量整理」「发布动态/评论/弹幕」裁为**想要实现**（"需要输入"不构成否决理由），其中多项已落地。
@@ -167,4 +174,6 @@
 
 **上限字段的坑（26.10.16 历史，迁移后已不存在）**：老 `getBoxList` 对自建收藏夹恒返回 `max_count = 999`（实际上限 1000），「我的收藏夹」页因此显示过 `1000/999`；v3 系（`created/list`、`list-all`）**完全不返回上限**。现在上限按服务端约定本地算：默认收藏夹 50000、自建 1000（`FavoriteApi.maxCountOf()`）；默认收藏夹用 `attr & 2 == 0` 判断（不再用 `index == 0`，`index` 判据只对已删除的 `getBoxList` 成立）。详见 `docs/architecture-map.md` §7.34。
 
-**已知但未实现的收藏写接口**（上游 PiliPlus 有，本机待做，见 `docs/FEATURES.md` §8.5）：`x/v3/fav/resource/sort`（夹内手动排序）、`x/v3/fav/folder/sort`（收藏夹本身排序）、`x/v3/fav/resource/clean`（清理失效收藏）、`x/v3/fav/folder/info` + add/edit 的 `cover`/`privacy`（夹详情/封面/公开私密编辑）；前两个需 APP 签名（`appkey` + `ts` + `sign = md5(query + appsec)`）。
+**已知但未接的收藏接口**（逐条能力表见 `docs/FEATURES.md` §8.5）：`x/v3/fav/resource/sort`（夹内手动排序）、`x/v3/fav/folder/sort`（收藏夹本身排序）、`x/v3/fav/resource/clean` + `x/v3/fav/tab/clean_invalid`（清理失效）、`x/v3/fav/thump/up`、`x/v3/fav/tab/report`、`resource/infos|ids`、`folder/space|space/v2|whitelist`、`x/v3/fav/tab` 族、`x/v3/fav/season/unfav`。前两个需 APP 签名（`appkey` + `ts` + `sign = md5(query + appsec)`）。
+
+**批量写接口要带 `x-bili-gaia-vtoken`**（9.16.1 客户端静态分析）：`POST x/v3/fav/resource/batch-deal` 的请求头里有一个人机校验 token（`BiliApiException.mCode == 11211` 时官方客户端会单独处理、不弹通用错误）。这个 token 由风控链路下发，第三方拿不到——所以本项目走 `batch-deal` 时**偶发失败要优先怀疑它**，退路是逐条打 `x/v3/fav/resource/deal`（官方也保留着这条）。单条 `deal` 不需要该头。

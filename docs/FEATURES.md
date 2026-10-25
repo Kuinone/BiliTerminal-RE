@@ -462,12 +462,28 @@
 
 ### 8.5 尚未实现的收藏能力（计划）
 
-本轮（26.10.23）只把接口层迁到 `x/v3/fav/*` 新族，以下能力上游 PiliPlus 已有、本机还没做，先登记为待实现：
+26.10.23 只把接口层迁到 `x/v3/fav/*` 新族，UI 与交互未动。下表是按 B 站官方客户端 9.16.1 的 `PlaySetService`（全量 48 条 `x/v3/fav/*` + `x/v2/favorite/*`）逐条比对后，本机**还没接**的部分。
 
-- **收藏夹内手动排序**：拖拽调整收藏夹里视频的顺序（上游 `POST x/v3/fav/resource/sort`，需 APP 签名）。现在只能按「收藏时间/播放量/投稿时间」重排。
-- **收藏夹本身排序**：拖拽调整收藏夹列表顺序（上游 `POST x/v3/fav/folder/sort`，需 APP 签名；默认收藏夹不能动）。
-- **清理失效收藏**：一键清掉收藏夹里已失效的内容（上游 `POST x/v3/fav/resource/clean`）。
-- **收藏夹封面编辑**：读取/修改封面（上游 add/edit 的 `cover` 参数，封面要先走图片上传拿 URL）。简介与公开/私密已于 26.10.24 接上（见 §8.2）。
+已接的 11 条：`folder/{add,edit,del,info}`、`folder/created/list`、`folder/created/list-all`、`folder/collected/list`、`resource/list`、`resource/batch-deal`、`resource/copy`、`resource/move`。
+
+| 能力 | 接口 | 备注 |
+| --- | --- | --- |
+| 收藏夹内手动排序 | `POST x/v3/fav/resource/sort`（`media_id` + `sort`） | 需 APP 签名（`appkey` + `ts` + `sign=md5(query+appsec)`），拿不到签名就是 `-403`。现在只能按「收藏时间/播放量/投稿时间」重排 |
+| 收藏夹本身排序 | `POST x/v3/fav/folder/sort` | 官方 9.16.1 的 Retrofit 层**没有**这条（只有 `folder/add_top` 置顶单个），进一步印证它只在 APP 签名链路里 |
+| 清理失效收藏（夹内） | `POST x/v3/fav/resource/clean`（`media_id`） | 官方入口是「收藏夹 → 清理失效内容」；先 `GET folder/clean-state` 查可清理数量 |
+| 清理失效收藏（全部） | `POST x/v3/fav/tab/clean_invalid` | tab 级，一次清所有夹 |
+| 收藏夹封面编辑 | `POST x/v3/fav/folder/edit` 的 `cover` | 需先走图片上传拿 URL。我们已接 `edit`，只传 `title`/`intro`/`attr` |
+| 收藏夹点赞 | `POST x/v3/fav/thump/up` | |
+| 收藏夹「上次看到哪」 | `POST x/v3/fav/tab/report` | 官方用它做跨端续播 |
+| 批量查媒体信息 | `GET x/v3/fav/resource/infos` / `ids` | 可用于「失效条目批量标灰」，省掉逐条请求 |
+| 收藏夹分组 / 空间 | `GET x/v3/fav/folder/space`、`space/v2`、`whitelist` | 配合空间页的分组展示 |
+| 收藏 tab（视频/图文切换） | `GET x/v3/fav/tab`、`tab/fav`、`tab/fol` | 我们目前用 `opus/feed/fav` 单独走图文，没接 tab 体系 |
+| 番剧/合集取消收藏 | `POST x/v3/fav/season/unfav` | |
+| 收藏夹内搜索 | `GET x/v3/fav/tab/fav/search` | 手表无键盘，优先级低 |
+
+**明确不做**（官方有、但与本机定位无关）：`kid-playlist/{info,create,import}`（少儿内容）、`recommend/{items,deal}`（带货推荐位）、`statistics/count`（分享埋点）、`tab/red_dot/clean`、`tab/dels`（整夹删除，我们走 `folder/del`）、`unfav-all` / `toview/adds`（已有等价的 `batch-deal` 与独立的 `WatchLaterApi`）。
+
+接口事实与代际说明见 `docs/bilibili-api-notes.md` §6。
 
 ---
 
