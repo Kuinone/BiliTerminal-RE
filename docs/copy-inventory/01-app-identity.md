@@ -52,18 +52,24 @@
 > 愿你在这一方小小的屏幕中，找到属于自己的小小的快乐
 > 提示：长按设置中的"关于"按钮有彩蛋哦！
 
-### A-004 开发者列表列名：紫色空灵
+### A-004 开发者列表：紫色空灵（RE 版主开发者）
 
-- **位置**：`app/src/main/res/values/strings.xml`（`R.string.about_dev_trae`）
-- **出现在哪**：关于页开发者卡片**第一列的列名**（`activity_setting_about.xml` 的
-  `developer_re_container` 上方），26.10.25 起「紫色空灵」从联合开发者里独立成一列
-- **用途**：标明 RE 版（当前这版）的主要开发者；
-  身份只在这一个地方说一次
+- **位置**：`app/src/main/res/values/strings.xml` —— 两条：
+  - `R.string.about_dev_trae`（列名）
+  - `R.string.about_dev_trae_desc`（他卡片上的简介位）
+- **出现在哪**：关于页开发者卡片**第一列**（`activity_setting_about.xml` 的
+  `developer_re_container` 上方是列名，列里是他那张卡片），26.10.25 起「紫色空灵」
+  从联合开发者里独立成一列
+- **用途**：标明 RE 版（当前这版）的主要开发者
 - **原文**：
 
+> 此版本主要开发者
 > RE：哔哩终端主要开发者
 
-- **改写**：RE：哔哩终端主要开发者
+- **改写**：此版本主要开发者 / RE：哔哩终端主要开发者
+
+> 两条都是用户可见文案，必须留在 `strings.xml` 里（`AboutActivity.DEVELOPERS_RE`
+> 通过 `descRes` 引用），**不要写回 Kotlin 字面量**。
 
 ---
 
