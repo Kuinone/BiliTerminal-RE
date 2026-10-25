@@ -23,7 +23,7 @@
 - **依赖仓库**：`settings.gradle` 已把 aliyun 的 `google` / `public` / `gradle-plugin` 三个镜像前置，`google()`/`mavenCentral()`/jitpack 仅作兜底。
 - **改了 `res/` 文件集合时**：`:app:clean` 与后续命令**必须分两次 Gradle 调用**，且带 `--no-build-cache --no-configuration-cache`，否则会回放陈旧资源（症状是 `Unresolved reference 'R.layout.xxx'`）。
 - **版本一致性**：`:app:verifyVersionConsistency` 以 `strings.xml` 的 `update_log_current` 为锚点校验版本一致性；发版说明也由 CI 从它抽取（抽不到直接拒绝发版）。
-- **单测（静态计数，26.10.24 合并上游 + 加搜索排序后实测）**：**87 个测试类 / 941 个用例**，两个 flavor 完全相同（同源码），0 失败 0 错误 0 跳过。计数方式：`app/src/test/` 下 `*Test.kt|java` 计数（另有共享假实现 `util/FakeSharedPreferences.kt`），`app/build/test-results/testStandardDebugUnitTest/TEST-*.xml` 的 `tests=` 求和。用例数一律以机器产出为准，队友口述数字不进入文档。
+- **单测（静态计数，26.10.25 断网启动兜底修复后实测）**：**88 个测试类 / 952 个用例**，两个 flavor 完全相同（同源码），0 失败 0 错误 0 跳过。计数方式：`app/src/test/` 下 `*Test.kt|java` 计数（另有共享假实现 `util/FakeSharedPreferences.kt`），`app/build/test-results/testStandardDebugUnitTest/TEST-*.xml` 的 `tests=` 求和。用例数一律以机器产出为准，队友口述数字不进入文档。
 - **26.10.10 那一轮的构建记录（历史，留作「改 minSdk / 重跑 release 链路」时的验证口径）**：`minSdk 24 → 19` 全部改动（含 jsoup 1.16.1、7 个 `res/drawable-v21` 资源）落盘后，按「`clean` → `assembleRelease` → `lintRelease` → 单测」四步跑完（均带 `--no-configuration-cache`，`clean` 与 `assemble` 分两次调用），四步全 `BUILD SUCCESSFUL`（37s / 2m13s / 1m25s / 39s）。当时单测汇总 **49 suites / 460 tests / 0 failures**（任务名当时还是 `testDebugUnitTest`，现已带 flavor 前缀），最新 XML 时间 `2026-10-09T22:59:04`（晚于当轮 APK 出包时间 22:56:58，覆盖了当轮全部源码改动）。`:app:lintRelease` 的 **`NewApi` 从 22 条降到 2 条**，且这 2 条就是 `PlayerActivity.kt:1981` 的已知假阳性。发版前仍建议再跑一次确认。
 - **「自动跳过片头片尾」已恢复上线（26.10.22）**：26.10.10 的紧急撤回**已解除**，`SkipOpEdPrefs.FEATURE_ENABLED` 回到 `true`，设置入口与搜索索引均已恢复；口径按用户拍板改为**默认关闭**（`DEFAULT_ENABLED = false`，老用户存档里显式写的值仍然优先）。恢复细节见 §3.3「恢复记录」，乱跳的三个根因修复见 §3.55。
 - **本轮基建改动（26.10.10）**：**`minSdk 24 → 21 → 19（Android 4.4）`**，唯一落点是 `app/build.gradle:21`。两级下调的成本不同，分开记：
@@ -1421,6 +1421,7 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
   - **切到首次访问的分类时排序按钮可能一直不出现**（审查「疑点 A」的加固）：`FragmentStateAdapter` 是懒创建的，`onPageSelected` 里 `findFragmentByTag("f$position")` 可能还是 null，那一刻 `refreshSortBar` 只能判成「本分类不支持排序」把按钮收掉，而 `sortBarEligible` 是缓存值、之后没人重算。现在 `onPageSelected` 之后 `viewPager.post { refreshSortBar() }` 补算一次（幂等，按当时的 currentItem 算，不会自旋）。审查侧的观察是「切 tab 时整体收起、上滑一次即恢复」，判断为 main 既有逻辑而非本功能引入；这条补算属于顺手加固，不是回归修复。
   - **验证**：`:app:assembleDebug` 通过；两 flavor 单测各 **87 套 / 941 例 / 0 失败**；markdownlint 40 文件 0 issue。**HTML 风控回退这条新分支没法主动触发**（要 B 站真回拦截页），靠既有纯函数判据 + 构建与单测兜底，如实记在这里；本轮也**未上设备实测**（模拟器已关闭，且这条路径模拟器同样复现不了）。
 - **未做**：用户 / 直播的排序（它们的 `order` 是另一套键：`fans`/`level`、`online`/`live_time`），以及「最多弹幕 / 最多评论」两档（手表屏上弹窗列表已经够长）。
+
 ### 3.63 下载卡在 20%：分片下载加看门狗 + Range 校验 + 强制 HTTP/1.1（26.10.25）
 
 - **缘起**：用户报「下载进度卡在 20% 不动」。20% 是 `DownloadService.processDownloadSection` 给 MP4 / 纯音频主文件写死的**起始基准**（`setDownloadProgress(id, 0.2f, ...)` 后 `downFile(..., 0.2f)`），所以卡在 20.0% 基本等于主文件的 `downFileSpeedSeg` 阶段一个字节都没再往前推（失败分支会清掉进度映射，因此不是"映射残留"）。
@@ -1434,6 +1435,22 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
 - **结论：不删多线程**。删掉等于放弃实测约 4.2 倍的吞吐；项目自己的 `docs/superpowers/specs/2026-10-13-download-engine-optimization.md` 定的方向也是「分片健壮化 + 失败语义统一」，不是砍功能。
 - **验证**：`./gradlew.bat :app:assembleDebug` 双 flavor 成功；`:app:testStandardDebugUnitTest`、`:app:testCoexistDebugUnitTest` 各 **88 suites / 946 tests / 0 failures**（新增 `SegmentDownloadPolicyTest` 8 例）。
 - **遗留**：①分片失败兜底仍是「整文件单连接重下」，没有真正的断点续传（P0，见上述 spec）；②PCDN 域名失效时没有切 `backup_url`；③进度公式仍是 0.2 基准 + `%.1f`，大文件上的低速波动在界面上不明显。**未真机复现卡 20%**（本机 adb 无设备、模拟器未开），看门狗 / 降级路径靠单测与真实直链探针（临时探针单测与结果文件已删除，未进提交）验证。
+
+### 3.64 断网启动仍进自定义启动页：断网兜底进缓存页（26.10.25）
+
+- **缘起**：用户「314」反馈（QQ 截图）：「自从改完打开界面逻辑之后，无网络时打开会跳转到自定义打开界面，希望改回原来那种无网络时打开自动进缓存，能正常加载时再进入自定义界面。」
+- **根因**：`3f54b1c` 把启动目标改成「菜单设置里选定的启动页」时，只换了 `SplashActivity` 里的取页逻辑，全流程没有网络可用性判断。`menu_start` 缺省是「推荐」，推荐 / 动态 / 消息等页断网时只能看到加载失败；原本能离线使用的「缓存」页反而被启动页设置挡在后面。
+- **改法**（三条，互不耦合）：
+  - `util/NetWorkUtil.java:693` 新增 `isNetworkAvailable(Context)`：移植上游 1.2.4 的本地判断（`getActiveNetworkInfo() != null && isConnected()`，不用 API 23 的 `NetworkCapabilities`——`minSdk 19` 上老系统会拒绝），异常一律返回 `true`（fail-open，判断不出来就退回原来的失败路径）。
+  - `util/MenuConfig.kt:107/146` 新增 `OFFLINE_START = "local"` 与纯函数 `resolveLaunchStart(enabled, stored, online)`：`online` 走原 `resolveStart`，否则固定 `local`。**只决定本次启动，不写回 `menu_start`**。
+  - `activity/SplashActivity.kt:341-363`：启动时先取 `online`，按 `resolveLaunchStart` 选页；断网在 `finish()` 后 `MsgUtil.showMsg(R.string.msg_splash_offline_to_cache)`（缓存页 `BaseActivity` 注册 EventBus 后收到 sticky 消息）；四处启动网络请求（token/Cookie 刷新、`AppInfoApi.check`、公告、匿名统计）整体包进 `if (online)`——这是断网时不再弹「终端接口出现问题」的关键。更新日志页与启动提示都走本地判断，保留。新文案 `msg_splash_offline_to_cache` 进 `strings.xml`。
+- **单测**：`MenuConfigTest` 新增 3 例（在线沿用用户设置、断网无论设置成什么都进 `local`、`local` 必为固定项）。
+- **验证（MuMu 模拟器，Android 12 / x86_64，26.10.25）**：
+  - 在线默认：启动 → `RecommendActivity`（默认启动页）。
+  - 在线自定义：`menu_start=settings` → `SettingMainActivity`（任务栈实测）。
+  - 断网（`Active default network: none`）：启动 → `LocalListActivity`，logcat `I/MsgUtil>showMsg: 无网络，已进入缓存页`，缓存页底部 Snackbar 显示同一句；全程无「终端接口出现问题」。
+  - `./gradlew.bat :app:assembleDebug :app:testStandardDebugUnitTest :app:testCoexistDebugUnitTest` 全绿（双 flavor 各 **88 suites / 952 tests / 0 failures**，含新增 `MenuConfigTest` 3 例；以本轮 rebase 到最新 main 后 `app/build/test-results/` 下 `TEST-*.xml` 的 `tests=` 求和为准）。
+- **遗留**：①真手表未验证（本机只有模拟器）；②断网启动仍会有 `BiliTerminal` 启动检查（更新检查、未读、追番）的后台网络失败日志，它们各自 catch 只记日志、不弹提示，属既有行为，本次不动；③模拟器上 `svc wifi disable` / `cmd wifi set-wifi-enabled disabled` 会让 guest 的 adb shell 卡死，断网测试只能靠重启模拟器，后续模拟器断网测试不要用关 Wi-Fi 的方式。
 
 ## 4. 历史章节索引
 

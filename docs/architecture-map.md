@@ -347,7 +347,7 @@ CenterThreadPool.supplyAsyncWithLiveData { fetch...().getOrThrow() }
 
 ## 6. 网络层
 
-### 6.1 `NetWorkUtil`（`util/NetWorkUtil.java`，709 行，唯一出口）
+### 6.1 `NetWorkUtil`（`util/NetWorkUtil.java`，997 行，唯一出口）
 
 - **单例 OkHttpClient**，`followRedirects(false)` + 自定义拦截器手写重定向（`b23.tv` 短链走 `RedirectHandler` 回调）。
 - **DNS 强制 IPv4**（`Inet4Selector`，注释称 IPv6 请求有异常）。
@@ -358,6 +358,7 @@ CenterThreadPool.supplyAsyncWithLiveData { fetch...().getOrThrow() }
 - **风控重试**：`executeJsonWithRiskRetry` 对 `code == -352 / -412` 重试；`executeWithDoctypeRetry` 对返回 `<!doctype`（被风控拦成 HTML）的响应重试。重试次数/间隔读 SharedPreferences（`api_retry_max_times`、`api_retry_interval_seconds`）。**注意调试桥的 `http` 命令不用这个默认重试**：它跑在广播的 `goAsync()` 窗口里，按 8s+16s×5 次重试会直接把广播拖成 ANR，所以另建了一个连接 5s / 读 8s 的短超时 client。
 - **隐私模式**：`getJsonPrivacy()` 用 `buildGuestCookieString()` 剔除 `SESSDATA/bili_jct/DedeUserID/sid` 等登录 Cookie。
 - **参数构造**：`FormData` 类，内部 `URLEncoder.encode`，默认**不**自动加 `access_key`（注释：web 接口带 access_key 会触发风控）。
+- **连通性判断（26.10.25）**：`isNetworkAvailable(Context)`（`:693`）只做本地查询（`ConnectivityManager.getActiveNetworkInfo()`，不发请求、毫秒级），异常 / 取不到一律返回 `true`（fail-open，判断不出来就退回原来的失败路径）。故意用已废弃 API（`minSdk 19` 上不用 `NetworkCapabilities`）。目前唯一用途是启动页断网兜底（`SplashActivity`），**需要判断网络时别再另写一份**。
 - **裸 deflate 解压**：`decompress(byte[])`（26.09.11 起为本工程唯一实现，原先
   `DownloadService`/`DownloadActivity`/`PlayerActivity` 各有一份逐字相同的副本）。
   解压失败回退原数据；`Inflater` 持 native 资源，统一在 `finally` 里 `end()`。

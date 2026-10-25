@@ -200,4 +200,39 @@ class MenuConfigTest {
         assertEquals("recommend", result)
         assertEquals("recommend", written)
     }
+
+    // ---- 断网启动兜底：网络不可用时一律进缓存页 ----
+
+    @Test
+    fun resolveLaunchStart_online_usesUserSetting() {
+        assertEquals(
+            "myspace",
+            MenuConfig.resolveLaunchStart(MenuConfig.DEFAULT_ENABLED, "myspace", true)
+        )
+        // 在线且从未设置过 → 默认推荐
+        assertEquals(
+            "recommend",
+            MenuConfig.resolveLaunchStart(MenuConfig.DEFAULT_ENABLED, null, true)
+        )
+    }
+
+    @Test
+    fun resolveLaunchStart_offline_alwaysGoesToCache() {
+        // 无论用户把启动页设成了哪一页，断网都进缓存页
+        for (stored in listOf(null, "recommend", "search", "myspace", "settings")) {
+            assertEquals(
+                "local",
+                MenuConfig.resolveLaunchStart(MenuConfig.DEFAULT_ENABLED, stored, false)
+            )
+        }
+        // 启用列表异常（比如连推荐都缺）也不影响断网兜底
+        assertEquals("local", MenuConfig.resolveLaunchStart(emptyList(), "recommend", false))
+    }
+
+    @Test
+    fun resolveLaunchStart_offlineKeyIsFixedItem() {
+        // 缓存是固定项：不存在「断网目标页被移入未启用」这种组合
+        assertTrue(MenuConfig.OFFLINE_START in MenuConfig.FIXED_ITEMS)
+        assertTrue(MenuConfig.OFFLINE_START in MenuConfig.ALL_ITEMS)
+    }
 }

@@ -1,8 +1,8 @@
 # 菜单启动页（打开应用直接进入的页面）与菜单设置说明改造
 
 - **日期**：2026-10-20
-- **状态**：已与用户逐条确认需求与验收标准，实施中
-- **涉及文件**：`util/MenuConfig.kt`、`util/SharedPreferencesUtil.java`、`adapter/MenuSettingAdapter.kt`、`activity/settings/SettingMenuActivity.kt`、`activity/SplashActivity.kt`、`res/layout/item_menu_setting*.xml`、`res/values/strings.xml`、`test/.../MenuConfigTest.kt`
+- **状态**：已实施；26.10.25 追加「断网启动兜底」（模拟器已验证，见第 6 节）
+- **涉及文件**：`util/MenuConfig.kt`、`util/NetWorkUtil.java`（26.10.25 追加）、`util/SharedPreferencesUtil.java`、`adapter/MenuSettingAdapter.kt`、`activity/settings/SettingMenuActivity.kt`、`activity/SplashActivity.kt`、`res/layout/item_menu_setting*.xml`、`res/values/strings.xml`、`test/.../MenuConfigTest.kt`
 
 ## 1. 目标
 
@@ -72,6 +72,8 @@
 
 - `DEFAULT_START = "recommend"`
 - `resolveStart(enabled, stored)`：`stored` 仍在 `enabled` 中则沿用；否则默认 `recommend`；再兜底 `enabled.first()`，最后 `DEFAULT_START`。
+- `OFFLINE_START = "local"`（26.10.25 追加）：断网时的目标页固定为缓存页（固定项，一定可达）。
+- `resolveLaunchStart(enabled, stored, online)`（26.10.25 追加）：`online == true` 时走 `resolveStart`，否则返回 `OFFLINE_START`。只决定**本次启动**去哪里，不写 `menu_start`。
 - `loadStart(enabled, readString, writeString)`：缺失（null/空白）→ 返回默认值且**不写**；存在但已失效 → 写回默认值。
 - `saveStart(key, writeString)`
 
@@ -101,3 +103,33 @@ adb install -r app/build/outputs/apk/standard/debug/app-standard-*-debug.apk
 # 4) 说明：点按展开/收起；2 秒内连按两次长按 -> 隐藏；重启后仍是隐藏态；点「显示说明」恢复
 # 5) adb shell run-as com.RobinNotBad.BiliClient cat shared_prefs/*.xml | grep -E 'menu_start|menu_help_hidden'
 ```
+
+## 6. 26.10.25 追加：断网启动兜底（已实施，模拟器已验证）
+
+### 6.1 缘起
+
+启动页上线后，用户「314」反馈（QQ 截图）：改完打开界面逻辑之后，无网络时打开应用会跳到自定义打开界面；希望改回「无网络时打开自动进缓存」，能正常加载时再进自定义界面。
+
+根因：`SplashActivity` 现在只按 `menu_start` 选目标页，全流程没有网络可用性判断；而 `menu_start` 缺省是「推荐」，推荐 / 动态 / 消息等页面断网时只能看到加载失败，启动页设置反而把原本能离线使用的缓存页挡在了后面。
+
+### 6.2 口径
+
+- 启动时做一次**本地**连通性判断（`ConnectivityManager.getActiveNetworkInfo()`，不发请求、毫秒级；判断不出来一律按「有网」处理，fail-open）。
+- **无网 → 进缓存页（`local`）**，并提示一句「无网络，已进入缓存页」。
+- **有网 → 仍按 `menu_start` 进用户设置的启动页**（原有行为不变）。
+- 只影响本次启动，**不改写 `menu_start`**：网络恢复后照旧。
+- 断网时**不发起启动网络请求**（token / Cookie 刷新、`AppInfoApi.check`、公告、匿名统计），避免一路超时和「终端接口出现问题」的提示；更新日志页与启动提示都走本地判断，保留。
+
+### 6.3 实现
+
+- `util/NetWorkUtil.java:693` 新增 `isNetworkAvailable(Context)`：故意用已废弃的 `getActiveNetworkInfo()`（API 1 起可用，`minSdk 19` 上不用 `NetworkCapabilities`），异常一律返回 `true`。
+- `util/MenuConfig.kt:107/146` 新增 `OFFLINE_START` 与 `resolveLaunchStart(enabled, stored, online)`（纯函数，JVM 单测）。
+- `activity/SplashActivity.kt:341-363`：`online = NetWorkUtil.isNetworkAvailable(this)` → `startActivityKey = MenuConfig.resolveLaunchStart(...)`；断网提示在 `finish()` 之后 `MsgUtil.showMsg(...)`（缓存页 `BaseActivity` 注册 EventBus 后收到 sticky 消息）；四处启动网络任务整体包进 `if (online)`。
+- `res/values/strings.xml` 新增 `msg_splash_offline_to_cache`。
+
+### 6.4 验收（新增）
+
+1. 断网启动 → 直接进缓存页，底部提示「无网络，已进入缓存页」；`menu_start` 保持原值。
+2. 恢复网络启动 → 按 `menu_start` 进自定义启动页；从未设置过时进「推荐」。
+3. 断网启动的 logcat 不应出现「终端接口出现问题」。
+4. 纯逻辑单测 `MenuConfigTest.resolveLaunchStart_*`：在线沿用用户设置、断网无论设置成什么都进 `local`、`local` 必为固定项。

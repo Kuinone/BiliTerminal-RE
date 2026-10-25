@@ -26,6 +26,7 @@ import com.RobinNotBad.BiliClient.api.CookiesApi
 import com.RobinNotBad.BiliClient.ui.appearance.ColorScheme
 import com.RobinNotBad.BiliClient.util.AccountManager
 import com.RobinNotBad.BiliClient.util.CenterThreadPool
+import com.RobinNotBad.BiliClient.util.MenuConfig
 import com.RobinNotBad.BiliClient.util.MsgUtil
 import com.RobinNotBad.BiliClient.util.NetWorkUtil
 import com.RobinNotBad.BiliClient.util.PerformanceManager
@@ -334,7 +335,15 @@ class SplashActivity : Activity() {
                     // 启动页：菜单设置里勾选的那一项；缺省为「推荐」。
                     // loadMenuStart 内部会纠正失效配置（选中项已被移入未启用 → 改回默认并写回）
                     val enabled = SharedPreferencesUtil.loadMenuEnabled()
-                    val startActivityKey = SharedPreferencesUtil.loadMenuStart(enabled)
+                    // 本地连通性判断（不发起请求）：断网时用户自定义的启动页（推荐 / 动态 / 消息…）
+                    // 全是等待网络的页面，进去只能看到加载失败，所以断网一律改去缓存页；
+                    // 网络正常时才按用户设置进自定义启动页。只影响本次启动，不改写 menu_start。
+                    val online = NetWorkUtil.isNetworkAvailable(this@SplashActivity)
+                    val startActivityKey = MenuConfig.resolveLaunchStart(
+                        enabled,
+                        SharedPreferencesUtil.loadMenuStart(enabled),
+                        online
+                    )
 
                     val activityClass = MenuActivity.btnNames[startActivityKey]?.second
 
@@ -347,6 +356,12 @@ class SplashActivity : Activity() {
                         splashTextView.text = splashText
                         startActivity(intent)
                         finish()
+                        // 断网兜底：进的是缓存页而不是用户设置的启动页，给一句提示，
+                        // 免得用户以为是启动页设置没生效（提示走 BaseActivity 的 Snackbar，
+                        // 缓存页 onCreate 注册 EventBus 后就能收到这条 sticky 消息）。
+                        if (!online) {
+                            MsgUtil.showMsg(getString(R.string.msg_splash_offline_to_cache))
+                        }
                         // F4：版本升级后的首次启动，自动展示当版更新日志。
                         // 排在这一句之后：日志页叠在首屏之上、返回即回到首屏，闪屏阶段既不阻塞
                         // UI 线程，也不插入登录 / Cookie 刷新流程中间。setup 尚未完成、要走
@@ -364,44 +379,48 @@ class SplashActivity : Activity() {
                         AppInfoApi.showStartupNotices(this@SplashActivity)
                     }
 
-                    if (SharedPreferencesUtil.getLong("mid", 0) != 0L) {
-                        CenterThreadPool.run {
-                            // 按凭证类型分流：TV/APP 登录（有 access_key）走统一的 APP token 刷新，
-                            // 该接口会同时刷新 access_token 与 cookies；Web 登录走 web cookie 刷新。
-                            if (SharedPreferencesUtil.getString(SharedPreferencesUtil.access_key, "").isNotEmpty()) {
-                                try {
-                                    AppTokenRefreshApi.refreshAppToken()
-                                } catch (e: Exception) {
-                                    Log.e("Splash", "APP token刷新失败: ${e.message}")
+                    // 断网时不发起任何启动网络请求：AppInfoApi.check 失败会弹「终端接口出现问题」，
+                    // Cookie 刷新 / 公告 / 统计也只会一路超时——这些都留到下次有网启动再做。
+                    if (online) {
+                        if (SharedPreferencesUtil.getLong("mid", 0) != 0L) {
+                            CenterThreadPool.run {
+                                // 按凭证类型分流：TV/APP 登录（有 access_key）走统一的 APP token 刷新，
+                                // 该接口会同时刷新 access_token 与 cookies；Web 登录走 web cookie 刷新。
+                                if (SharedPreferencesUtil.getString(SharedPreferencesUtil.access_key, "").isNotEmpty()) {
+                                    try {
+                                        AppTokenRefreshApi.refreshAppToken()
+                                    } catch (e: Exception) {
+                                        Log.e("Splash", "APP token刷新失败: ${e.message}")
+                                    }
+                                } else {
+                                    try {
+                                        checkCookieRefresh()
+                                    } catch (e: Exception) {
+                                        Log.e("Splash", "Cookie刷新失败: ${e.message}")
+                                    }
                                 }
-                            } else {
                                 try {
-                                    checkCookieRefresh()
+                                    CookiesApi.checkCookies()
                                 } catch (e: Exception) {
-                                    Log.e("Splash", "Cookie刷新失败: ${e.message}")
+                                    Log.e("Splash", "Cookies检查失败: ${e.message}")
                                 }
-                            }
-                            try {
-                                CookiesApi.checkCookies()
-                            } catch (e: Exception) {
-                                Log.e("Splash", "Cookies检查失败: ${e.message}")
                             }
                         }
-                    }
-                    CenterThreadPool.run { AppInfoApi.check(this@SplashActivity) }
+                        CenterThreadPool.run { AppInfoApi.check(this@SplashActivity) }
 
-                    // 自建服务器这一路：公告（含服务端拉取、管理员逐条审核后透传的上游公告）
-                    // 的启动差量弹窗，以及匿名使用统计（唯一安装数 + 日活），一天一次，设置里可关。
-                    // 客户端已不再直连上游公告接口，所以这里只有这一个公告源。
-                    // 两件事都包了异常：自建接口挂了不能影响启动流程。
-                    CenterThreadPool.run {
-                        try {
-                            TerminalApi.checkAnnouncement()
-                        } catch (e: Exception) {
-                            Log.e("Splash", "公告拉取失败: ${e.message}")
+                        // 自建服务器这一路：公告（含服务端拉取、管理员逐条审核后透传的上游公告）
+                        // 的启动差量弹窗，以及匿名使用统计（唯一安装数 + 日活），一天一次，设置里可关。
+                        // 客户端已不再直连上游公告接口，所以这里只有这一个公告源。
+                        // 两件事都包了异常：自建接口挂了不能影响启动流程。
+                        CenterThreadPool.run {
+                            try {
+                                TerminalApi.checkAnnouncement()
+                            } catch (e: Exception) {
+                                Log.e("Splash", "公告拉取失败: ${e.message}")
+                            }
                         }
+                        CenterThreadPool.run { TelemetryReporter.reportIfNeeded() }
                     }
-                    CenterThreadPool.run { TelemetryReporter.reportIfNeeded() }
 
                 } catch (e: Exception) {
                     // 放宽到 Exception：原来只接 JSONException，其它异常会直接打断启动流程
