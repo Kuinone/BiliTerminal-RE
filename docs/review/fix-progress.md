@@ -113,6 +113,8 @@
 
 - [ ] **缓存视频断点续播（§3.53）待真机**：本机只过了 `:app:assembleDebug` + 两 flavor 单测，位置读写纯函数有 JVM 覆盖，但「退出再进真的接着播」必须真机。用例：① 缓存视频播到约 01:30 退出再进 → 从约 01:30 起播且提示「已从上次的位置播放」（±2s）；② 关掉「从历史位置播放」→ 从头且不提示；③ 看到距结尾 5 秒内 / 播完 → 下次从头；④ 多 P 视频 A 播一半、B 从头 → 各自记住不串；⑤ 单文件、DASH 双文件、听视频（`audio_only`）、虚拟合集连播、多 P 选择页五个入口都验；⑥ 缓存文件夹改名/移动后仍能续播；⑦ 播放中直接杀进程（后台划掉）→ 最多丢 15 秒；⑧ 文件被删/损坏/换成更短的版本 → 静默从头不崩。
 
+- [ ] **短视频页圆屏适配（§3.65）真机未验证**：只在 MuMu 模拟器（`wm size 320x320` + `wm density 160`）上验过。真机用例：圆屏手表开启「圆屏适配」→ 进短视频页，顶栏标题/返回箭头不贴边、底栏进度条与按钮不被裁角、竖屏视频按内接圆缩小居中且不变形；关闭开关后恢复原样；圆屏开时上下切视频、左右滑详情页、弹幕显示均正常。
+
 ### 2.2 功能与工程待办
 
 - [x] ~~**「自动跳过片头片尾」处于撤回状态**~~ ——26.10.22 **已恢复**（默认关闭），恢复清单 ①–④ 已完成，⑤⑥（发版公告与版本号）随下次发版做。§3.3
@@ -1452,6 +1454,22 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
   - `./gradlew.bat :app:assembleDebug :app:testStandardDebugUnitTest :app:testCoexistDebugUnitTest` 全绿（双 flavor 各 **88 suites / 952 tests / 0 failures**，含新增 `MenuConfigTest` 3 例；以本轮 rebase 到最新 main 后 `app/build/test-results/` 下 `TEST-*.xml` 的 `tests=` 求和为准）。
 - **遗留**：①真手表未验证（本机只有模拟器）；②断网启动仍会有 `BiliTerminal` 启动检查（更新检查、未读、追番）的后台网络失败日志，它们各自 catch 只记日志、不弹提示，属既有行为，本次不动；③模拟器上 `svc wifi disable` / `cmd wifi set-wifi-enabled disabled` 会让 guest 的 adb shell 卡死，断网测试只能靠重启模拟器，后续模拟器断网测试不要用关 Wi-Fi 的方式。
 
+### 3.65 短视频页开启「圆屏适配」后并未适配（26.10.25）
+
+- **缘起**：用户报告「短视频界面在开启圆屏适配后并未适配」。
+- **现状（为什么没适配，两处）**：
+  - `activity/base/BaseActivity.kt` 的 `setRound()` 只在 `findViewById(R.id.pageName) != null` 时执行；短视频页顶栏在 ViewPager item 的 `fragment_short_video_page.xml` 里、只有 `text_title`，没有 `pageName` → 整段被跳过（普通页面靠它把标题横向内缩 18% 宽、时间居中那一套完全没有作用到本页）。
+  - `ShortVideoPlayerActivity.PageHolder.adjustVideoSize()` 只按整屏做 fit，没有圆屏内接圆分支；而本页继承 `InstanceActivity` → `BaseActivity`，`player_ui_round` 打开时 `BaseActivity.onCreate` 会给根 View 加 5%/3% 的 root padding（内容区小于整屏），算画面尺寸时也没扣内容区。
+- **改法（单文件 `app/src/main/java/com/RobinNotBad/BiliClient/activity/video/ShortVideoPlayerActivity.kt`，+127 / −13）**：
+  - 新增三个属性：`roundAdapted`（读 `SettingsKeys.UI_ROUND`）、`roundPadding = (screenWidth * 0.03f).toInt()`（与 `PlayerActivity.initUI()` 同一口径）、`contentWidth/contentHeight`（= `BaseActivity.window_width/window_height`，≤0 时退回整屏尺寸）。
+  - `PageHolder` 先快照 `top`/`videoProgress`/`textProgress` 的 XML 基础 padding，`applyRoundInsets()` 按开关收放：圆屏时 `top.setPadding(padding*7, padding, padding*7, 0)`、进度条左右 `padding*4`、时间文本左 `padding*3`、弹幕上下 margin `padding*3`；关闭时逐项还原（幂等）。`bind()` 与 `initPlayer()`（拿到 `danmakuView` 之后）各调一次。
+  - `adjustVideoSize(screenW, screenH)` 重写：可用区域优先取 `itemView` 实测尺寸（回退 `contentWidth/contentHeight`）；圆屏按视频比例求内接圆矩形——`diameter = min(屏宽, 屏高)`、`videoMul = 视频高/宽`、`side = sqrt(diameter² / ((视频高/宽)² + 1))`、宽 = `side`、高 = `side * videoMul`，再按可用区域等比夹；非圆屏分支按可用区域 fit（原逻辑按整屏）。**取 `min` 而不是 `max`**：首轮在 1440×2560 的模拟器上 `max` 会算出比屏宽还宽的画面。
+- **验证（MuMu 模拟器，Android 12 / x86，`wm size 320x320` + `wm density 160` 模拟圆屏，26.10.25）**：
+  - 圆屏开（5% / 3%）：内容区 `[16,9][304,302]`；`top [16,9][304,35]`、`text_title [79,18][241,35]`（= 16 + 7×9）、`videoprogress [16,216][304,236]`、`text_progress [16,238][304,253]`、`bottom_buttons [16,253][304,302]`。竖屏视频算出 157×279（9:16 内接圆），像素测量视频占列 81..237 与公式一致，四角距圆心 ≈160，底栏各按钮中心距圆心 ≈142~143（均 <160）。
+  - 圆屏关：`top [0,0][320,25]`、`text_title [8,4][312,21]`（XML 原值）、竖屏视频 180×320 满高 —— 与改动前完全一致（无回归）。
+  - `.\gradlew.bat :app:assembleDebug` 与 `.\gradlew.bat :app:testStandardDebugUnitTest` 均通过。
+- **遗留**：①真手表 / 真圆屏设备未验证（本机只有 MuMu 模拟器）；②没有加 `onStart()` 热刷新钩子——`MenuActivity.killAndJump()` 会先 finish 下层页面，从设置页回到短视频页必然是新实例（冷启动路径），root padding 与内缩都随新实例一次性生效；③验证后期 B 站短视频信息流接口偶发 `API error code=-400: 请求错误`（`ShortVideoFeedApi.x/v2/feed/index/story` 与动态兜底都失败），与本次改动无关，但会让复测暂时只能看错误页。
+
 ## 4. 历史章节索引
 
 > 完整正文在 `docs/archive/review/fix-progress-history.md`。**编号在历史上有重复**（`## 二十二` / `## 二十九` 各出现两次、`## 30.` 是阿拉伯数字写法，原为不打断既有交叉引用而保持不动），下表**以归档文件的物理行序为准**。
@@ -1518,6 +1536,8 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
 | 五十二 | 26.10.24：对比审计 §3.3 安全组五条 P2 加固 + P2-9 部分（清单见 `docs/review/compare-with-re-biliterminal-261024.md` §13.0 第二批） | 图片目录：默认改应用专属 + `PictureMediaStore.publishToGallery()` 发布进 `Pictures/哔哩终端`（API 29+ 走 MediaStore + `IS_PENDING`，旧系统 `scan`），`FileUtil.getConfiguredPictureDownloadPath()`/`PictureSavePolicy` 分档，manifest 注明 MANAGE 只服务用户自定义公共目录；Cookie：`CookieDomainPolicy` 严格域校验（equals/子域点后缀）+ 响应 host 校验（fail-closed）；直播弹幕：wss host 必须 B 站域、端口校验，握手只带 `SESSDATA`；深链：`DeepLinkPolicy` 限定 http/s 到 bilibili.com 子域与 b23.tv，删 `debug-host` 日志；极验：`CaptchaParamPolicy` 白名单 + `JSONObject.quote`；遥测：精确内存只报档位（`TerminalApi.ramLevel`），`device_key` 按产品需求**保留采集**（26.10.24 用户决定回退该子项） | `assembleDebug` 双 flavor 成功；单测 87 suites / 935 tests / 0 failures（新增 4 个测试类 + 重写 `TerminalApiTest`）；**图片发布/直播弹幕/深链/极验均未真机验证**（见 §2.1） |
 
 | 五十三 | 26.10.25：短视频横滑「一顿一顿 / 跳页 / 卡中间 / 按住返回崩溃」整体修复 | 外壳从 `ViewPager2 + SwipePageLayout` 自绘 fakeDrag 换回经典 `ViewPager`（与普通视频详情页同款，原生滚动）：`activity_short_video_player.xml` 改 `androidx.viewpager.widget.ViewPager`，`ShortVideoShellAdapter` 改 `FragmentPagerAdapter`（`BEHAVIOR_RESUME_ONLY_CURRENT_FRAGMENT`，页面壳实例稳定、`getItemPosition` 恒 `POSITION_UNCHANGED`，换视频只热更新内容不重建页面）；`SwipePageLayout` 重写为只保留「第 0 页右滑退出」边缘手势（不设 `edgeExitCheck` 则永不拦截，进度条/横向滚动控件按坐标避让）；滑去详情页时暂停信息流（`pauseForShellSwipe`/`resumeAfterShellSwipe`），滑回恢复；详情三页维持延迟合并渲染（`RENDER_DELAY_MS=180` / `STAGGER_MS=60`）；删除 `beginFakeDrag/endFakeDrag` 与返回键收口逻辑（`Cannot change current item when ViewPager2 is fake dragging` 崩溃路径随之消失） | 已闭环（`assembleDebug` / `assembleRelease` 均通过；真机 vivo V2229A 按住静止、左右滑一页一页、右滑退出、返回键均正常，26.10.25 用户复测确认「修好了」） |
+
+| 五十四 | 26.10.25：短视频页开启「圆屏适配」后并未适配 | `activity/video/ShortVideoPlayerActivity.kt`：新增 `roundAdapted` / `roundPadding` / `contentWidth`-`contentHeight`；`PageHolder.applyRoundInsets()` 收放顶栏、进度条、时间文本、弹幕留白；`adjustVideoSize()` 增圆屏内接圆分支并按内容区居中 | 部分遗留（MuMu 320×320 模拟圆屏：开/关两态实测通过，`assembleDebug` + `testStandardDebugUnitTest` 通过；真手表未验证，见 §3.65） |
 
 ## 5. 仍待回迁 / 仅见于归档的长期结论
 
