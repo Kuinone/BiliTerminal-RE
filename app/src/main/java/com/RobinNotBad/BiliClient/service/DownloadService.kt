@@ -1467,8 +1467,12 @@ class DownloadService : Service() {
             Logu.e("DownloadService", "本次运行不再使用分片下载（Range 不可用或链路停滞）")
         }
 
-        // 完整性校验：任一失败、Range 不可用、停滞或下载字节不足都视为失败，回退整文件单线程重下
-        if (stalled || shared.rangeUnsupported.get() || shared.anyFailed.get() || shared.totalDownloaded.get() < totalSize) {
+        // 完整性校验：任一失败、Range 不可用、停滞、下载字节不足、或落盘尺寸与总长不符都视为
+        // 失败，回退整文件单线程重下。最后那项（file.length()）是兜底：`setLength` 在某些
+        // FUSE/exFAT 存储上可能静默失败，此时即使每片都写满 expectLen，文件的实际尺寸也未必对。
+        if (stalled || shared.rangeUnsupported.get() || shared.anyFailed.get() ||
+            shared.totalDownloaded.get() < totalSize || file.length() != totalSize
+        ) {
             // 回退前必须把分片阶段已经计入的字节从全局计数里扣掉（审计 S7）：
             // downFileSpeedSingle 会用 FileOutputStream 截断重写整个文件，并再次
             // addDownloadedBytes()，不回滚就让 totalBytesDownloaded 把同一批字节算两遍，
@@ -1613,6 +1617,11 @@ class DownloadService : Service() {
                 ok = started && written == expectLen && !shared.aborted.get()
             } catch (e: Exception) {
                 ok = false
+                // 分片失败原因必须留痕：不看日志的话，"服务端忽略 Range / 区间对不上"
+                // 只表现为"多线程慢、退回单连接"，根本查不出来。
+                if (attempts == 2) {
+                    Logu.e("DownloadService", "分片 $idx（$start-$end）3 次尝试均失败：${e.message}")
+                }
             } finally {
                 call?.let { shared.calls.remove(it) }
             }

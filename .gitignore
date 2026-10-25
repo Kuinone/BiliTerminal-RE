@@ -74,5 +74,10 @@ docs/superpowers/specs/2026-10-14-console-v2-design.md
 .vscode/
 .idea/
 
-# 本地试验目录：biliapp/ 是用户单开的空文件夹，只作本地用途，不入库
+# 本地逆向分析工作区：biliapp/ 放 B 站官方 APK（tv.danmaku.bili 9.15.0/9.16.1）与其反编译产物。
+# 约 216 MB 的 iBiliPlayer-bili.apk + apktool/jadx 输出（jadx 全量反编译 539 MB / 12.6 万文件），
+# 以及四份笔记（逆向概览 / 收藏与分享 / 短视频推荐机制 / 评论区接口对照）和抽取出的接口表
+# （rest_api.tsv 1738 方法、grpc_api.tsv 743 方法、接口总表.md 5352 行）。
+# 结论已按「一份知识一个落点」摘进 docs/bilibili-api-notes.md 与 docs/FEATURES.md §8.5，
+# 本目录只作可复现的证据来源，**不入库**（体积过大且属第三方 APK）。
 /biliapp/

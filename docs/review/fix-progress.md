@@ -23,7 +23,7 @@
 - **依赖仓库**：`settings.gradle` 已把 aliyun 的 `google` / `public` / `gradle-plugin` 三个镜像前置，`google()`/`mavenCentral()`/jitpack 仅作兜底。
 - **改了 `res/` 文件集合时**：`:app:clean` 与后续命令**必须分两次 Gradle 调用**，且带 `--no-build-cache --no-configuration-cache`，否则会回放陈旧资源（症状是 `Unresolved reference 'R.layout.xxx'`）。
 - **版本一致性**：`:app:verifyVersionConsistency` 以 `strings.xml` 的 `update_log_current` 为锚点校验版本一致性；发版说明也由 CI 从它抽取（抽不到直接拒绝发版）。
-- **单测（静态计数，26.10.25 DASH 合并单文件 +2 例后实测）**：**88 个测试类 / 954 个用例**，两个 flavor 完全相同（同源码），0 失败 0 错误 0 跳过。计数方式：`app/src/test/` 下 `*Test.kt|java` 计数（另有共享假实现 `util/FakeSharedPreferences.kt`），`app/build/test-results/testStandardDebugUnitTest/TEST-*.xml` 的 `tests=` 求和。用例数一律以机器产出为准，队友口述数字不进入文档。
+- **单测（静态计数，26.10.25 合并上游（DASH 合并单文件 / wrapper 8.14.5）+ 本方开发者列表后实测）**：**88 个测试类 / 954 个用例**，两个 flavor 完全相同（同源码），0 失败 0 错误 0 跳过。计数方式：`app/src/test/` 下 `*Test.kt|java` 计数（另有共享假实现 `util/FakeSharedPreferences.kt`），`app/build/test-results/testStandardDebugUnitTest/TEST-*.xml` 的 `tests=` 求和。用例数一律以机器产出为准，队友口述数字不进入文档。
 - **26.10.10 那一轮的构建记录（历史，留作「改 minSdk / 重跑 release 链路」时的验证口径）**：`minSdk 24 → 19` 全部改动（含 jsoup 1.16.1、7 个 `res/drawable-v21` 资源）落盘后，按「`clean` → `assembleRelease` → `lintRelease` → 单测」四步跑完（均带 `--no-configuration-cache`，`clean` 与 `assemble` 分两次调用），四步全 `BUILD SUCCESSFUL`（37s / 2m13s / 1m25s / 39s）。当时单测汇总 **49 suites / 460 tests / 0 failures**（任务名当时还是 `testDebugUnitTest`，现已带 flavor 前缀），最新 XML 时间 `2026-10-09T22:59:04`（晚于当轮 APK 出包时间 22:56:58，覆盖了当轮全部源码改动）。`:app:lintRelease` 的 **`NewApi` 从 22 条降到 2 条**，且这 2 条就是 `PlayerActivity.kt:1981` 的已知假阳性。发版前仍建议再跑一次确认。
 - **「自动跳过片头片尾」已恢复上线（26.10.22）**：26.10.10 的紧急撤回**已解除**，`SkipOpEdPrefs.FEATURE_ENABLED` 回到 `true`，设置入口与搜索索引均已恢复；口径按用户拍板改为**默认关闭**（`DEFAULT_ENABLED = false`，老用户存档里显式写的值仍然优先）。恢复细节见 §3.3「恢复记录」，乱跳的三个根因修复见 §3.55。
 - **本轮基建改动（26.10.10）**：**`minSdk 24 → 21 → 19（Android 4.4）`**，唯一落点是 `app/build.gradle:21`。两级下调的成本不同，分开记：
@@ -1440,6 +1440,13 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
 - **验证**：`./gradlew.bat :app:assembleDebug` 双 flavor 成功；`:app:testStandardDebugUnitTest`、`:app:testCoexistDebugUnitTest` 各 **88 suites / 946 tests / 0 failures**（新增 `SegmentDownloadPolicyTest` 8 例）。
 - **遗留**：①分片失败兜底仍是「整文件单连接重下」，没有真正的断点续传（P0，见上述 spec）；②PCDN 域名失效时没有切 `backup_url`；③进度公式仍是 0.2 基准 + `%.1f`，大文件上的低速波动在界面上不明显。**未真机复现卡 20%**（本机 adb 无设备、模拟器未开），看门狗 / 降级路径靠单测与真实直链探针（临时探针单测与结果文件已删除，未进提交）验证。
 
+**本方补充（同日，独立修同一批缺陷时多做的两项）**：上游这轮已经把「分片不校验 206 / Content-Range」「join 超时后并发重下」都修了，方向与本方一致。另有两点为本方独有，已并入同一实现：
+
+- **落盘尺寸兜底**：分片全部写满 `expectLen` 之后仍校验 `file.length() == totalSize`。`setLength` 在部分 FUSE / exFAT 存储上可能静默失败，此时即使每片都算对，文件实际尺寸也未必对，仅凭字节计数发现不了。
+- **失败原因留痕**：某片 3 次尝试全失败时打一条日志（含分片号与区间）。旧实现静默吞异常，"服务端忽略 Range / 区间对不上"只表现为"多线程慢、退回单连接"，不看日志查不出来。
+
+**本方实测（MuMu Android 15 / coexist debug，未登录）**：av170001 分 P「Хоп」按 720P 下载（`qn=64` → `fnval=1` 单 MP4，7.87 MB > 2 MB 且 CDN 支持 Range → 走的正是分片路径），落地后拉回本机 `ffprobe` 校验 `h264 512x288 + aac / 199.33s / 7871518 字节`，容器可正常解析，0 条 `FATAL EXCEPTION`。未覆盖的是 DASH 双文件分支（未登录拿不到 `qn>64`）。
+
 ### 3.64 断网启动仍进自定义启动页：断网兜底进缓存页（26.10.25）
 
 - **缘起**：用户「314」反馈（QQ 截图）：「自从改完打开界面逻辑之后，无网络时打开会跳转到自定义打开界面，希望改回原来那种无网络时打开自动进缓存，能正常加载时再进入自定义界面。」
@@ -1509,6 +1516,19 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
   - `.\gradlew.bat :app:assembleDebug` 成功；`:app:testStandardDebugUnitTest`、`:app:testCoexistDebugUnitTest` 均 BUILD SUCCESSFUL、0 失败。
   - 诊断代码已清理（`DialogDiagnostics.kt` 删除、`TerminalDialog` 与 `SplashActivity` 里 `ENABLED` 分支删除、`SplashActivity` 恢复原样），临时提升的 `versionCode 2610242` 已在 `c340444` 正式提交里保留。
 - **遗留**：①**用户侧真机未复测**（本机没有 OPPO 手表），只验证了「主题不再给内部视图贴背景 + 内容树自绘面板」这一条链路；②若该 ROM 还有其他在内容之后挂的装饰层且带**非 null 背景**，`stripForeignBackgrounds()` 会在 `onShow` 后的第一帧清掉它——但如果它在那之后再挂就仍可能遮挡（当前证据里没有这种情况）；③`docs/agents/pitfalls.md` 里若还有「弹窗面板走主题 background」的旧说法需要同步（已 grep：无）。
+
+### 3.68 「我的」页左上箭头方向错误（26.10.25，用户反馈）
+
+**规则**（26.10.25 用户明确）：**由菜单唤起的一级页**用 `arrow_down`，点它打开菜单并在同级页面间切换；**一级页的子栏目**用 `arrow_back`，点它返回上一级。图标与行为必须一致。
+
+- **现象**：菜单进「我的」，顶栏标题左边是 `←`（返回箭头），但点它并不返回——打开的是菜单。
+- **根因**：`BaseActivity.kt:584` 对 `InstanceActivity` 装的是「点顶栏打开菜单」（`setMenuClick`），对其它页面装的才是「返回」（`setTopbarExit`）。`MySpaceActivity : InstanceActivity()` 属于菜单级，图标该是 `arrow_down`；但 `activity_myspace.xml:28` 写死了 `@drawable/arrow_back`。
+- **为什么不能只改布局**：这个布局被 `MySpaceMoreActivity : BaseActivity()`（返回级）复用，它那边 `arrow_back` 才是对的。改布局等于把「更多」页改坏。
+- **修法一（图标跟随角色）**：角色判定收进 `InstanceActivity.setMenuClick()`——装监听时顺手把 `pageName` 的开头图标覆盖成 `arrow_down`。菜单级一律朝下、返回级保持布局里的 `arrow_back`，新页面继承 `InstanceActivity` 就自动对。
+- **修法二（子栏目站错队）**：`TodoListActivity`（「TO DO清单」）是从「设置」进的**子栏目**（`SettingGroupActivity:725` / `SettingsIndex:197`），却继承了 `InstanceActivity`——于是顶栏点开菜单、图标也被修法一改成了 `⌄`，反过来错。已改成 `: BaseActivity()`，同时 `activity_todo_list.xml` 里原本写死的 `arrow_back` 就此正确。核对过菜单 14 个入口：全部经 `InstanceActivity`（含 `RefreshMainActivity` 间接继承），只有它一个子栏目混进来。
+- **不受影响**：`LocalListActivity`（菜单「缓存」）顶层自己就设 `arrow_down`、进文件夹后设 `arrow_back`，两次都在基类之后执行。
+- **实测（MuMu Android 15 x86_64 / coexist debug）**：菜单页 `^`（自身，收起菜单）；「设置」`⌄`、「我的」`⌄` 且点顶栏打开 `MenuActivity` ✓；「TO DO清单」`‹` 且点顶栏返回 `SettingMainActivity` ✓；「更多」仍是 `‹` 且返回 ✓；`logcat` 0 条 `FATAL EXCEPTION`。
+- 规则已记进 `docs/agents/pitfalls.md`「基类与列表」。
 
 ## 4. 历史章节索引
 

@@ -42,6 +42,12 @@ class AboutActivity : BaseActivity() {
     )
 
     companion object {
+        /** RE 版（当前这版）的主要开发者。身份由列名 `about_dev_trae` 与卡片简介位共同表达。 */
+        private val DEVELOPERS_RE = listOf(
+            Developer("紫色空灵", "", R.mipmap.avatar_zise, 591904067L, R.string.about_dev_trae_desc),
+            Developer("千awa", "", R.mipmap.avatar_qianawa, 1786791133L, R.string.about_dev_qianawa),
+        )
+
         /** 主要开发者。 */
         private val DEVELOPERS_MAIN = listOf(
             Developer("RobinNotBad", "和他的纳西妲酱（项目发起者|屎山奠基人）", R.mipmap.avatar_robin, 646521226L),
@@ -55,7 +61,6 @@ class AboutActivity : BaseActivity() {
             Developer("达达", "（这位开发者很懒，什么也没有留下）", -1, 432128342L),
             Developer("huanli233", "与你的日常，就是奇迹", R.mipmap.avatar_huanli, 673815151L),
             Developer("Jank000.h", "CQCQCQ，这里是BI1TIA，是否有友台能够抄收？", R.mipmap.avatar_jank, 661403494L),
-            Developer("紫色空灵", "", R.mipmap.avatar_zise, 591904067L, R.string.about_dev_trae),
         )
     }
 
@@ -89,7 +94,9 @@ class AboutActivity : BaseActivity() {
             }
 
             // 开发者卡片：数据驱动动态创建（模板见 res/layout/cell_developer.xml），
-            // 新增开发者只需往下面两个列表里加一项，不用再改布局。
+            // 新增开发者只需往下面三个列表里加一项，不用再改布局。
+            // 顺序与布局里的三个小标题一致：RE 版主要开发者 → 主要开发者 → 联合开发者。
+            bindDevelopers(findViewById(R.id.developer_re_container), DEVELOPERS_RE)
             bindDevelopers(findViewById(R.id.developer_main_container), DEVELOPERS_MAIN)
             bindDevelopers(findViewById(R.id.developer_joint_container), DEVELOPERS_JOINT)
 
