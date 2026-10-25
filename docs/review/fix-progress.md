@@ -1492,6 +1492,24 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
   - 踩到的坑：`adb shell` 推到 `/sdcard/Android/data/<包名>/files/` 的文件，应用进程里 `File.isFile` 看不到（广播返回「文件不存在」）；改用 `adb push /data/local/tmp` + `run-as cp` 进 `/data/data/<包名>/files/` 后正常。**这是验证路径的坑，不影响真实下载**（真实下载由应用自己写外部目录）。
 - **遗留**：①真实登录态下载 1080P→合并→本地播放整条链路未跑（见 §2.1）；②真手表未验证；③HEVC 视频轨写入需 API 24+，但 `DashData` 选流优先 AVC，正常路径不触发；④合并期间多占约一份文件大小的磁盘空间，空间不足直接跳过合并（保留双文件）。
 
+### 3.67 部分设备弹窗显示成「只有方块、没有内容」（OPPO Watch X2 Mini，26.10.25，用户反馈）
+
+- **缘起**：用户发来实拍照片：「修复部分设备弹窗显示成这样的bug」——圆表盘屏幕内一个接近整屏的方形面板，只有 1px 描边、**里面没有任何文字/按钮**。追问后确认：设备 `oppo watch x2 mini`，只有这一款/少数机型出现，**每次启动必现**（即启动时的「隐私说明」`TerminalDialog.choice` 空壳，按钮不可见 = 用户卡在闪屏，进不了 App）。
+- **复现对照**（都不是 bug 的成因）：MuMu Android 12 1440×2560@640、`wm size 320x320`+`density 160`、`wm size 454x454`+`density 320`、Wear OS 5 圆屏 466×466@320（`dumpsys uimode` = `0x16`，真手表 uiMode）——隐私弹窗**全部渲染正常**；实验性给 overlay 加 `android:windowIsFloating=false`、`android:windowElevation=0dp` 也不复现（appcompat `values-watch-v20` 那条覆盖不是原因）。
+- **取证**：无法拿到该机 adb，临时加了一个诊断包 —— `util/DialogDiagnostics.kt`（`ENABLED=true`）在 `Sheet` 的 `onShow` 后抓版本/设备/Configuration/屏幕 metrics/窗口 `LayoutParams`/主题属性/完整 DecorView 视图树（含每层 `bg` 描述与 `getGlobalVisibleRect`），写 logcat（TAG=`DialogDiag`）+ `files/dialog-diag.txt`，再跳 `ShowTextActivity` 整页显示让用户拍照回传（空白弹窗拍不出来，但这页一定渲染）。用户装上 `coexist release` 诊断包后回传了报告。
+- **真机报告（OPPO OWW242 / Android 11 SDK 30 / ColorOS Watch）关键项**：`Configuration 233x233dp densityDpi=320 uiMode=0x26 round=true`；屏幕 `466x466 density=2.0 dpi=320`；窗口 `w=378 h=-2 gravity=17 fmt=fffffffe`、`decor 378x415 bg=Color#00000000`；主题 `android:background=GradientDrawable`、`windowBackground=GradientDrawable`、`windowIsFloating=false`；颜色 = `Theme.ClassicTerminal`（`colorSurface=#FF262626`、`colorOnSurface=#FFEBE0E2`、`colorPrimary=#FFFF6699`，照片里的紫是相机偏色）。
+- **根因（视图树直接给出）**：**主题 `android:background` 会被框架/ROM 贴到弹窗 window 里每一个内部视图上** —— 报告里 `SwipeDismissLayout` / `FitWindowsFrameLayout#action_bar_root` / `ContentFrameLayout#content` / `AlertDialogLayout#parentPanel` / `topPanel` / `contentPanel` / `customPanel` / `custom` 的 `bg` 全是同一份 `GradientDrawable`（= `@drawable/dialog_background`）。且 ColorOS Watch 的 `DecorView` 末尾**多一个 `SwipeGlowOverlay`**（378×415），也被贴上同一份**不透明**面板，它排在内容之后 = 画在最上层，把我们 `@id/custom` 里的内容整块盖住。MuMu/Wear OS 没有这个 overlay → 一直只有部分设备复现。（此前用「把主题 background 换成纯品红」的实验已在 MuMu 上证实主题 background 确实落在 appcompat subdecor 各层，只是那里背景透明/无遮挡，肉眼看不出来。）
+- **改法（3 个文件，不再依赖主题 `android:background`）**：
+  - `res/values/themes.xml`：7 份 `ThemeOverlay.<X>.Dialog` 删掉 `<item name="android:background">@drawable/dialog_background</item>`，只留 `colorSurface`/`colorOnSurface`/`colorError`；注释块补上「为什么不能再写」的证据。
+  - `res/drawable/dialog_background.xml`：注释改为「只给 `layout_dialog_terminal.xml` 根视图用，不要再挂主题 android:background」。
+  - `util/TerminalDialog.kt`：`Sheet.init` 里 `content.background = AppCompatResources.getDrawable(dialog.context, R.drawable.dialog_background)`（窗口背景仍透明）；新增 `Sheet.stripForeignBackgrounds()`，在 `onShow` 第一帧后遍历 `decorView`，把**不属于 content 子树**的视图背景清成 `null`（兜住 ROM 在 show 之后才挂的装饰层）。
+- **验证**：
+  - Wear OS 5 模拟器（466×466@320 圆屏，standardDebug universal 包）：隐私弹窗外观与修前**逐字节相同**（截图 sha256 一致），诊断视图树里 `android:background=null`、内部各层 `bg=null`、content 根 `bg=GradientDrawable`（419×440 窗口）。
+  - MuMu Android 12 1440×2560@640：面板/圆角/1dp 描边/标题/正文/「不同意·同意」/提示行全部正常。
+  - `.\gradlew.bat :app:assembleDebug` 成功；`:app:testStandardDebugUnitTest`、`:app:testCoexistDebugUnitTest` 均 BUILD SUCCESSFUL、0 失败。
+  - 诊断代码已清理（`DialogDiagnostics.kt` 删除、`TerminalDialog` 与 `SplashActivity` 里 `ENABLED` 分支删除、`SplashActivity` 恢复原样），临时提升的 `versionCode 2610242` 已在 `c340444` 正式提交里保留。
+- **遗留**：①**用户侧真机未复测**（本机没有 OPPO 手表），只验证了「主题不再给内部视图贴背景 + 内容树自绘面板」这一条链路；②若该 ROM 还有其他在内容之后挂的装饰层且带**非 null 背景**，`stripForeignBackgrounds()` 会在 `onShow` 后的第一帧清掉它——但如果它在那之后再挂就仍可能遮挡（当前证据里没有这种情况）；③`docs/agents/pitfalls.md` 里若还有「弹窗面板走主题 background」的旧说法需要同步（已 grep：无）。
+
 ## 4. 历史章节索引
 
 > 完整正文在 `docs/archive/review/fix-progress-history.md`。**编号在历史上有重复**（`## 二十二` / `## 二十九` 各出现两次、`## 30.` 是阿拉伯数字写法，原为不打断既有交叉引用而保持不动），下表**以归档文件的物理行序为准**。

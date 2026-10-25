@@ -1556,13 +1556,38 @@ setOnLoadMoreListener { page -> load(page) } // 4. page 已由基类自增，别
 即：弹窗底色跟随 `colorSurface`（半接入），文字与按钮走 Material 默认 overlay（未接入）。
 
 **修复形态**：`themes.xml` 里 7 份 `ThemeOverlay.<X>.Dialog`（parent 一律
-`ThemeOverlay.MaterialComponents.Dialog.Alert`），各含四项：
-`colorSurface` / `colorOnSurface` / `colorError` / `android:background=@drawable/dialog_background`；
+`ThemeOverlay.MaterialComponents.Dialog.Alert`），各含**三项**：
+`colorSurface` / `colorOnSurface` / `colorError`（**不再含 `android:background`**，见下面的 26.10.25 修订）；
 每族主题加一行 `<item name="alertDialogTheme">@style/ThemeOverlay.<X>.Dialog</item>`。
-`dialog_background.xml` = `solid ?attr/colorSurface` + `stroke 1dp ?attr/colorPrimary` + `corners @dimen/card_round`。
+`dialog_background.xml` = `solid ?attr/colorSurface` + `stroke 1dp ?attr/colorOnSurface@32%` + `corners @dimen/card_round`，
+**只由 `layout_dialog_terminal.xml` 的根视图**使用（`TerminalDialog.Sheet.init` 里 `content.background = ...`）。
+
+> **26.10.25 修订：面板不再走主题 `android:background`（改弹窗/加主题前必读）**
+>
+> **现象**：OPPO Watch X2 Mini（ColorOS Watch，Android 11 / OWW242）每次启动的「隐私说明」弹窗
+> 只剩一个深色方块 + 1dp 描边，**里面一个字都没有**，且因按钮不可见卡在闪屏。
+>
+> **根因**：主题的 `android:background` 会被框架/ROM **贴到弹窗 window 里每一个内部视图上**
+> （MuMu 上实测 `DecorView` 底下 appcompat subdecor 各层 —— `action_bar_root` / `@id/content` /
+> `alertDialogLayout` / `customPanel` / `custom` —— 全是同一份 `dialog_background`）。
+> ColorOS Watch 的弹窗 `DecorView` 末尾还多挂一个 `SwipeGlowOverlay`，它也被贴上同一份**不透明**面板，
+> 而它排在内容之后 = 画在**最上层**，于是我们 `@id/custom` 里的内容被整块盖住。
+> MuMu/Wear OS 没有这个 overlay，所以普通设备一直正常（这也是本 bug「只有部分设备」的原因）。
+>
+> **修法**（`util/TerminalDialog.kt` + `themes.xml` + `dialog_background.xml`）：
+>
+> 1. 7 份 overlay 去掉 `android:background`（只留三个颜色属性）——面板不再交给主题；
+> 2. `Sheet.init` 里给 content 根视图 `content.background = AppCompatResources.getDrawable(...)`，
+>    面板由我们自己的内容树画**一次**；
+> 3. `Sheet.stripForeignBackgrounds()`：在 `onShow` 第一帧后遍历 `DecorView`，把**不属于 content 子树**
+>    的视图背景一律清成 `null`（兜住 ROM 在 show 之后才挂的装饰层，比如 `SwipeGlowOverlay`）。
+>
+> **回归验证**：Wear OS 5 圆屏 466×466@320（`uiMode=0x16`）与 MuMu Android 12 1440×2560@640
+> 上弹窗外观与修前一致（面板/圆角/描边/正文/按钮/提示齐全）；诊断包视图树里 `android:background=null`、
+> 各内部层 `bg=null`、content 根 `bg=GradientDrawable`。证据与完整视图树见 `docs/review/fix-progress.md` §3.67。
 
 > **`Sheet.init` 里 `dialog.window?.setBackgroundDrawable(ColorDrawable(TRANSPARENT))` 不能删**：
-> 不做的话 AppCompat 会在圆角 drawable 底下垫一层方角底衬，圆角白做——这正是「像安卓原生的一样」的直接原因。
+> 不做的话 AppCompat 会在面板底下垫一层方角底衬，圆角白做——这正是「像安卓原生的一样」的直接原因。
 
 > **`Sheet` 的固定底栏（`bottomButtonBar`，26.10.09 加，改 `TerminalDialog` 前必读）**：
 > `Sheet.addButton` 原来把按钮加进 `terminal_dialog_list`（**在 ScrollView 内部**），而当时的
