@@ -22,6 +22,7 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
+import androidx.appcompat.content.res.AppCompatResources
 import com.RobinNotBad.BiliClient.R
 import com.RobinNotBad.BiliClient.util.view.DialogSizing
 
@@ -340,14 +341,17 @@ object TerminalDialog {
         private var typingEdit: EditText? = null
 
         init {
-            // 只让**窗口背景**承担圆角描边（来自 overlay 的 android:background =
-            // @drawable/dialog_background），这里必须把窗口自带的那层底衬清成透明 ——
-            // 否则 AppCompat 会垫一层方角底衬，把圆角整个盖住，
-            // 这正是用户说的「像安卓原生的一样」的直接原因。
-            //
-            // 注意：**不要再给 content 设一次 dialog_background**。窗口背景与 content 背景
-            // 各画一次描边，两层之间还隔着 dialog 默认 padding，看上去就是弹窗外面又套了一圈线。
+            // 面板（圆角 + 1dp 描边）只由 content 根视图画**一次**：
+            // - 窗口自带的那层底衬必须清成透明，否则 AppCompat 会垫一层方角底衬，把圆角整个盖住
+            //   （这正是用户说的「像安卓原生的一样」的直接原因）；
+            // - 不再走主题 overlay 的 android:background：那个属性会被框架贴到 window 里的
+            //   **每一个**内部视图上。ColorOS Watch（OPPO 手表）的弹窗 DecorView 末尾还有一个
+            //   SwipeGlowOverlay，它也被贴上同一份面板 → 整块面板盖在内容**上面**，用户看到的
+            //   就是「只有一个方块、一个字都没有」（26.10.25 OPPO Watch X2 Mini 反馈，
+            //   诊断包视图树见 docs/review/fix-progress.md）。
             dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+            content.background =
+                AppCompatResources.getDrawable(dialog.context, R.drawable.dialog_background)
             dialog.setView(content, 0, 0, 0, 0)
             dialog.setCanceledOnTouchOutside(true)
             // 只调 setCanceledOnTouchOutside 不够：窗口除了 DIM_BEHIND 没有 WATCH_OUTSIDE_TOUCH，
@@ -382,7 +386,33 @@ object TerminalDialog {
                     edit.requestFocus()
                     edit.setSelection(edit.text?.length ?: 0)
                 }
+                // 等第一帧的窗口层次齐了再清：ROM 有时在 show 之后才往 DecorView 里挂
+                // SwipeGlowOverlay 这类层（见 stripForeignBackgrounds 的说明）。
+                dialog.window?.decorView?.post { stripForeignBackgrounds() }
             }
+        }
+
+        /**
+         * 面板只允许由 [content]（`layout_dialog_terminal` 根视图）画**一次**。
+         *
+         * <p>把弹窗窗口里**不属于我们内容树**的视图背景一律清成 null。原因是 ColorOS Watch
+         * （OPPO 手表）会往弹窗 DecorView 末尾挂一个 `SwipeGlowOverlay`，而框架把主题的
+         * `android:background` 贴到了窗口里每一个内部视图上 —— 那个 overlay 于是也画一份不透明
+         * 面板，且排在内容之后（= 画在最上层），用户看到的就是「只有一个方块、一个字都没有」。
+         *
+         * <p>清掉之后：内容树自己的背景（[content] 的面板 + 各按钮的 Ripple 等）不受影响，
+         * 后面那些装饰层变成纯透明，不再遮挡。
+         */
+        private fun stripForeignBackgrounds() {
+            val decor = dialog.window?.decorView as? ViewGroup ?: return
+            fun walk(v: View) {
+                if (v === content) return
+                if (v is ViewGroup) {
+                    for (i in 0 until v.childCount) walk(v.getChildAt(i))
+                }
+                v.background = null
+            }
+            for (i in 0 until decor.childCount) walk(decor.getChildAt(i))
         }
 
         /**

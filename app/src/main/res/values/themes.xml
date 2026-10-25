@@ -793,55 +793,57 @@
     <!-- 且 android.app.AlertDialog 与 androidx.appcompat.app.AlertDialog -->
     <!-- 两种 import 同时生效。新增主题时别忘了也补一份 overlay，       -->
     <!-- 否则该主题下弹窗会退回 Material 默认外观。                    -->
+    <!--                                                             -->
+    <!-- **不要再在这里写 android:background**（26.10.25 移除）：        -->
+    <!-- 主题的 android:background 会被框架贴到 window 内部的**每一个** -->
+    <!-- 视图上（MuMu Android 12 实测：appcompat subdecor 各层全变成     -->
+    <!-- 同一份面板色）。ColorOS Watch（OPPO 手表）的弹窗 DecorView 末尾 -->
+    <!-- 还多一个 SwipeGlowOverlay，它也被贴上同一份面板，于是整块深色   -->
+    <!-- 面板盖在内容**上面**——用户看到的就是「一个空方块、没有字」。    -->
+    <!-- 面板现在只由 layout_dialog_terminal.xml 的根视图自己画          -->
+    <!-- （见 util/TerminalDialog.kt 的 Sheet.init），别的层一律不画。    -->
     <!-- =========================================================== -->
 
     <style name="ThemeOverlay.BiliClient.Dialog" parent="ThemeOverlay.MaterialComponents.Dialog.Alert">
         <item name="colorSurface">@color/surface_dark</item>
         <item name="colorOnSurface">@color/on_surface_bili</item>
         <item name="colorError">@color/error_bili</item>
-        <item name="android:background">@drawable/dialog_background</item>
     </style>
 
     <style name="ThemeOverlay.ZhihuBlue.Dialog" parent="ThemeOverlay.MaterialComponents.Dialog.Alert">
         <item name="colorSurface">@color/zhihu_surface_dark</item>
         <item name="colorOnSurface">@color/on_surface_zhihu</item>
         <item name="colorError">@color/error_zhihu</item>
-        <item name="android:background">@drawable/dialog_background</item>
     </style>
 
     <style name="ThemeOverlay.IQIYIGreen.Dialog" parent="ThemeOverlay.MaterialComponents.Dialog.Alert">
         <item name="colorSurface">@color/iqiyi_surface_dark</item>
         <item name="colorOnSurface">@color/on_surface_iqiyi</item>
         <item name="colorError">@color/error_iqiyi</item>
-        <item name="android:background">@drawable/dialog_background</item>
     </style>
 
     <style name="ThemeOverlay.PurpleFantasy.Dialog" parent="ThemeOverlay.MaterialComponents.Dialog.Alert">
         <item name="colorSurface">@color/purple_fantasy_surface_dark</item>
         <item name="colorOnSurface">@color/on_surface_purple</item>
         <item name="colorError">@color/error_purple</item>
-        <item name="android:background">@drawable/dialog_background</item>
     </style>
 
     <style name="ThemeOverlay.RainbowFantasy.Dialog" parent="ThemeOverlay.MaterialComponents.Dialog.Alert">
         <item name="colorSurface">@color/rainbow_surface_dark</item>
         <item name="colorOnSurface">@color/on_surface_rainbow</item>
         <item name="colorError">@color/error_rainbow</item>
-        <item name="android:background">@drawable/dialog_background</item>
     </style>
 
     <style name="ThemeOverlay.ClassicGray.Dialog" parent="ThemeOverlay.MaterialComponents.Dialog.Alert">
         <item name="colorSurface">@color/classic_gray_surface_dark</item>
         <item name="colorOnSurface">@color/on_surface_classic_gray</item>
         <item name="colorError">@color/error_classic_gray</item>
-        <item name="android:background">@drawable/dialog_background</item>
     </style>
 
     <style name="ThemeOverlay.ClassicTerminal.Dialog" parent="ThemeOverlay.MaterialComponents.Dialog.Alert">
         <item name="colorSurface">@color/terminal_surface</item>
         <item name="colorOnSurface">@color/on_surface_terminal</item>
         <item name="colorError">@color/error_terminal</item>
-        <item name="android:background">@drawable/dialog_background</item>
     </style>
 
     <!--

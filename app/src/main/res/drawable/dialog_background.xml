@@ -6,11 +6,12 @@
   「像安卓原生的一样」。这里给弹窗一个自带圆角/描边的背景。
 
   为什么用 <shape> 而不是 MaterialCardView：
-  AlertDialog 的 window 背景就吃这个 drawable，套 CardView 会多一层裁剪与测量；
-  且 setBackgroundDrawable 对 dialog window 是最省事的做法。
+  套 CardView 会多一层裁剪与测量；<shape> 直接当背景最省事。
 
-  这个 drawable **只由主题 overlay 的 android:background 使用一次**，
-  TerminalDialog 的 Sheet 不要再给 content 设一遍，否则两层描边会露出来。
+  只给 **layout_dialog_terminal.xml 的根视图** 用（见 util/TerminalDialog.kt 的 Sheet.init）。
+  **不要**再通过主题 overlay 的 android:background 用它（26.10.25 移除）：主题 background
+  会被框架贴到 window 里每一个内部视图上，ColorOS Watch 上连最顶层的 SwipeGlowOverlay
+  也贴，于是整块面板盖住内容，只剩一个空方块。
 
   颜色一律走 ?attr/（由各主题的 alertDialogTheme overlay 提供），
   所以 7 套主题各有各的底色/描边，不需要为每套主题抄一个布局。
