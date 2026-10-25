@@ -1027,8 +1027,8 @@ CenterThreadPool.supplyAsyncWithLiveData { fetch...().getOrThrow() }
 
 | 文件 | 关注点 | 关键点 |
 | --- | --- | --- |
-| `service/download/DownloadPathSpec.kt`（72 行） | 分片路径、分段数、分段区间 | 纯函数，无 IO 无 Context；`DownloadPathSpecTest` 72 行 |
-| `service/download/DownloadProgressMath.kt`（60 行） | `progressForBytes` / `pseudoProgress` / 批次统计 | 纯函数；`DownloadProgressMathTest` 159 行 + `service/DownloadBatchStatsTest` 136 行 |
+| `service/download/DownloadPathSpec.kt`（84 行） | 文件名 / 下载类型 / 结果码常量（新增 `FILE_VIDEO_MERGING = "video_merging.tmp"`） | 纯常量，无 IO 无 Context；`DownloadPathSpecTest` 72 行 |
+| `service/download/DownloadProgressMath.kt`（99 行） | `progressForBytes` / `pseudoProgress` / 批次统计 / **DASH 阶段边界与 `dashMergeProgress`** | 纯函数；`DownloadProgressMathTest` 182 行 + `service/DownloadBatchStatsTest` 136 行 |
 | `service/download/DownloadProgressStore.kt`（143 行） | 进程级状态：进度映射、`pausedMap`、累计字节、速度采样 | `internal object`；顶层 `DownloadProgressInfo` 是 **public**（被 public 门面返回） |
 | `service/download/DownloadRepository.kt`（157 行） | DB 访问（`DownloadSqlHelper` 的增删查改） | `firstDown` 与视频元信息写入一起搬入 |
 | `service/download/DownloadNotifier.kt`（122 行） | 通道、两个 Builder、每秒进度、`notifyExit` / `notifyCompletion` | **普通 class 持 Service 引用**，由 `onCreate` new 出来 |
@@ -1041,7 +1041,7 @@ CenterThreadPool.supplyAsyncWithLiveData { fetch...().getOrThrow() }
 
 **行为契约不变的部分**：channel id `biliterminal_download`、前台通知 `1027`、`notifyExit` 的 `2`、`notifyCompletion` 的 `id % 100 + 100`、download 表 11 列 / version 4、SP 键（`aria2_enabled` / `aria2_split` / `parallel_download_videos`）。**已知的可见性变化**：`DownloadProgressInfo` 的 FQN 由 `DownloadService$Companion$DownloadProgressInfo` 变为 `com.RobinNotBad.BiliClient.service.download.DownloadProgressInfo`（全仓无显式引用，按旧 FQN 反射的代码会失配）。
 
-**26.10.13 完整性补丁（C3）**：高速单连接与分片失败后的单连接回退复用 `service/download/DownloadStreamTransfer.kt`（无 Android 依赖的流写入器）。GET 长度优先；HEAD 仅在响应成功且长度有效时作提示；未知长度保留 `-1`（不能伪造为 1）。必须真实 EOF、非空且已知长度精确相等才返回 `NORMAL`；网络读失败归 `ERR_NETWORK`，写入/flush 失败归 `ERR_FILE`。阶段完成只在资源关闭成功后发布，非暂停失败只清理本次目标文件（不删任务目录、不碰旧 `video.mp4`/`audio.m4a`）；建连及关闭异常同样优先保留暂停语义。`DownloadStreamTransferTest` 覆盖真实内存流与异常注入；DASH 阶段进度与续传尚未改；本地音轨防重的播放侧补丁见 §7.4（下载替换事务仍未改）。
+**26.10.13 完整性补丁（C3）**：高速单连接与分片失败后的单连接回退复用 `service/download/DownloadStreamTransfer.kt`（无 Android 依赖的流写入器）。GET 长度优先；HEAD 仅在响应成功且长度有效时作提示；未知长度保留 `-1`（不能伪造为 1）。必须真实 EOF、非空且已知长度精确相等才返回 `NORMAL`；网络读失败归 `ERR_NETWORK`，写入/flush 失败归 `ERR_FILE`。阶段完成只在资源关闭成功后发布，非暂停失败只清理本次目标文件（不删任务目录、不碰旧 `video.mp4`/`audio.m4a`）；建连及关闭异常同样优先保留暂停语义。`DownloadStreamTransferTest` 覆盖真实内存流与异常注入；DASH 阶段进度已在 §7.35 末尾改为 0.12 / 0.52 / 0.88 / 1.00（合并层见 §7.54），续传仍未改；本地音轨防重的播放侧补丁见 §7.4（下载替换事务仍未改）。
 
 **26.10.25 分片看门狗与降级（`docs/review/fix-progress.md` §3.63）**：新增 `service/download/SegmentDownloadPolicy.kt`（73 行，`internal object` 纯逻辑，`SegmentDownloadPolicyTest` 8 例）——阈值 `STALL_TIMEOUT_MS = 12s` / `ABORT_JOIN_TIMEOUT_MS = 3s` / `FINISH_JOIN_TIMEOUT_MS = 30s`，判定 `hasStalled` / `isPartialContent` / `isRangeIgnored` / `parseContentRangeStart` / `isContentRangeMismatch` / `shouldDisableSegmentMode`。`downFileSpeedSeg` 的轮询循环**先判停滞再算进度**：超过 12s 没有任何分片收到新字节就 `Call.cancel()` 中止并回退整文件单连接（join 预算收紧到 3s，线程没退出直接报错，绝不并发重下）；`downloadSegment` 强制 `206` + `Content-Range` 起点校验、按分片边界限制写入量、每写一块喂一次看门狗；companion 的 `@Volatile segmentModeDisabled` 是**本次进程内**的降级记忆，命中后后续任务不再分片。下载专用 OkHttpClient 强制 `HTTP/1.1`（实测同一 CDN 直链：5 条 h1.1 连接聚合 ≈ 10.4MB/s vs 5 条 h2 流 ≈ 4.9MB/s），HEAD 额外加 15s `callTimeout`。**`pausedMap` / `speedLock` / companion 锁的三条约束不变**（见上）。
 
@@ -1102,7 +1102,7 @@ CenterThreadPool.supplyAsyncWithLiveData { fetch...().getOrThrow() }
 - 缺 WBI 签名（`w_rid` / `wts`）时接口返回 **`-403`**（与 6.2 的签名实现配套看）。
 - 流 URL **有效期约 120 分钟**，过期必须重新取流，**不可缓存进离线队列复用**。
 - JSON 里 URL 中的 `&` 被转义成 **`\u0026`**，解析时必须还原。
-- **选流优先级**（`model/DashData.java`）：音频优先普通 AAC（`mp4a.*`），杜比 / 无损仅作兜底（`:114-143`）；视频按 **H.264 > H.265 > AV1**（`:74-112`）。注意**已没有合并层**——`util/MediaMerger.kt` 已被删除。
+- **选流优先级**（`model/DashData.java`）：音频优先普通 AAC（`mp4a.*`），杜比 / 无损仅作兜底（`:114-143`）；视频按 **H.264 > H.265 > AV1**（`:74-112`）。**下载侧有合并层**：`util/MediaMerger.kt` 在 DASH 双文件下载完成后把它们 remux 成一个 `video.mp4`（26.10.25，见 §7.54）；播放侧的外部音轨路径仍保留，老缓存双文件照旧能播。
 
 验接口的廉价判据：无 Cookie 调这些接口，**返回 `-101` 即说明接口存在**（`-101` = 未登录，不是「接口没了」）。
 已实测地址：直播签到 `POST https://api.bilibili.com/xlive/web-ucenter/v1/sign/DoSign`（配套 `WebGetSignInfo`）、粉丝勋章佩戴 `/xlive/web-room/v1/fansMedal/wear`、漫画打卡 `/twirp/activity.v1.Activity/ClockIn`。
@@ -1352,6 +1352,18 @@ CenterThreadPool.supplyAsyncWithLiveData { fetch...().getOrThrow() }
 - **延迟装载必须封顶**：`asyncInflate` 页面在 `onStart` 时 `findViewById(R.id.top)` 还是 null，需要重试；但**有 11 个页面布局里根本没有 `R.id.top`**（Download / Catch / Tutorial / TutorialPager / JumpToDialog / InputDialog / CaptchaWebView / QRLoginRegister / ConfirmDialog / Dialog / ListDialog），无上限 `post` 会在这些页面每帧投递一次、耗电到页面结束。现在封顶 20 次 × 50ms，并在放弃时打 `XXX 没有 R.id.top，本页不安装双击伪装`。
 - **`OnTouchListener` 里做长按计时，`ACTION_DOWN` 必须返回 `true`**（蓝牙伪装页的教训）：返回 `false` 时 View 没成为触摸目标，系统不再派发 `UP`/`CANCEL`，`removeCallbacks` 永远执行不到 → 轻点一下就会在 N 秒后自己触发退出。返回 `true` 时若要保留点击语义，得自己 `performClick()` 补发。
 - **别改成「在"单击监听器"里判断两次点击」**：第一次点击已经执行完了，那只会变成"退出两次"。
+
+### 7.54 DASH 下载完成后合并成单文件：容器 remux，不重新编码（26.10.25，用户要求）
+
+- **为什么会有这一层**：1080P 及以上只有 DASH，`video.m4s` + `audio.m4s` 两条纯流；720P 及以下是 `fnval=1` 的音视频合一 MP4。用户要「和 720P 一样一个文件」。2026-08 曾经删掉过合并（`25893f3`/`183523f`，当时卡在「合并阶段无进度」「先删视频再改名会丢数据」），这两个问题现在分别有「进度分段常量」和「`safeReplaceTemp` 先备份再替换」现成解法，于是重做。
+- **实现**：`util/MediaMerger.kt`（`object MediaMerger`，259 行）。两个 `MediaExtractor` 各取第一条 `video/*` / `audio/*` 轨，**按 `sampleTime` 归并**写进 `MediaMuxer(MUXER_OUTPUT_MPEG_4)`（旧实现是「每轮一视频一音频」交替写，不等时间戳，已改掉）。输出非分片标准 MP4，moov 在文件尾；`setOrientationHint` 透传旋转。返回码 `RESULT_OK / NO_TRACK / NO_SPACE / STOPPED / FAILED`，**非 OK 一律删产物、调用方保留双文件**。
+- **为什么能直接读 B 站 m4s**：B 站 m4s 是分片 MP4（moov 里采样表为空、采样在 `moof/mdat`）。AOSP `MPEG4Extractor.cpp` 从 Android 4.4（API 19，正是本机 minSdk）起就含 `moof` / `firstMoofOffset` 解析，模拟器（Android 14 x86_64）实测两条轨采样数与源文件完全一致。`MediaMuxer` 写 AVC+AAC 自 API 18 起支持；HEVC 需 API 24+，但 `DashData` 选流优先 AVC，正常路径不碰；杜比 / FLAC 则根本写不进 `MediaMuxer`（选流已优先 `mp4a`）。
+- **接在哪**：`DownloadService.processDownloadSection` 两个 DASH 分支（单 P / 多 P），在 `replaceDashPairOrFail` **之后**调 `mergeDashPair`：此时双文件已是本代正式成品，合并只是原地 remux；成功 `safeReplaceTemp(video_merging.tmp, video.mp4)` 后删 `audio.m4a`，失败只记日志、下载照常算成功。
+- **进度**：附件 `0.00–0.12` → 视频 `0.12–0.52` → 音频 `0.52–0.88` → 合并 `0.88–1.00`；边界全在 `DownloadProgressMath`（`DASH_ATTACH_END` 等四个常量 + `dashMergeProgress(fraction)`），有单测钉死，别再写回字面量。
+- **暂停语义**：合并开始前若已暂停就不合并（走 `runDownloadSection` 的暂停分支）；合并中**不响应暂停**（几秒内能完成，中途停手反而要处理半成品），只有 `started == false`（服务销毁）时中止并按未完成处理。`shouldStop = { !started }`。
+- **残留清理**：合并临时文件固定叫 `video_merging.tmp`（`DownloadPathSpec.FILE_VIDEO_MERGING`），**刻意不用 `.mp4` 后缀**——`LocalListActivity.scanVideos` 有对历史残留 `video_merged_temp.mp4` 的「改名成 video.mp4」兼容逻辑，复用那个名字会把半成品认成成品。中断残留由 `FileUtil.cleanDownloadTempFiles` 清（已加该文件名）。
+- **播放侧不用动**：合并成功后目录里只剩 `video.mp4`，`LocalListActivity` 天然走单文件路径；老的 DASH 双文件缓存仍然按「`audio.m4a` 当外部音轨」播放（`PlayerActivity.audioTrackUrl` / `LocalAudioTrackPolicy`，见 §7.4）。
+- **验证接口**：Debug 包 `DebugBridge` 的 `merge` 命令可直接对两条 m4s 跑正式代码路径（用法与判据见 `docs/review/agent-test-guide.md` §4.8）。
 
 ## 8. UI 基建速查（新增页面临摹用）
 

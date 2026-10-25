@@ -84,6 +84,8 @@ public class FileUtil {
      *
      * 因此这里语义收紧为"只收拾本次下载自己产生的中间文件"：
      * - video_new.mp4 / audio_new.m4a：safeReplaceTemp 的下载临时文件，直接删；
+     * - video_merging.tmp：DASH 音视频合并的临时产物（见 MediaMerger），合并成功才替换 video.mp4，
+     *   中断留下的半成品直接删（原始 video.mp4 / audio.m4a 还在，双文件仍可播放）；
      * - *.bak：safeReplaceTemp 替换正式文件前的备份。**正式文件存在**时它只是替换成功后没删掉的
      *   备份，可以删；**正式文件不存在而 .bak 存在**说明进程在"旧成品改名成 .bak"之后、
      *   "临时文件改名成正式文件"之前被回收了，此时 .bak 就是当前唯一的成品，必须改名回正式文件名，
@@ -117,7 +119,8 @@ public class FileUtil {
                 }
                 continue;
             }
-            if (name.equals(DownloadPathSpec.FILE_VIDEO_TMP) || name.equals(DownloadPathSpec.FILE_AUDIO_TMP)) {
+            if (name.equals(DownloadPathSpec.FILE_VIDEO_TMP) || name.equals(DownloadPathSpec.FILE_AUDIO_TMP)
+                    || name.equals(DownloadPathSpec.FILE_VIDEO_MERGING)) {
                 file.delete();
             }
         }

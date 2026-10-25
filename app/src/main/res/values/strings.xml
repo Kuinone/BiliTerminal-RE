@@ -773,6 +773,7 @@
     <string name="text_download_start">开始下载</string>
     <string name="text_download_video">下载视频</string>
     <string name="text_download_audio">下载音频</string>
+    <string name="text_download_merging">合并音视频</string>
     <string name="text_download_cover">下载封面</string>
     <string name="text_download_subtitle">下载字幕</string>
     <string name="text_download_danmaku">下载弹幕</string>

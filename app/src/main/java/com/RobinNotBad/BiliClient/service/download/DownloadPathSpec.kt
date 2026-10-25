@@ -40,6 +40,14 @@ internal object DownloadPathSpec {
     /** 音频临时文件名：下载全部成功后才替换 [FILE_AUDIO] */
     const val FILE_AUDIO_TMP = "audio_new.m4a"
 
+    /**
+     * DASH 音视频合并的临时文件名：合并成功才替换 [FILE_VIDEO]，中断留下的半成品由
+     * `FileUtil.cleanDownloadTempFiles` 删除。
+     *
+     * 刻意不用 `.mp4` 后缀：它不是能直接播放的视频，也避免被"扫描旧合并残留"的兼容逻辑误认。
+     */
+    const val FILE_VIDEO_MERGING = "video_merging.tmp"
+
     // ---------- 下载类型与任务类型（写进数据库的字面量） ----------
 
     /** download_type：仅下载音频 */

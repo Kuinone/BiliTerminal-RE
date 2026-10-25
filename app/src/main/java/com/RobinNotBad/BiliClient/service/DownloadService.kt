@@ -34,6 +34,7 @@ import com.RobinNotBad.BiliClient.util.CenterThreadPool
 import com.RobinNotBad.BiliClient.util.FileUtil
 import com.RobinNotBad.BiliClient.util.GlideUtil
 import com.RobinNotBad.BiliClient.util.Logu
+import com.RobinNotBad.BiliClient.util.MediaMerger
 import com.RobinNotBad.BiliClient.util.MsgUtil
 import com.RobinNotBad.BiliClient.util.NetWorkUtil
 import com.RobinNotBad.BiliClient.util.ToolsUtil
@@ -707,30 +708,34 @@ class DownloadService : Service() {
                         }
                         if (!replaceTempOrFail(audioTmp, File(path_single, DownloadPathSpec.FILE_AUDIO))) return false
                     } else if (useDash) {
-                        // DASH分段进度：视频 0.12–0.55 → 音频 0.55–1.00，附件已占 0.00–0.12。
-                        // 不合并，保留分离双文件直接播放。整条进度条单调前进（不再各自 0→100%）。
+                        // DASH分段进度：视频 0.12–0.52 → 音频 0.52–0.88 → 合并 0.88–1.00，附件已占 0.00–0.12。
+                        // 下载完成后把音视频重新封装成一个 MP4（同 720P 的单文件形态）；合并失败保留双文件，
+                        // 不判定下载失败。整条进度条单调前进（不再各自 0→100%）。
                         // 先下载到临时文件，全部成功后再替换正式文件（重新下载/切换清晰度时不破坏旧视频）
                         val videoTmp = File(path_single, DownloadPathSpec.FILE_VIDEO_TMP)
                         val audioTmp = File(path_single, DownloadPathSpec.FILE_AUDIO_TMP)
                         state = getString(R.string.text_download_video)
-                        setDownloadProgress(downloadSection.id, 0.12f, getString(R.string.text_download_video))
-                        result = downFile(url_video, videoTmp, downloadSection.id, 0.12f, 0.55f)
+                        setDownloadProgress(downloadSection.id, DownloadProgressMath.DASH_ATTACH_END, getString(R.string.text_download_video))
+                        result = downFile(url_video, videoTmp, downloadSection.id, DownloadProgressMath.DASH_ATTACH_END, DownloadProgressMath.DASH_VIDEO_END)
                         if (result != DownloadPathSpec.NORMAL) {
                             exitCode = result
                             return false
                         }
                         state = getString(R.string.text_download_audio)
-                        setDownloadProgress(downloadSection.id, 0.55f, getString(R.string.text_download_audio))
-                        result = downFile(url_audio, audioTmp, downloadSection.id, 0.55f, 1.0f)
+                        setDownloadProgress(downloadSection.id, DownloadProgressMath.DASH_VIDEO_END, getString(R.string.text_download_audio))
+                        result = downFile(url_audio, audioTmp, downloadSection.id, DownloadProgressMath.DASH_VIDEO_END, DownloadProgressMath.DASH_AUDIO_END)
                         if (result != DownloadPathSpec.NORMAL) {
                             exitCode = result
                             return false
                         }
-                        if (!replaceDashPairOrFail(
-                                videoTmp, File(path_single, DownloadPathSpec.FILE_VIDEO),
-                                audioTmp, File(path_single, DownloadPathSpec.FILE_AUDIO)
-                            )) return false
-                        setDownloadProgress(downloadSection.id, 1.0f, getString(R.string.text_update_download_complete))
+                        val videoFinal = File(path_single, DownloadPathSpec.FILE_VIDEO)
+                        val audioFinal = File(path_single, DownloadPathSpec.FILE_AUDIO)
+                        if (!replaceDashPairOrFail(videoTmp, videoFinal, audioTmp, audioFinal)) return false
+                        // 合并阶段只做容器重封装，几秒内完成，期间不响应暂停；但服务停止（started=false）要中止。
+                        // 合并失败/跳过时双文件仍可正常播放，下载照常算成功。
+                        if (isPaused(downloadSection.id)) return false
+                        if (mergeDashPair(downloadSection.id, videoFinal, audioFinal) == MediaMerger.RESULT_STOPPED) return false
+                        setDownloadProgress(downloadSection.id, DownloadProgressMath.DASH_MERGE_END, getString(R.string.text_update_download_complete))
                     } else {
                         // MP4格式或无音轨DASH：直接下载单个文件（音视频已合并/无音轨）
                         val videoTmp = File(path_single, DownloadPathSpec.FILE_VIDEO_TMP)
@@ -783,30 +788,34 @@ class DownloadService : Service() {
                         }
                         if (!replaceTempOrFail(audioTmp, File(path_page, DownloadPathSpec.FILE_AUDIO))) return false
                     } else if (useDash) {
-                        // DASH分段进度：视频 0.12–0.55 → 音频 0.55–1.00，附件已占 0.00–0.12。
-                        // 不合并，保留分离双文件直接播放。整条进度条单调前进（不再各自 0→100%）。
+                        // DASH分段进度：视频 0.12–0.52 → 音频 0.52–0.88 → 合并 0.88–1.00，附件已占 0.00–0.12。
+                        // 下载完成后把音视频重新封装成一个 MP4（同 720P 的单文件形态）；合并失败保留双文件，
+                        // 不判定下载失败。整条进度条单调前进（不再各自 0→100%）。
                         // 先下载到临时文件，全部成功后再替换正式文件（重新下载/切换清晰度时不破坏旧视频）
                         val videoTmp = File(path_page, DownloadPathSpec.FILE_VIDEO_TMP)
                         val audioTmp = File(path_page, DownloadPathSpec.FILE_AUDIO_TMP)
                         state = getString(R.string.text_download_video)
-                        setDownloadProgress(downloadSection.id, 0.12f, getString(R.string.text_download_video))
-                        result = downFile(url_video, videoTmp, downloadSection.id, 0.12f, 0.55f)
+                        setDownloadProgress(downloadSection.id, DownloadProgressMath.DASH_ATTACH_END, getString(R.string.text_download_video))
+                        result = downFile(url_video, videoTmp, downloadSection.id, DownloadProgressMath.DASH_ATTACH_END, DownloadProgressMath.DASH_VIDEO_END)
                         if (result != DownloadPathSpec.NORMAL) {
                             exitCode = result
                             return false
                         }
                         state = getString(R.string.text_download_audio)
-                        setDownloadProgress(downloadSection.id, 0.55f, getString(R.string.text_download_audio))
-                        result = downFile(url_audio, audioTmp, downloadSection.id, 0.55f, 1.0f)
+                        setDownloadProgress(downloadSection.id, DownloadProgressMath.DASH_VIDEO_END, getString(R.string.text_download_audio))
+                        result = downFile(url_audio, audioTmp, downloadSection.id, DownloadProgressMath.DASH_VIDEO_END, DownloadProgressMath.DASH_AUDIO_END)
                         if (result != DownloadPathSpec.NORMAL) {
                             exitCode = result
                             return false
                         }
-                        if (!replaceDashPairOrFail(
-                                videoTmp, File(path_page, DownloadPathSpec.FILE_VIDEO),
-                                audioTmp, File(path_page, DownloadPathSpec.FILE_AUDIO)
-                            )) return false
-                        setDownloadProgress(downloadSection.id, 1.0f, getString(R.string.text_update_download_complete))
+                        val videoFinal = File(path_page, DownloadPathSpec.FILE_VIDEO)
+                        val audioFinal = File(path_page, DownloadPathSpec.FILE_AUDIO)
+                        if (!replaceDashPairOrFail(videoTmp, videoFinal, audioTmp, audioFinal)) return false
+                        // 合并阶段只做容器重封装，几秒内完成，期间不响应暂停；但服务停止（started=false）要中止。
+                        // 合并失败/跳过时双文件仍可正常播放，下载照常算成功。
+                        if (isPaused(downloadSection.id)) return false
+                        if (mergeDashPair(downloadSection.id, videoFinal, audioFinal) == MediaMerger.RESULT_STOPPED) return false
+                        setDownloadProgress(downloadSection.id, DownloadProgressMath.DASH_MERGE_END, getString(R.string.text_update_download_complete))
                     } else {
                         // MP4格式或无音轨DASH：直接下载单个文件（音视频已合并/无音轨）
                         val videoTmp = File(path_page, DownloadPathSpec.FILE_VIDEO_TMP)
@@ -954,9 +963,53 @@ class DownloadService : Service() {
     }
 
     /**
+     * DASH 音视频合并（双文件替换到位之后调用）。
+     *
+     * 把 `video.mp4` + `audio.m4a` 重新封装成一个 MP4：成功时用合并产物替换 `video.mp4` 并删掉
+     * `audio.m4a`；失败/跳过时**原样保留双文件**（播放器仍能挂外部音轨正常播放），下载照常算成功。
+     * 合并只换容器、不重新编码，所以画质无损、耗时通常只有几秒。
+     *
+     * @return [MediaMerger.RESULT_OK] 合并成功；[MediaMerger.RESULT_STOPPED] 服务停止导致中止，
+     *         调用方应按"下载未完成"处理；其它值表示没合并，调用方继续走成功收尾
+     */
+    private fun mergeDashPair(sectionId: Long, videoFile: File, audioFile: File): Int {
+        if (!videoFile.isFile || !audioFile.isFile) {
+            Logu.w("DownloadService", "DASH 合并跳过：成品缺失（video=${videoFile.exists()} audio=${audioFile.exists()}）")
+            return MediaMerger.RESULT_FAILED
+        }
+        val mergedTmp = File(videoFile.parentFile, DownloadPathSpec.FILE_VIDEO_MERGING)
+        val mergeState = getString(R.string.text_download_merging)
+        state = mergeState
+        setDownloadProgress(sectionId, DownloadProgressMath.DASH_AUDIO_END, mergeState)
+        val mergeStartAt = System.currentTimeMillis()
+        val result = MediaMerger.mergeAv(
+            videoFile = videoFile,
+            audioFile = audioFile,
+            mergedFile = mergedTmp,
+            onProgress = { fraction ->
+                setDownloadProgress(sectionId, DownloadProgressMath.dashMergeProgress(fraction), mergeState)
+            },
+            // 合并只做容器重封装，不响应暂停；服务被销毁（started=false）时必须停手
+            shouldStop = { !started }
+        )
+        val cost = System.currentTimeMillis() - mergeStartAt
+        if (result != MediaMerger.RESULT_OK) {
+            Logu.w("DownloadService", "DASH 合并未完成（result=$result，耗时${cost}ms），保留双文件")
+            return result
+        }
+        if (!safeReplaceTemp(mergedTmp, videoFile)) {
+            Logu.e("DownloadService", "DASH 合并产物替换失败，保留双文件")
+            return MediaMerger.RESULT_FAILED
+        }
+        audioFile.delete()
+        Logu.i("DownloadService", "DASH 合并完成：${videoFile.name}（耗时${cost}ms，${videoFile.length()} 字节）")
+        return MediaMerger.RESULT_OK
+    }
+
+    /**
      * 附件阶段（封面 + 字幕 + 弹幕）统一处理。
      * DASH 流程：附件属于视频的前置开销，只占进度条 0.00–0.12（封面 0-0.04，字幕 0.05，
-     * 弹幕 0.06-0.12），随后视频段 0.12–0.55、音频段 0.55–1.00，整条进度条**单调前进**。
+     * 弹幕 0.06-0.12），随后视频段 0.12–0.52、音频段 0.52–0.88、合并段 0.88–1.00，整条进度条**单调前进**。
      * （旧实现让每段各自 0→100%，DASH 下载一次要走满三遍，用户看到的就是"进度条来回满三次"。）
      * 其他流程（MP4 单文件/纯音频）：保持旧的比例区间（封面 0.05-0.1，字幕 0.1，弹幕 0.15）。
      * @return 是否成功；false 时调用方应直接结束下载
