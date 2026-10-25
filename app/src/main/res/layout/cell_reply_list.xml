@@ -56,6 +56,19 @@
         tools:ignore="TouchTargetSizeCheck" />
 
     <TextView
+        android:id="@+id/replyTranslation"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:textColor="?attr/colorPrimary"
+        android:textSize="13sp"
+        android:visibility="gone"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/replyText"
+        tools:ignore="TouchTargetSizeCheck" />
+
+    <TextView
         android:id="@+id/likes"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
@@ -81,6 +94,22 @@
         app:layout_constraintTop_toTopOf="@+id/likes"
         app:layout_constraintVertical_bias="0.5" />
 
+    <!-- 「文A」翻译按钮：尺寸/垂直位置照抄 dislikeBtn，点一下翻译或收起这条评论的译文 -->
+    <ImageView
+        android:id="@+id/item_reply_translate"
+        android:layout_width="wrap_content"
+        android:layout_height="0dp"
+        android:layout_marginStart="6dp"
+        android:adjustViewBounds="true"
+        android:alpha="0.7"
+        android:contentDescription="@string/text_reply_translate"
+        android:scaleType="centerInside"
+        android:src="@drawable/icon_translate"
+        app:layout_constraintBottom_toBottomOf="@+id/likes"
+        app:layout_constraintStart_toEndOf="@+id/dislikeBtn"
+        app:layout_constraintTop_toTopOf="@+id/likes"
+        app:layout_constraintVertical_bias="0.5" />
+
     <!-- 过于使的布局 但是我不会写 -->
     <!-- Re:给你修了下 -->
     <!-- MMP哪个B在代码里设置了点赞的颜色害得我排除半天色调不对的问题 -->
@@ -95,7 +124,7 @@
         android:textSize="13sp"
         android:textColor="?android:attr/textColorPrimary"
         app:drawableStartCompat="@drawable/icon_delete"
-        app:layout_constraintStart_toEndOf="@+id/dislikeBtn"
+        app:layout_constraintStart_toEndOf="@+id/item_reply_translate"
         app:layout_constraintTop_toTopOf="@+id/likes" />
 
     <androidx.constraintlayout.utils.widget.ImageFilterView
@@ -110,7 +139,7 @@
         android:src="@mipmap/placeholder"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@+id/replyText"
+        app:layout_constraintTop_toBottomOf="@+id/replyTranslation"
         app:round="@dimen/card_round" />
 
 

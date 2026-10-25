@@ -2380,4 +2380,12 @@
     <string name="tutorial_hint_user_info">用户主页引导</string>
     <string name="tutorial_hint_opus_info">专栏详情页引导</string>
     <string name="tutorial_hint_dynamic_info">动态详情页引导</string>
+
+    <!-- ==================== 评论区翻译（文A 按钮） ==================== -->
+    <!-- 翻译按钮的 contentDescription；按钮只有图标，这句话也是读屏念出来的内容 -->
+    <string name="text_reply_translate">翻译</string>
+    <!-- 请求失败（网络/接口异常）时给用户的提示 -->
+    <string name="msg_reply_translate_failed">翻译失败，请稍后再试</string>
+    <!-- 请求成功但服务端没给译文（已是目标语言/不支持翻译）时的提示 -->
+    <string name="msg_reply_translate_none">该评论暂无译文（可能已是目标语言或不支持翻译）</string>
 </resources>

@@ -178,3 +178,18 @@
 **已知但未接的收藏接口**（逐条能力表见 `docs/FEATURES.md` §8.5）：`x/v3/fav/resource/sort`（夹内手动排序）、`x/v3/fav/folder/sort`（收藏夹本身排序）、`x/v3/fav/resource/clean` + `x/v3/fav/tab/clean_invalid`（清理失效）、`x/v3/fav/thump/up`、`x/v3/fav/tab/report`、`resource/infos|ids`、`folder/space|space/v2|whitelist`、`x/v3/fav/tab` 族、`x/v3/fav/season/unfav`。前两个需 APP 签名（`appkey` + `ts` + `sign = md5(query + appsec)`）。
 
 **批量写接口要带 `x-bili-gaia-vtoken`**（9.16.1 客户端静态分析）：`POST x/v3/fav/resource/batch-deal` 的请求头里有一个人机校验 token（`BiliApiException.mCode == 11211` 时官方客户端会单独处理、不弹通用错误）。这个 token 由风控链路下发，第三方拿不到——所以本项目走 `batch-deal` 时**偶发失败要优先怀疑它**，退路是逐条打 `x/v3/fav/resource/deal`（官方也保留着这条）。单条 `deal` 不需要该头。
+
+## 7. 评论区翻译：gRPC `TranslateReply`（26.10.26 实测）
+
+**结论**：这是目前唯一能“按需翻译单条评论”的接口，游客可用、不需要签名/登录；本项目实现见 `api/ReplyTranslateApi.java`，UI 见 `adapter/ReplyAdapter.kt`（每条评论操作行的「文A」按钮）。
+
+- **调用**：`POST https://grpc.biliapi.net/bilibili.main.community.reply.v1.Reply/TranslateReply`，`content-type: application/grpc`、`te: trailers`、`grpc-accept-encoding: identity`。
+- **请求 protobuf**：`TranslateReplyReq { int64 type=1; int64 oid=2; repeated int64 rpids=3 (packed) }`。`type` 用 `ContentType` 的 typeCode（视频=1、动态=17、专栏=12、音频=14、课程=33…），`oid` 是对应的 aid/动态 id。一次 1~20 条。
+- **响应 protobuf**：`TranslateReplyResp { map<int64, ReplyInfo> translated_replies=1 }`；`ReplyInfo` 里取 `translated_content=17`（`Content`）的 `message=1`。**成功判据只看 `translated_content` 是否有非空文本**。
+- **目标语言**由请求头 `x-bili-locale-bin` 决定（base64 的 `Locale` protobuf）：`Locale { LocaleIds c_locale=1 { language=1; script=2; region=3 }; s_locale=2; ... }`。最小可用只写 `c_locale.language`，实测 en=`CgQKAmVu`、ja=`CgQKAmph`、zh=`CgQKAnpo`。**不发该头必然没有译文**。
+- **gRPC 帧**：1 字节 `0x00` + 4 字节大端长度 + protobuf body。
+- **错误形态**：HTTP 仍是 200。成功时 `grpc-status: 0`/`bili-status-code: 0` 在 trailers；`trailers-only` 业务错误时这两个头直接出现在响应头里（如 `bili-status-code=12002`「当前页面评论功能已关闭」）。OkHttp 4.12 的 `Response.trailers()` 可用，但保险做法是**先查响应头、body 读尽后再 best-effort 查 trailers**。
+- **空 map 不是错误**：评论已经是目标语言、或服务端判定不可译时都会返回空 map；`reply_control.translation_switch`（`ReplyInfo` field 37）只有 0/1/2/3 四态，且翻译成功时恒为 3（SHOW_ORIGIN），没有区分度。
+- **无法预判能否翻译**：REST `/x/v2/reply` 返回的 `translation_switch` 恒为 1（UNSUPPORTED 语义之外的占位），只有带 locale 头的 gRPC `MainList` 才会直接带译文。本项目列表走 REST，所以只能**点按钮时再调** `TranslateReply`。
+- **本仓库的取舍**：按条懒翻译（不预取整页、不批量）、目标语言 = `Locale.getDefault().getLanguage()`（跟随系统语言）、不重试、失败只提示一次「翻译失败，请稍后再试」。
+- **已知限制**：`grpc.biliapi.net` 只支持 HTTP/2；minSdk 19/20 的旧设备没有 ALPN，OkHttp 协商不出 h2 会直接抛 `IOException`（不会自动降级），UI 侧按普通网络失败提示。

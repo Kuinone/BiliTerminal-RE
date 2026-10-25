@@ -66,6 +66,12 @@ public class Reply implements Serializable {
     public String pubTime;
     public UserInfo sender;
     public CharSequence message;
+    /** 翻译后的正文；null 表示还没翻译过（或接口没返回译文）。 */
+    public String translatedMessage;
+    /** 译文当前是否显示在原文下方。 */
+    public boolean translationShown;
+    /** 译文请求是否在途（用于禁用按钮、防连点）。 */
+    public boolean translationLoading;
     public ArrayList<String> pictureList = new ArrayList<>();
     public int likeCount;
     public boolean upLiked;
@@ -220,6 +226,49 @@ public class Reply implements Serializable {
     public void parseAction(int action) {
         this.liked = isLikedAction(action);
         this.disliked = isDislikedAction(action);
+    }
+
+    /**
+     * 纯逻辑：是否已有可展示的译文。
+     *
+     * <p>判 null 之外还要判长度：翻译接口在「该评论已是目标语言 / 不可译」时会返回空串，
+     * 空串如果算「有译文」，界面上就会出现一块空白区域，再点按钮也只是在空白上切换、
+     * 看不出任何变化。所以「有译文」的唯一判据是「非 null 且非空」。
+     */
+    public boolean hasTranslation() {
+        return translatedMessage != null && translatedMessage.length() > 0;
+    }
+
+    /**
+     * 纯逻辑：切换译文的显示/隐藏，返回切换后的显示状态。
+     *
+     * <p>没有译文时直接返回 false 且**不改任何状态**：否则用户点一下按钮什么都没看到，
+     * 显示状态却已经被打开，等译文真的回来时界面会提前进入「显示中」，
+     * 用户会以为翻译功能坏了。
+     *
+     * @return 切换后译文是否显示；没有译文时恒为 false
+     */
+    public boolean toggleTranslationShown() {
+        if (!hasTranslation()) return false;
+        translationShown = !translationShown;
+        return translationShown;
+    }
+
+    /**
+     * 纯逻辑：把一次翻译请求的结果落到模型上，返回是否真的应用了。
+     *
+     * <p>null / 空串一律视为「没拿到译文」：既不能覆盖已有译文，也不能改变显示状态。
+     * success 时统一清掉 {@link #translationLoading}，否则请求回来之后按钮会永久卡在禁用态。
+     *
+     * @param text 接口返回的译文，允许 null
+     * @return 译文非空并已应用时为 true
+     */
+    public boolean applyTranslation(String text) {
+        if (text == null || text.length() == 0) return false;
+        this.translatedMessage = text;
+        this.translationShown = true;
+        this.translationLoading = false;
+        return true;
     }
 
     /**

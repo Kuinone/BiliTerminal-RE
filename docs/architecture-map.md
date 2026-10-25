@@ -686,7 +686,7 @@ CenterThreadPool.supplyAsyncWithLiveData { fetch...().getOrThrow() }
 
 - **巨型类**：`activity/player/PlayerActivity.kt` 166 KB / 3628 行、`activity/video/ShortVideoPlayerActivity.kt` 43 KB / 1017 行（26.10.10 实测）。`service/DownloadService.kt` 曾是第二条 65 KB 的巨型类，26.10.04 批次 8（E2）已拆到 **1284 行**，实现分居 `service/download/` 的 4 个文件（见 §7.27）。改播放相关功能前先想清楚在哪个位置插入；改下载相关功能请先读 §7.27 的锁与状态契约。
 - **Application 静态状态已收敛为一套**：26.10.02 起只有 `BiliTerminal.context`（`BiliTerminal.kt:47-48`，伴生对象 `@JvmField`，静态字段）与 `instance`（`:53`，`private WeakReference<InstanceActivity>`，只能经 `setInstance()`(`:85`) / `getInstanceActivityOnTop()`(`:90`) 访问），`BiliTerminalApp` 已整文件删除。**新代码一律用 `BiliTerminal`**。
-- **测试覆盖仍偏低**：`app/src/test/` 88 个文件（87 个 `*Test` 文件 + 1 个共享假实现 `FakeSharedPreferences.kt`），**88 个测试类**（`CalculatorEngineTest.kt` 里有 `CalculatorEngineTest` 与 `DisguisePrefsTest` 两个类），共 **954 个用例**（26.10.25 实测，两个 flavor 各 954、0 失败）。已有：`HotSearchApiTest`、`FavoriteApiTest`、`FollowApiTest`、`OpusApiTest`、`PrivateMsgApiTest`、`BangumiApiTest`、`DynamicApiTest`、`TopicApiTest`、`NoteApiTest`、`WatchLaterApiTest`、`PlayerApiPbpTest`、`ReplyApiTest`、`ReplyParseActionTest`、`ReplySortTest`、`NetWorkUtilTest`、`PerformanceManagerTest`、`BangumiUpdateCheckerTest`、`MsgNotifierTest`、`ApkVerifierTest`、`SettingsKeysTest`、`UpdateReleaseTest`、`MenuConfigTest`、`MySpaceConfigTest`、`ToolsUtilTest`、`StringUtilTest`（Java）、`HotSearchAdapterTest`、`TutorialDslTest`、`MediaClockSyncTest`（DFM 侧纯函数，源在 `DanmakuFlameMaster`）、`CalculatorEngineTest`、`DisguisePrefsTest`、`SkipCancelPolicyTest`、`PlayerDefaultsTest`、`ViewPointSkipTest`、`ColorSchemeTest`、`CornerStyleTest`、`FontStyleTest`、`AppearanceManagerTest`、`ViewCapabilityProbeTest`、`DownloadPathSpecTest`、`DownloadProgressMathTest`、`DownloadBatchStatsTest`。改动解析/配置/主题/能力探测逻辑时补纯 JVM 单测——注入 `SharedPreferencesUtil.sharedPreferences`，用 `util/FakeSharedPreferences.kt`（26.09.11 从 `NetWorkUtilTest` 的私有内部类提取为共享助手，别再抄一份）。
+- **测试覆盖仍偏低**：`app/src/test/` 90 个 Kotlin 测试文件 + 1 个 Java 测试文件（`StringUtilTest.java`）+ 1 个共享假实现 `FakeSharedPreferences.kt`，**91 个测试类**（`CalculatorEngineTest.kt` 里有 `CalculatorEngineTest` 与 `DisguisePrefsTest` 两个类），共 **988 个用例**（26.10.26 实测，两个 flavor 各 988、0 失败）。已有：`HotSearchApiTest`、`FavoriteApiTest`、`FollowApiTest`、`OpusApiTest`、`PrivateMsgApiTest`、`BangumiApiTest`、`DynamicApiTest`、`TopicApiTest`、`NoteApiTest`、`WatchLaterApiTest`、`PlayerApiPbpTest`、`ReplyApiTest`、`ReplyParseActionTest`、`ReplySortTest`、`ReplyTranslateApiTest`、`ReplyTranslationTest`、`NetWorkUtilTest`、`PerformanceManagerTest`、`BangumiUpdateCheckerTest`、`MsgNotifierTest`、`ApkVerifierTest`、`SettingsKeysTest`、`UpdateReleaseTest`、`MenuConfigTest`、`MySpaceConfigTest`、`ToolsUtilTest`、`StringUtilTest`（Java）、`HotSearchAdapterTest`、`TutorialDslTest`、`MediaClockSyncTest`（DFM 侧纯函数，源在 `DanmakuFlameMaster`）、`CalculatorEngineTest`、`DisguisePrefsTest`、`SkipCancelPolicyTest`、`PlayerDefaultsTest`、`ViewPointSkipTest`、`ColorSchemeTest`、`CornerStyleTest`、`FontStyleTest`、`AppearanceManagerTest`、`ViewCapabilityProbeTest`、`DownloadPathSpecTest`、`DownloadProgressMathTest`、`DownloadBatchStatsTest`。改动解析/配置/主题/能力探测逻辑时补纯 JVM 单测——注入 `SharedPreferencesUtil.sharedPreferences`，用 `util/FakeSharedPreferences.kt`（26.09.11 从 `NetWorkUtilTest` 的私有内部类提取为共享助手，别再抄一份）。
 - **主题色表带缓存，失效点只有一处**：`ColorScheme.getCurrentTheme()`（26.09.11 起）缓存当前色表，**只由 `AppearanceManager.setTheme()` 经 `ColorScheme.invalidateCache()` 置空**。这是刻意的——36 个属性 getter 全走它，而列表滚动时一个 item 要调多次，此前每次都重读 SharedPreferences（热路径重复 IO）。**若将来给主题 key 增加第二个写入路径（比如直接 `SharedPreferencesUtil.putString(SettingsKeys.THEME, …)`），必须同步调用 `ColorScheme.invalidateCache()`，否则改主题后色表不跟着变且在 `onResume` 重建后依然错**。守卫测试：`ColorSchemeTest.themeCache_isInvalidatedOnEverySetTheme`、`colorGetters_doNotTouchSharedPreferencesAfterFirstRead`。
 - **主题体系有 3 个"裸 Activity"不参与**：`SplashActivity`、`GetIntentActivity` 不继承 `BaseActivity`（开屏/外链恒定 B站粉），`PlayerActivity` 自己 `setTheme` 但**不调 `applyWindowTheme`、也不参与 `onResume` 主题检测**。改主题相关行为时别以为全局都生效了。
 - **文案硬编码**：遗留页面标题/Toast 直接写中文字符串（Manifest 里 `android:label` 也是中文），只有设置页用 `desc_*` 资源。改文案按现有风格来，别顺手抽 `strings.xml`。
@@ -1368,6 +1368,16 @@ CenterThreadPool.supplyAsyncWithLiveData { fetch...().getOrThrow() }
 - **播放侧不用动**：合并成功后目录里只剩 `video.mp4`，`LocalListActivity` 天然走单文件路径；老的 DASH 双文件缓存仍然按「`audio.m4a` 当外部音轨」播放（`PlayerActivity.audioTrackUrl` / `LocalAudioTrackPolicy`，见 §7.4）。
 - **验证接口**：Debug 包 `DebugBridge` 的 `merge` 命令可直接对两条 m4s 跑正式代码路径（用法与判据见 `docs/review/agent-test-guide.md` §4.8）。
 
+### 7.55 评论区翻译：gRPC `TranslateReply` 的接入约束（26.10.26 新增）
+
+- **API 类**：`api/ReplyTranslateApi.java`（新建，不走命名空间里的 REST 约定）。请求 `POST https://grpc.biliapi.net/bilibili.main.community.reply.v1.Reply/TranslateReply`，`content-type: application/grpc`，body 是「1 字节 `0x00` + 4 字节大端长度 + protobuf」，即 5 字节头。
+- **目标语言靠头传**：`x-bili-locale-bin: base64(Locale{ c_locale=1 { language=1; script=2; region=3 } })`。本项目只写语言（`Locale.getDefault().getLanguage()`），实测 en=`CgQKAmVu`、ja=`CgQKAmph`、zh=`CgQKAnpo`；**不发这个头服务端必然不返回译文**。
+- **成功判据只看 `translated_content`**（`ReplyInfo` field 17 → `Content.message` field 1 非空）：空 map 不是错误（评论已经是目标语言 / 不可译都会这样），`reply_control.translation_switch` 在翻译成功时恒为 3，没有区分度；REST `/x/v2/reply` 返回的 `translation_switch` 恒为 1，**因此列表页无法预判某条评论能不能翻，只能点按钮时再调**。
+- **失败判据**：正常响应 HTTP 200；业务错误是 `trailers-only`，`grpc-status`/`bili-status-code` 出现在响应头（例：`bili-status-code=12002` = 当前页面评论功能已关闭）。实现里先查响应头、再 best-effort 查 `Response.trailers()`（OkHttp 4.12 支持）。按产品决定**不重试、不换语言**，失败只提示一次（`ReplyAdapter` 用 `Logu.e` 留诊断，避免和 `MsgUtil.err(IOException)` 的默认网络错误提示叠成两个 toast）。
+- **UI 约定**：按钮是操作行的 `item_reply_translate`（文A 图标，contentDescription=`text_reply_translate`），译文写在正文下方的 `replyTranslation`；译文只替换正文，不发新的评论请求。列表的 `realPosition` 与 adapter 下标差 1（`isDetail` 时差 2），点按钮时必须用 `ReplyAdapter` 里同一套映射反推，不要把 position 直接当 `replyList` 下标。
+- **限制**：`grpc.biliapi.net` 只有 HTTP/2，API 19/20 没有 ALPN 会直接 `IOException`（OkHttp 不自动降级），按普通网络失败提示。楼中楼内嵌预览（`cell_reply_child` 的纯 TextView）不参与翻译，只有列表行 / 详情页行有按钮。
+- **测试**：`app/src/test/java/com/RobinNotBad/BiliClient/api/ReplyTranslateApiTest.kt`（21 例：帧头、hex 黄金样本、packed rpids、int64 负数补位、locale base64、空/坏数据容错）与 `model/ReplyTranslationTest.kt`（7 例：三种译文状态与 toggle）。
+
 ## 8. UI 基建速查（新增页面临摹用）
 
 ### 8.1 完整继承体系
@@ -1790,6 +1800,7 @@ TTF/OTF/TTC，应用把它**拷进私有目录**（`filesDir/custom_font/custom_
 | `UserInfoApi` | 用户/空间/关系/资料 | `getUserInfo`、`getUserSpaceInfo`、`followUser`、`updateUserInfo`、`uploadAvatar` |
 | `FollowApi` | 关注/粉丝/分组 | `getFollowingList`、`getFollowerList`、`getFollowTags` |
 | `ReplyApi` | 评论 | `getReplies`、`getRepliesLazy`、`getRootReply`、`getReplyCount`、`sendReply`、`sendDynamicReply`、`likeReply`、`dislikeReply`、`deleteReply`、`topReply`、`uploadReplyImage`（`actionErrorMsg` 统一错误码文案；`topActionFor` 纯函数） |
+| `ReplyTranslateApi` | 评论翻译（gRPC `TranslateReply`，26.10.26 新增） | `translateReplies`、`translateReply`、`encodeTranslateRequest`、`wrapGrpcFrame`、`parseTranslateResponse`、`buildLocaleHeader`（protobuf 手写编解码，全部纯函数可 JVM 单测） |
 | `PrivateMsgApi` | 私信 | `getPrivateMsg`、`getSessionsList`、`sendMsg` |
 | `MessageApi` | 消息中心/未读/消息设置 | `getUnread`、`checkMessageUnread`、`getLikeMsg/getReplyMsg/getAtMsg`、`getSystemMsg` |
 | `EmoteApi` | 表情包 | `getEmotes`、`getEmoteTexts`、`getMyPackages`、`setPackage`、`analyzeEmotePackages` |
@@ -1819,15 +1830,16 @@ TTF/OTF/TTC，应用把它**拷进私有目录**（`filesDir/custom_font/custom_
 | `TerminalApi` | **自建**服务器：公告（含上游逐条审核透传）/反馈/匿名统计/崩溃上报（见 §6.5） | `ping`、`submitFeedback`、`uploadCrash`、`checkAnnouncement`、`getOwnAnnouncementList` |
 | `BilibiliIDConverter` | av/bv 互转（纯函数） | ~~`bvtoaid`、`aidtobv`~~ **26.09.11 已删除**（全工程 0 调用） |
 
-### 网络出口的 3 个例外
+### 网络出口的 4 个例外
 
-43 个类里只有 3 处**绕过** `NetWorkUtil` 自建 Request，因此不受它的解压/重试/Cookie 管理保护：
+44 个类里只有 4 处**绕过** `NetWorkUtil` 的 `get`/`post` 封装自己拼 `Request`，因此不受它的解压/重试/Cookie 管理保护：
 
 1. `ReplyApi.java:190-208` `uploadReplyImage`（multipart，不处理 br/gzip）
 2. `UserInfoApi.java:291-303` `updateUserInfo`（自带 `decompressResponse`）
 3. `UserInfoApi.java:330-348` `uploadAvatar`
+4. `ReplyTranslateApi.java` `translateReplies`（gRPC 二进制 body，手动拼帧与头；复用 `NetWorkUtil.getOkHttpInstance()` 的共享 client，故 CookieSave/HttpTrace 两个拦截器仍生效）
 
-三者均手工拼 Cookie 头。改这几个方法时不要假设 NetWorkUtil 的行为。
+前三者均手工拼 Cookie 头；第 4 项是游客可用的公开接口，不带 Cookie。改这几个方法时不要假设 NetWorkUtil 的行为。
 
 ### 纯函数可测点
 
@@ -1836,7 +1848,7 @@ TTF/OTF/TTC，应用把它**拷进私有目录**（`filesDir/custom_font/custom_
 
 **不可单测**（内部发网络 / 依赖 Context / 弹 UI）：`DynamicApi.analyzeDynamic`、`MessageApi` 全部解析（SpannableString）、`PrivateMsgApi.getPrivateMsgList`、`LikeCoinFavApi.getVideoStats`。
 
-**测试覆盖现状（26.10.25 合并上游 DASH 合并单文件后实测）**：`app/src/test/` 88 个测试类 / 954 个用例（两个 flavor 各 954、0 失败）；api 层只有 10 个类的解析函数被覆盖（`HotSearchApiTest`、`FavoriteApiTest`、`FollowApiTest`、`OpusApiTest`、`PrivateMsgApiTest`、`BangumiApiTest`、`DynamicApiTest`、`TopicApiTest`、`NoteApiTest`、`WatchLaterApiTest`，另有 `PlayerApiPbpTest`、`ReplyApiTest`、`ReplySortTest` 覆盖部分纯逻辑）；`ui/appearance/` 下有 4 个测试类——`ColorSchemeTest` 覆盖 7 套主题的 `key → style` / `key → 色表` / 中文显示名映射、无 key 时的默认值、以及色表缓存的失效与读取次数；`CornerStyleTest` 覆盖圆角两档与「档位 → 覆盖样式」映射；`FontStyleTest` 覆盖字体文件头校验（含 WOFF 专门拒绝）与「未配置不加载」的性能约定；`AppearanceManagerTest` 覆盖外观版本号与唯一写入入口；`PerformanceManagerTest` 覆盖档位换算与图片/分页参数（见 §7.10）；`ApkVerifierTest` 覆盖更新包校验的判定规则（见 §7.11）；`SettingsKeysTest` 把 `player`/`play_qn`/`bangumi_update_notify_enable` 三个磁盘键名钉死（见 §7.12）；`PrivateMsgApiTest` 另覆盖会话列表解析（含 `top_ts`）、`opTypeForTop` 的 0/1 映射（见 §7.13）与图片消息 content 的字段/单位换算（见 §7.14）；`MsgNotifierTest` 覆盖新消息通知的提醒判据与正文拼装（见 §7.15）以及追番更新的文案；`BangumiApiTest` 覆盖追番列表解析（见 §7.16）；`BangumiUpdateCheckerTest` 覆盖追番快照序列化与更新判定（见 §7.16）。
+**测试覆盖现状（26.10.26 评论区翻译后实测）**：`app/src/test/` 91 个测试类 / 988 个用例（两个 flavor 各 988、0 失败）；api 层有 11 个类的解析函数被覆盖（`HotSearchApiTest`、`FavoriteApiTest`、`FollowApiTest`、`OpusApiTest`、`PrivateMsgApiTest`、`BangumiApiTest`、`DynamicApiTest`、`TopicApiTest`、`NoteApiTest`、`WatchLaterApiTest`、`ReplyTranslateApiTest`，另有 `PlayerApiPbpTest`、`ReplyApiTest`、`ReplySortTest`、`ReplyTranslationTest` 覆盖部分纯逻辑）；`ui/appearance/` 下有 4 个测试类——`ColorSchemeTest` 覆盖 7 套主题的 `key → style` / `key → 色表` / 中文显示名映射、无 key 时的默认值、以及色表缓存的失效与读取次数；`CornerStyleTest` 覆盖圆角两档与「档位 → 覆盖样式」映射；`FontStyleTest` 覆盖字体文件头校验（含 WOFF 专门拒绝）与「未配置不加载」的性能约定；`AppearanceManagerTest` 覆盖外观版本号与唯一写入入口；`PerformanceManagerTest` 覆盖档位换算与图片/分页参数（见 §7.10）；`ApkVerifierTest` 覆盖更新包校验的判定规则（见 §7.11）；`SettingsKeysTest` 把 `player`/`play_qn`/`bangumi_update_notify_enable` 三个磁盘键名钉死（见 §7.12）；`PrivateMsgApiTest` 另覆盖会话列表解析（含 `top_ts`）、`opTypeForTop` 的 0/1 映射（见 §7.13）与图片消息 content 的字段/单位换算（见 §7.14）；`MsgNotifierTest` 覆盖新消息通知的提醒判据与正文拼装（见 §7.15）以及追番更新的文案；`BangumiApiTest` 覆盖追番列表解析（见 §7.16）；`BangumiUpdateCheckerTest` 覆盖追番快照序列化与更新判定（见 §7.16）。
 
 ### API 层的坑
 

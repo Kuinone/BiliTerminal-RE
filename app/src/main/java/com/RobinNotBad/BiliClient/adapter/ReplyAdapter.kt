@@ -7,6 +7,8 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffColorFilter
 import android.text.SpannableStringBuilder
 import android.text.Spanned
 import android.text.TextUtils
@@ -34,11 +36,13 @@ import com.RobinNotBad.BiliClient.activity.ImageViewerActivity
 import com.RobinNotBad.BiliClient.activity.reply.ReplyInfoActivity
 import com.RobinNotBad.BiliClient.activity.reply.WriteReplyActivity
 import com.RobinNotBad.BiliClient.api.ReplyApi
+import com.RobinNotBad.BiliClient.api.ReplyTranslateApi
 import com.RobinNotBad.BiliClient.api.VoteApi
 import com.RobinNotBad.BiliClient.model.Reply
 import com.RobinNotBad.BiliClient.model.UserInfo
 import com.RobinNotBad.BiliClient.util.CenterThreadPool
 import com.RobinNotBad.BiliClient.util.GlideUtil
+import com.RobinNotBad.BiliClient.util.Logu
 import com.RobinNotBad.BiliClient.util.LongPressPrefs
 import com.RobinNotBad.BiliClient.util.MsgUtil
 import com.RobinNotBad.BiliClient.util.SharedPreferencesUtil
@@ -51,6 +55,7 @@ import java.io.IOException
 import java.util.ArrayList
 import java.util.Collections
 import java.util.HashSet
+import java.util.Locale
 import org.json.JSONException
 
 @SuppressLint("ClickableViewAccessibility")
@@ -251,6 +256,10 @@ class ReplyAdapter(
                 StringUtil.setCopy(replyHolder.message)
             }
             replyHolder.message.setOnTouchListener(StringUtil.ClickableSpanTouchListener.getInstance())
+
+            // 译文与「文A」按钮的绑定：必须放在 message 赋值之后（同一条评论的译文挂在原文下面）。
+            // 楼中楼子评论走的是 childReplies 里的独立 TextView，不经过这个 holder，所以这里只覆盖主评论。
+            bindTranslation(reply, replyHolder)
 
             replyHolder.likeCount.text = StringUtil.toWan(reply.likeCount.toLong())
 
@@ -673,6 +682,98 @@ class ReplyAdapter(
         }
     }
 
+    /**
+     * 把一条评论的译文状态刷到它当前的 holder 上（列表绑定与点击后的即时反馈都走这里）。
+     *
+     * <p>为什么每次绑定都要重设点击监听：RecyclerView 的 holder 是复用的，同一条评论在不同时刻
+     * 可能落在不同 holder 上，而监听闭包捕获的是「reply + 当时那个 holder」。不重设的话，
+     * 列表滚动后点「文A」可能改到别的评论，或者把译文刷到已经回收给其他评论的行上。
+     *
+     * <p>为什么用色滤而不是再配一个高亮图标：icon_translate 是单色矢量，
+     * [PorterDuff.Mode.SRC_IN] 能直接把整套 path 染成主题点赞色，和点踩高亮
+     *（dislikeBtn.setColorFilter）是同一套做法，少一个资源文件。译文显示中染色 =「再点一下收起」；
+     * 不显示时清掉色滤、回到矢量原色。
+     *
+     * <p>请求在途时禁用点击并把 alpha 压到 0.35，避免用户在响应回来之前连点、重复发翻译请求。
+     */
+    private fun bindTranslation(reply: Reply, holder: ReplyHolder) {
+        holder.replyTranslation.text = reply.translatedMessage
+        holder.replyTranslation.visibility =
+            if (reply.translationShown && reply.hasTranslation()) View.VISIBLE else View.GONE
+        holder.item_reply_translate.isEnabled = !reply.translationLoading
+        holder.item_reply_translate.alpha = if (reply.translationLoading) 0.35f else 0.7f
+        if (reply.translationShown && reply.hasTranslation()) {
+            holder.item_reply_translate.colorFilter =
+                PorterDuffColorFilter(ColorScheme.LIKE_COLOR, PorterDuff.Mode.SRC_IN)
+        } else {
+            holder.item_reply_translate.colorFilter = null
+        }
+        holder.item_reply_translate.setOnClickListener { toggleTranslation(reply, holder) }
+    }
+
+    /**
+     * 点「文A」：已经有译文就纯本地切换显示/隐藏；没有译文才发一次 gRPC 翻译请求。
+     *
+     * <p>请求放在 [CenterThreadPool] 的后台协程里跑——[ReplyTranslateApi.translateReply] 是同步阻塞的
+     * 网络调用，放主线程会 ANR。回主线程后不直接改 holder，而是走 [notifyReplyChanged] 重绑整行：
+     * 网络往返期间列表可能滚动、holder 已被回收给别的评论，直接写 holder 会把译文串到别人身上。
+     *
+     * <p>「没拿到译文」和「请求失败」要分开提示：接口对不可译/已是目标语言的评论返回 null 或空串，
+     * 这不是故障，提示「暂无译文」比「失败」更准确，也就不会让用户反复重试。
+     */
+    private fun toggleTranslation(reply: Reply, holder: ReplyHolder) {
+        if (reply.translationLoading) return
+        if (reply.hasTranslation()) {
+            reply.toggleTranslationShown()
+            bindTranslation(reply, holder)
+            return
+        }
+        // 只有列表里真实存在的评论才值得发请求；列表刚被清空/刷新过时这条可能已经不在了
+        val index = replyList.indexOf(reply)
+        if (index < 0) return
+
+        reply.translationLoading = true
+        bindTranslation(reply, holder)
+
+        CenterThreadPool.run {
+            try {
+                val header = ReplyTranslateApi.buildLocaleHeader(Locale.getDefault())
+                val text = ReplyTranslateApi.translateReply(type, oid, reply.rpid, header)
+                CenterThreadPool.runOnUiThread {
+                    reply.translationLoading = false
+                    if (text.isNullOrEmpty())
+                        MsgUtil.showMsg(context.getString(R.string.msg_reply_translate_none))
+                    else
+                        reply.applyTranslation(text)
+                    notifyReplyChanged(reply)
+                }
+            } catch (e: Exception) {
+                CenterThreadPool.runOnUiThread {
+                    reply.translationLoading = false
+                    // 只弹一次「翻译失败」：MsgUtil.err 对 IOException 会再弹一次「网络错误」，
+                    // 用户看到两个先后出现的 toast，且服务端业务错误（如 12002）被误报成网络问题。
+                    // 诊断信息走 Logu（落盘 + 可被 DebugBridge 读取），不打扰用户。
+                    MsgUtil.showMsg(context.getString(R.string.msg_reply_translate_failed))
+                    Logu.e("ReplyAdapter>toggleTranslation", e.toString())
+                    notifyReplyChanged(reply)
+                }
+            }
+        }
+    }
+
+    /**
+     * 只刷新一条评论对应的 adapter 位置。
+     *
+     * <p>位置映射必须和 [deleteReply] 里的 adapterPosition 规则一致，否则会刷错行：
+     * 主列表第 0 位是「写评论」头部，所以 reply 下标要 +1；
+     * 详情页第 0 位就是根评论本身（replyList 下标 0），只有它之后的才 +1。
+     */
+    private fun notifyReplyChanged(reply: Reply) {
+        val index = replyList.indexOf(reply)
+        if (index < 0) return
+        notifyItemChanged(if (isDetail && index == 0) 0 else index + 1)
+    }
+
     override fun onViewRecycled(@NonNull holder: RecyclerView.ViewHolder) {
         if (holder is ReplyHolder) {
             val replyHolder = holder as ReplyHolder
@@ -732,6 +833,8 @@ class ReplyAdapter(
         val upLiked: TextView = itemView.findViewById(R.id.upLiked)
         val imageCount: TextView = itemView.findViewById(R.id.imageCount)
         val item_reply_delete: TextView = itemView.findViewById(R.id.item_reply_delete)
+        val item_reply_translate: ImageView = itemView.findViewById(R.id.item_reply_translate)
+        val replyTranslation: TextView = itemView.findViewById(R.id.replyTranslation)
         val childReplyCard: LinearLayout = itemView.findViewById(R.id.repliesCard)
         val imageCard: ImageView = itemView.findViewById(R.id.imageCard)
         var lastAvatarUrl: String? = null
