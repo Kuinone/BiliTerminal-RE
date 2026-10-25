@@ -23,7 +23,7 @@
 - **依赖仓库**：`settings.gradle` 已把 aliyun 的 `google` / `public` / `gradle-plugin` 三个镜像前置，`google()`/`mavenCentral()`/jitpack 仅作兜底。
 - **改了 `res/` 文件集合时**：`:app:clean` 与后续命令**必须分两次 Gradle 调用**，且带 `--no-build-cache --no-configuration-cache`，否则会回放陈旧资源（症状是 `Unresolved reference 'R.layout.xxx'`）。
 - **版本一致性**：`:app:verifyVersionConsistency` 以 `strings.xml` 的 `update_log_current` 为锚点校验版本一致性；发版说明也由 CI 从它抽取（抽不到直接拒绝发版）。
-- **单测（静态计数，26.10.24 合并上游 + 加搜索排序后实测）**：**87 个测试类 / 941 个用例**，两个 flavor 完全相同（同源码），0 失败 0 错误 0 跳过。计数方式：`app/src/test/` 下 `*Test.kt|java` 计数（另有共享假实现 `util/FakeSharedPreferences.kt`），`app/build/test-results/testStandardDebugUnitTest/TEST-*.xml` 的 `tests=` 求和。用例数一律以机器产出为准，队友口述数字不进入文档。
+- **单测（静态计数，26.10.25 修完分片下载后实测）**：**88 个测试类 / 952 个用例**，两个 flavor 完全相同（同源码），0 失败 0 错误 0 跳过。计数方式：`app/src/test/` 下 `*Test.kt|java` 计数（另有共享假实现 `util/FakeSharedPreferences.kt`），`app/build/test-results/testStandardDebugUnitTest/TEST-*.xml` 的 `tests=` 求和。用例数一律以机器产出为准，队友口述数字不进入文档。
 - **26.10.10 那一轮的构建记录（历史，留作「改 minSdk / 重跑 release 链路」时的验证口径）**：`minSdk 24 → 19` 全部改动（含 jsoup 1.16.1、7 个 `res/drawable-v21` 资源）落盘后，按「`clean` → `assembleRelease` → `lintRelease` → 单测」四步跑完（均带 `--no-configuration-cache`，`clean` 与 `assemble` 分两次调用），四步全 `BUILD SUCCESSFUL`（37s / 2m13s / 1m25s / 39s）。当时单测汇总 **49 suites / 460 tests / 0 failures**（任务名当时还是 `testDebugUnitTest`，现已带 flavor 前缀），最新 XML 时间 `2026-10-09T22:59:04`（晚于当轮 APK 出包时间 22:56:58，覆盖了当轮全部源码改动）。`:app:lintRelease` 的 **`NewApi` 从 22 条降到 2 条**，且这 2 条就是 `PlayerActivity.kt:1981` 的已知假阳性。发版前仍建议再跑一次确认。
 - **「自动跳过片头片尾」已恢复上线（26.10.22）**：26.10.10 的紧急撤回**已解除**，`SkipOpEdPrefs.FEATURE_ENABLED` 回到 `true`，设置入口与搜索索引均已恢复；口径按用户拍板改为**默认关闭**（`DEFAULT_ENABLED = false`，老用户存档里显式写的值仍然优先）。恢复细节见 §3.3「恢复记录」，乱跳的三个根因修复见 §3.55。
 - **本轮基建改动（26.10.10）**：**`minSdk 24 → 21 → 19（Android 4.4）`**，唯一落点是 `app/build.gradle:21`。两级下调的成本不同，分开记：
@@ -1434,6 +1434,23 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
 - **不受影响**：`LocalListActivity`（菜单「缓存」）顶层自己就设 `arrow_down`、进文件夹后设 `arrow_back`，两次都在基类之后执行。
 - **实测（MuMu Android 15 x86_64 / coexist debug）**：菜单页 `^`（自身，收起菜单）；「设置」`⌄`、「我的」`⌄` 且点顶栏打开 `MenuActivity` ✓；「TO DO清单」`‹` 且点顶栏返回 `SettingMainActivity` ✓；「更多」仍是 `‹` 且返回 ✓；`logcat` 0 条 `FATAL EXCEPTION`。
 - 规则已记进 `docs/agents/pitfalls.md`「基类与列表」。
+
+### 3.64 多线程（分片）下载会产出拼不起来的文件（26.10.25，用户反馈）
+
+- **现象**：开启「多线程高速下载」（`aria2_enabled`，默认开）后，大文件下载完成却播不了 / 拼不起来。
+- **根因是分片写入完全没有「服务端到底回的是不是这一段」的校验**。分片下载靠 `Range: bytes=start-end` 让服务端只回这一段，客户端再 `RandomAccessFile.seek(start)` 写进文件对应位置。旧实现只判 `resp.isSuccessful`：
+  - **200 也算成功**。服务端若忽略 Range 回了整个文件，客户端仍从 `seek(start)` 一路写下去 —— 会覆盖别的分片、并把文件撑大；
+  - **206 但区间起点不对**（CDN 行为异常）时，字节数可能正好等于请求长度，`written == expectLen` 判成功，**静默产出错位文件**；
+  - 读循环**没有「不得超出本片长度」的保护**（单线程路径 `DownloadStreamTransfer.copy` 有，分片路径漏了），超发数据会被直接写进文件（`RandomAccessFile` 写超 `setLength` 会扩展文件）。
+- **第二个根因：`join` 超时后分片线程仍可能活着**（审计 `docs/archive/review/audit-2026-09-24.md` M11-g 记过但没解决「仍存活并写盘」这半条）。主流程 join 超时后直接回退 `downFileSpeedSingle`，而单线程用 `FileOutputStream` 截断重写**同一个文件** —— 两边抢写，产出一个谁也读不了的文件。
+- **修法**：
+  - 新增纯函数 `service/download/SegmentResponsePolicy`：只认 **206 + `Content-Range` 起点与请求一致 + 区间不长于请求**；判据错了不会崩，只会静默产出坏文件，所以整套边界都补了 JVM 单测（11 例）。
+  - `downloadSegment` 改用该判据 + 读循环加「超出本片长度立刻失败」（与单线程路径对齐）+ 3 次尝试全失败时打日志（旧实现静默吞异常，只看表现是「慢」）。
+  - 新增 `cancelSegment` 标志与 `waitSegments()`：join 超时先置标志让分片线程自己收尾，再给 10s 排空；**仍不退出就不回退单线程**（防抢写），直接判 `ERR_NETWORK` 并删掉被 `setLength` 撑大的半成品。
+  - 成功后加 `file.length() == totalSize` 校验（`setLength` 未生效 / 写越界都能兜住）。
+- **实测（MuMu Android 15 x86_64 / coexist debug，未登录）**：av170001 分 P「Хоп」按 720P 下载（`qn=64` → fnval=1 的单 MP4，7.87 MB > 2 MB 且 CDN 支持 Range → **走的就是分片路径**），下载完成后 `video.mp4` 落地、`.DOWNLOADING` 被清、临时文件已替换；拉回本机 `ffprobe` 校验：`h264 512x288 + aac / duration 199.33s / size 7871518`，容器可正常解析，`logcat` 0 条 `FATAL EXCEPTION`。
+- **未验证**：DASH 双文件分支（`replaceDashPair`）—— 未登录拿不到 1080P（`qn>64` 才走 DASH），本次改动集中在单文件分片路径；「服务端忽略 Range 回 200」的坏响应**无法主动构造**，只能靠单测锁判据。
+- 坑已记进 `docs/agents/pitfalls.md`「崩溃页 / 通知 / 下载」。
 
 ## 4. 历史章节索引
 
