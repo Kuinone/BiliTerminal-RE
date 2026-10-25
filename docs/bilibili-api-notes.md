@@ -107,6 +107,20 @@
     - **降级行为**：用 `fnval=1` 请求 `qn=80` 会被**降级返回 `quality=64`**——1080P 及以上只有 DASH 拿得到。这正是"720P 及以下走非 DASH 老接口"这个分界的来源。
     - **对代码的含义**：`DownloadService` 里「`qn<=64` → `getVideo`（`fnval=1`）取单文件、`useDash=false`」以及「MP4 分支下载完要删掉同目录残留的 `audio.m4a`」都是**正确**的；**反过来把这条流当成"纯视频"再挂一路外部音轨，就会两轨同时出声**（即 §3.13 修的音频重复）。
     - **未覆盖**：`platform=html5`（播放侧 mtvPlayer 分支）实测同样是 `trak=2`，与 `pc` 一致；但只测了 1 个稿件、未登录，大会员内容与其它稿件未复验。
+13. **搜索排序只长在「分类搜索」上，聚合搜索没有**（26.10.24 加搜索排序时核实）：`wbi/search/all/v2` 只接受 `keyword`（`bilibili-API/docs/search/search_request.md:21-27`），`order` 是 `wbi/search/type` 的参数——视频/专栏 `totalrank`（默认）/ `click` / `pubdate` / `dm` / `stow` / `scores`（专栏另有 `attention`），直播间 `online` / `live_time`，用户 `0` / `fans` / `level`（`:598`）。
+    - **没有「最多点赞」**：视频搜索不支持按点赞数排序，别照用户口吻去拼一个不存在的值。
+    - **要排序就得换接口**：本项目视频分类选「综合」时仍走 `all/v2`（它会把番剧结果混进第一页），选其余档位改走 `search/type?search_type=video&order=…`（不混番剧；条目字段与聚合结果同构，解析共用 `SearchApi.parseVideoEntry`）。
+    - **`seid` 两条接口都会回**：`search/type` 的响应同样带 `data.seid`，`SearchApi.searchType` 已写回缓存，不会因为不再调 `all/v2` 而丢 `seid`。
+    - **风控降级的形态要认出来**（26.10.24 实测）：降级时 `code` 仍是 **0**，`data` 里**既没有 `result` 也没有 `seid`**，只有一个 `v_voucher`——`{"code":0,"message":"OK","data":{"v_voucher":"voucher_…"}}`。**别把它当成"没有搜索结果"**：以前 `SearchApi` 返回 null、页面只剩空列表，看着像排序参数拼错了（用户就是这么报的）。判据只认 `v_voucher`——**真没结果的搜索照样带 `result`**（数组可能为空），不能因为 `result` 为空就报风控。遇到它时走 §3.14 的旧接口回退。
+14. **搜索被风控时，旧接口（不带 wbi 签名）仍然可用——这是本仓库的一条实测逃生路**（26.10.24 验证）：
+    - **现象**：短时间里连着切排序/换关键词，`wbi/search/type` 会开始回 §3.13 那种 `{"code":0,"data":{"v_voucher":"voucher_…"}}` 空壳（`code` 是 **0**，不是 `-412`）。同一条 URL 形状在冷却几十秒后自己恢复正常，所以**先别怀疑参数拼错**。
+    - **逃生路**：把同一个请求打到**旧接口**（文档里标着"旧链接"的那条）——`https://api.bilibili.com/x/web-interface/search/type`（聚合搜索是 `.../search/all/v2`），**不带 `w_rid`/`wts` 签名、不带 `seid`**，实测照样 200：
+      - `search_type=video&keyword=linux&order=click&page=1` → 20 条，`play` 严格降序（7972105 → 5017479 → 4438614 → …），说明**旧接口同样吃 `order`**；
+      - 换成之前被风控挡下的中文长关键词（`linux操作系统零基础到入门` + `order=click`）→ 同样 20 条、同样降序。
+    - **客户端做法**（`SearchApi.search` / `searchType`）：先走 wbi；落在**三种风控形态**任一上才退到旧接口再打一次——`v_voucher` 空壳、`code` 是 `-412`/`-352`、或请求层直接失败（风控回 HTML 拦截页 / 非 JSON 内容）；旧接口**也**拿不到才抛 `SearchApi.RiskControlException`（真断网时上抛原来的网络异常，不诬陷成风控），页面据此把排序按钮画成「因B站风控不可用」、点击提示「请稍候再试」并真的重试一次（见 `docs/review/fix-progress.md` §3.62）。
+    - **别把它当长期方案**：旧接口是上游标了"旧链接"的地址，随时可能下线；回退只用来兜住"这一下搜不出来"，不要为了绕风控把主链路整体切过去。
+    - **回退只发一次，不走任何重试**：`NetWorkUtil.getJson` 对 `-352`/`-412` 会重试到 `api_retry_max_times`（默认 5 次），`get()` 对 `<!doctype html>` 也会重试同样次数——而风控页恰恰常是 HTML。回退请求再走一遍就是「一次搜索最多 10 个请求」，只会把限流拖得更久（26.10.24 审查指出）。所以回退用新增的 `NetWorkUtil.getJsonOnce()`：它**直连一次**，连 doctype 重试都跳过；主链路的重试行为不变。
+    - **旧接口的其它错误码不能当成"没有结果"**：`-400` 之类的非零 `code` 现在会抛 `SearchApi.SearchException`（带服务端错误码，`ApiErrorText.opFailed`），页面弹出来；只有 `code == 0` 且确实没有 `result` 才算"搜不到"。
 
 ## 4. 按接口可行性收敛的「值得做 / 不值得做」
 

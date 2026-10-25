@@ -6,9 +6,9 @@
 
 ## 1. 当前版本状态
 
-- **版本号**：`26.10.19`（`app/build.gradle` 的 `versionName`），`versionCode 2610200`（26.10.21 合并上游时上游把它从 `2610190` 抬到 `2610200`，`versionName` 未变）。tag `26.10.19` 已占用。
-- **上一版**：`26.10.16` / tag `26.10.16`。
-- **下次递增**：先看 `app/build.gradle:23-24`；release immutability 下被 Release 用过的 tag **永久不可复用**，同版本名补丁版只能用 `26.10.19.1` 这种后缀形式，`versionCode` 递增、`versionName` 可不变。改了版本号还要同步 `strings.xml` 里 `update_log_current` 的「【YY.MM.DD 本次更新】」锚点，否则 `:app:verifyVersionConsistency` 会失败。
+- **版本号**：`26.10.24`（`app/build.gradle` 的 `versionName`），`versionCode 2610240`（26.10.24 远端发版时从 `2610200` 抬上来，`update_log_current` 锚点同期换成了「【26.10.24 本次更新】」，`:app:verifyVersionConsistency` 已复验通过）。tag `26.10.24` 已占用，上一版 tag 是 `26.10.19`。
+- **上一版**：`26.10.19` / tag `26.10.19`。
+- **下次递增**：先看 `app/build.gradle:23-24`；release immutability 下被 Release 用过的 tag **永久不可复用**，同版本名补丁版只能用 `26.10.24.1` 这种后缀形式，`versionCode` 递增、`versionName` 可不变。改了版本号还要同步 `strings.xml` 里 `update_log_current` 的「【YY.MM.DD 本次更新】」锚点，否则 `:app:verifyVersionConsistency` 会失败。
 - **构建命令**（单测任务名**带 flavor 前缀**，`testDebugUnitTest` 自 26.10.11 引入 flavor 后已不存在）：
 
   ```text
@@ -23,7 +23,7 @@
 - **依赖仓库**：`settings.gradle` 已把 aliyun 的 `google` / `public` / `gradle-plugin` 三个镜像前置，`google()`/`mavenCentral()`/jitpack 仅作兜底。
 - **改了 `res/` 文件集合时**：`:app:clean` 与后续命令**必须分两次 Gradle 调用**，且带 `--no-build-cache --no-configuration-cache`，否则会回放陈旧资源（症状是 `Unresolved reference 'R.layout.xxx'`）。
 - **版本一致性**：`:app:verifyVersionConsistency` 以 `strings.xml` 的 `update_log_current` 为锚点校验版本一致性；发版说明也由 CI 从它抽取（抽不到直接拒绝发版）。
-- **单测（静态计数，26.10.24 对比审计两批修复后实测）**：**87 个测试类 / 935 个用例**，两个 flavor 完全相同（同源码），0 失败 0 错误 0 跳过。计数方式：`app/src/test/` 下 `*Test.kt|java` 计数（另有共享假实现 `util/FakeSharedPreferences.kt`），`app/build/test-results/testStandardDebugUnitTest/TEST-*.xml` 的 `tests=` 求和。用例数一律以机器产出为准，队友口述数字不进入文档。
+- **单测（静态计数，26.10.24 合并上游 + 加搜索排序后实测）**：**87 个测试类 / 941 个用例**，两个 flavor 完全相同（同源码），0 失败 0 错误 0 跳过。计数方式：`app/src/test/` 下 `*Test.kt|java` 计数（另有共享假实现 `util/FakeSharedPreferences.kt`），`app/build/test-results/testStandardDebugUnitTest/TEST-*.xml` 的 `tests=` 求和。用例数一律以机器产出为准，队友口述数字不进入文档。
 - **26.10.10 那一轮的构建记录（历史，留作「改 minSdk / 重跑 release 链路」时的验证口径）**：`minSdk 24 → 19` 全部改动（含 jsoup 1.16.1、7 个 `res/drawable-v21` 资源）落盘后，按「`clean` → `assembleRelease` → `lintRelease` → 单测」四步跑完（均带 `--no-configuration-cache`，`clean` 与 `assemble` 分两次调用），四步全 `BUILD SUCCESSFUL`（37s / 2m13s / 1m25s / 39s）。当时单测汇总 **49 suites / 460 tests / 0 failures**（任务名当时还是 `testDebugUnitTest`，现已带 flavor 前缀），最新 XML 时间 `2026-10-09T22:59:04`（晚于当轮 APK 出包时间 22:56:58，覆盖了当轮全部源码改动）。`:app:lintRelease` 的 **`NewApi` 从 22 条降到 2 条**，且这 2 条就是 `PlayerActivity.kt:1981` 的已知假阳性。发版前仍建议再跑一次确认。
 - **「自动跳过片头片尾」已恢复上线（26.10.22）**：26.10.10 的紧急撤回**已解除**，`SkipOpEdPrefs.FEATURE_ENABLED` 回到 `true`，设置入口与搜索索引均已恢复；口径按用户拍板改为**默认关闭**（`DEFAULT_ENABLED = false`，老用户存档里显式写的值仍然优先）。恢复细节见 §3.3「恢复记录」，乱跳的三个根因修复见 §3.55。
 - **本轮基建改动（26.10.10）**：**`minSdk 24 → 21 → 19（Android 4.4）`**，唯一落点是 `app/build.gradle:21`。两级下调的成本不同，分开记：
@@ -1371,6 +1371,56 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
 - **单测**：`FavoriteApiTest.kt` 删 `resolveMaxCount`/`buildMediaId`/`legacyOrder` 三组用例，改成 `isDefaultFolder`/`maxCountOf` + `parseFavoriteState` 的 `mediaIdList`/默认夹按 attr 判定回归用例（测试数据用线上真实值：默认夹 `attr=0`、自建夹 `attr=22`）。
 - **验证**：`./gradlew.bat :app:assembleDebug :app:testStandardDebugUnitTest :app:testCoexistDebugUnitTest` 全绿；未上手表实测（接口层改动，UI 未动，按 `docs/agents/workflow.md` 的判据走构建 + 单测）。
 - **注意**：接口域名/路径变了但都还在 `bilibili.com` 白名单内，不需要动 `<domain-config>`；`getBoxList` 用的 `space.bilibili.com` 从此不再被收藏链路请求。
+
+### 3.62 搜索结果加排序：单按钮 + 单选弹窗（综合 / 播放量 / 最新 / 收藏，26.10.24，用户反馈）
+
+- **需求来源**：用户反馈原文「希望可以在搜索里加一个最多播放 最多点赞 最新播放之类的分类」。两轮口径：① 先做成**视频 tab 顶部一条常驻排序行**，随后按用户要求改成**单按钮 + 点开弹窗选择**（弹窗用番剧选集同款 `TerminalDialog.singleChoice`，按钮走主题里的经典终端按钮样式）；② 四档 **综合 / 播放量 / 最新 / 收藏**；③ 覆盖**视频 + 专栏**两个 tab。
+- **接口事实**（已并入 `docs/bilibili-api-notes.md` §3.13）：`all/v2` 只吃 `keyword`，`order` 是 `search/type` 的参数；视频搜索**没有「最多点赞」**（只有 `click`/`pubdate`/`dm`/`stow`/`scores`）。所以**视频分类选「综合」时仍走 `all/v2`**（保留它把番剧混进第一页的既有行为），选其余档位改走 `search/type?search_type=video&order=…`（不混番剧）。
+- **控件为什么在本页而不是 fragment**：`activity_search.xml` 里 `ViewPager` 只对齐到 `@id/top` 下方，`searchbar` 与它同起点、后声明（画在上层）。第一版把控件加进 `fragment_simple_refresh` 顶部，模拟器实测**四个档位正好压在搜索框里**。现在控件是 `activity_search.xml` 的 `searchSortButton`（锚 `searchbar` 下方，`ViewPager` 锚它），`SearchFragment` 只暴露 `sortOptions()` / `currentSortOrder()` / `selectSort()`，`SearchActivity` 负责文案、弹窗与显隐。
+- **按钮为什么是裸 `<Button>`**：MaterialComponents 主题会把 `<Button>` inflate 成 MaterialButton 并套用主题里声明的 `materialButtonStyle` —— 默认主题（经典终端）对应 `ButtonStyleTerminal`（`#cc262626` 半透明卡底 + 暖白字 + 圆角），换主题时自动跟随各自的按钮样式。**别写死 `@color/terminal_*`**，浅色主题下会变成暗块。
+- **弹窗**：`TerminalDialog.singleChoice(this, title, labels, checked)`，与 `BangumiInfoFragment.getEposideChooseDialog()` 同一款（`›` 引导符 + 选中项 `▸`/`✓` + 底部「点空白处取消」）。**TerminalDialog 只负责拼装、不会自己 show**，调用方必须 `.show()`——第一次就是漏了这个：点按钮只有水波纹，弹窗不出现（模拟器实测抓到）。
+- **几个刻意的取舍**：
+  - **没搜过不显示**（`hasSearched`）——那时页面上是搜索历史，摆一个「排序」没有意义；搜索框被滚走时按钮**一起收**（两层 chrome 只收一半会在列表顶上留个洞）。
+  - **排序不持久化**：每次进搜索页都是「综合」。少一个存储键，也少一类「我什么时候设过排序」的困惑。
+  - **`sortOrder` 是 `@Volatile`**：点击在主线程写、`continueLoading` 在 `CenterThreadPool` 线程读（与 `bottom` 同一类可见性问题）。
+  - **切换排序时在途结果作废**：请求发出前抓一份 `orderAtRequest`，回包后发现排序已变就整批丢弃，否则会把旧排序的第 2 页追加到新列表里。
+- **风控降级不再表现为空列表 + 自动回退旧接口**（26.10.24 用户报「有时候拼接的链接会没有任何搜索结果」，实测抓到原始响应）：`search/type` 在风控降级时会回 `{"code":0,"message":"OK","data":{"v_voucher":"voucher_…"}}` —— `code` 是 0，但 `data` 里**既没有 `result` 也没有 `seid`**，只有 `v_voucher`。以前 `SearchApi` 对它返回 null，页面就只剩空列表 +「啥都木有~」，看上去像排序参数拼错了。
+  - **回退链路**（按用户要求）：wbi 那条 → 若拿到 `v_voucher` 空壳，改打**旧接口** `x/web-interface/search/type`（不带 `w_rid`/`wts`/`seid`）→ 旧接口也是空壳才抛 `SearchApi.RiskControlException`。旧接口实测同样吃 `order`（`order=click` 下 `play` 严格降序 7972105 → 5017479 → 4438614 → …），中文长关键词也一样能出。
+  - **按钮不可用态**：抛到页面后 `SearchFragment.markSortBlocked(true)`，排序按钮改成「因B站风控不可用」、点它只提示「请稍候再试」；下一次加载成功会自动解除。状态变化经 `onSortStateChanged` 回主线程重画按钮。
+  - **判据只认 `v_voucher`**：真没结果的搜索仍会返回带 `result` 的响应，不能因为 `result` 为空就报风控。同理**不要急着怀疑参数**——同一条 URL 形状在冷却几十秒后立刻恢复 200 / `numResults:1000`。接口结论已并进 `docs/bilibili-api-notes.md` §3.14。
+
+- **顺带修的**：`SearchApi` 里三处封面/头像用 `"http:" +` 拼协议（违反「只走 https」），统一改成 `httpsUrl()`（`//` 开头才补 `https:`，已是绝对地址的原样保留）；视频条目解析抽成 `parseVideoEntry`，聚合搜索与分类搜索共用一份。
+- **单测**：`SearchApiTest` 从 6 例补到 **12 例**（分类搜索视频解析、非 video 条目跳过、null 输入、聚合分支与分类分支共用同一解析与封面规则，以及两条风控判据）。
+- **模拟器实测（MuMu Android 15 x86_64，coexist debug）**：MuMu 会把窗口在 display 2~7 之间搬来搬去，每次搬运都重建 Activity，所以每一步都要现查 `dumpsys display` 拿 physicalId（截图）与逻辑 displayId（`input -d`）。
+  - 搜 `linux` → 搜索框下方出现「排序：综合」按钮；点开是单选弹窗（标题「搜索结果排序」，四项带 `›`，当前项 `▸`+`✓`，底部「点空白处取消」）。
+  - 选「播放量」→ `order=click&page=1&search_type=video`，结果按播放量降序（797.2万 → 501.7万 → 443.9万 → 412.9万），按钮变成「排序：播放量」。
+  - 选「最新」→ `order=pubdate`，首屏全是个位数播放量的新视频（0/11/56 观看），按钮变成「排序：最新」。
+  - 选「收藏」→ `order=stow`，按钮变成「排序：收藏」，列表正常返回。
+  - 切到**专栏**：按钮文案里的档位变成「阅读量」；切到**用户**、**番剧**：按钮消失。
+  - 列表下滑 → 搜索框与排序按钮一起收起、列表顶到顶栏下；回滑恢复。
+  - 全程 `logcat` 里 `FATAL EXCEPTION` / `AndroidRuntime` **0 条**。
+- **子代理审查（26.10.24）修掉的 4 条**：
+  - **过期请求的失败会把按钮锁死**：成功分支有 `orderAtRequest != sortOrder` 就丢弃，`catch` 里却没有同样的判断——风控链路比正常链路慢，最坏情况是新排序已经刷出来了、旧请求才抛 `RiskControlException`，于是按钮被冤枉成「不可用」。两处 `catch` 开头补同一个判据。
+  - **`-412` / `-352` 形态漏了**：以前只在 `data` 有 `v_voucher` 时才回退，而 `code=-412` 的响应往往连 `data` 都没有，会走 `if (all.isNull("data")) return null;` 静默返回空列表。新增 `shouldFallback(all)` 同时认两种形态（含 `NetWorkUtil` 重试 5 次后原样返回的 `-412`），旧接口也一样认。
+  - **风控文案被吞成「网络错误」**：`MsgUtil.err` 对任何 `IOException` 一律换成 `err_network`，而 `RiskControlException` 正是它的子类 → 「搜索被B站风控了…」只会进 logcat。改为在 `SearchFragment.report()` 里先拦一道（5 个搜索分类共用）。
+  - **风控态没有重试入口**：按钮只弹提示、下拉刷新关着、同关键词再点搜索会短路，锁定后再也解不开。现在点按钮会真的重拉第一页（`SearchFragment.retry()`），且 `update(keyword)` 换了关键词时会复位。
+- **第二轮审查（26.10.24，外部评审）修掉的 3 条 + 补的测试**：
+  - **在途的旧请求仍可能污染新结果**：只在后台线程比了 `sortOrder`，从"检查通过"到 `runOnUiThread` 真正执行之间状态变了仍会把旧结果追加进新列表；换关键词更是完全没校验。改成发请求时抓 `loadGeneration` + `keyword` + `sortOrder` 三样，**后台与改列表前各验一次**（`SearchFragment.invalidateInFlightRequests()` 在 `update` / `selectSort` / `retry` 里自增）。
+  - **一次搜索最多 10 个请求**：通用重试对 `-352/-412` 重试 5 次，回退旧接口再走一遍。新增 `NetWorkUtil.getJsonOnce()`，回退只发一次；主链路重试行为不变。
+  - **旧接口的其它错误码被伪装成空结果**：`resultOrThrow` 以前对所有非风控情况返回 null，`-400` 之类会显示成「啥都木有」。现在非零 `code` 抛 `SearchApi.SearchException`（`ApiErrorText.opFailed`），页面把错误码弹出来；`SearchFragment.report()` 改成认 `SearchException` 基类，风控与其它错误码都按自己的文案显示。
+  - **测试补上判据**：`SearchApi.shouldFallback` / `isRiskControl` 提成 public static 供单测，新增 2 例钉住两种风控形态与「真没结果不算风控」。合并上游前的基线 **79 类 / 847 例 / 0 失败**；合并上游（v3 收藏夹等 15 个提交）后 **87 类 / 941 例 / 0 失败**。
+- **合并上游后的回归（26.10.24，本机 MuMu Android 15 x86_64 / coexist debug）**：合入 upstream 15 个提交（收藏夹 v3 迁移、无极调音、安全加固等）后重装包，搜索页排序链路仍正常——「排序：综合」→ 弹窗选「播放量」→ 797.2万 → 501.8万 → 443.9万 → 412.9万 严格降序；`logcat` 无 `FATAL EXCEPTION`（崩溃缓冲里那条是 `uiautomator` 自己的，与本应用无关）。构建与单测见上。
+- **用户反馈修复（26.10.24 当天，两处）**：① 「排序按钮消失和出现的时机、动画没跟随搜索框」——旧实现是搜索框 `translationY` 滑 300ms、按钮自己瞬间 GONE，且 `ViewPager` 锚在按钮下面（按钮 GONE 那一下列表整块往下跳）。现在两者由**同一条 `ValueAnimator` 按同一进度收放真实高度**（`SearchActivity.applyTopChrome`，`CHROME_ANIM_MS = 200`），列表跟着平滑补位；自然高度只在 `wrap_content` 时采样并缓存，避免把动画中间值记成自然高度。② 「第二次点搜索框时按钮没消失，挡住候选词」——历史 / 建议浮层与按钮占的是同一条（都锚在 `searchbar` 下方），按钮是 MaterialButton 带海拔，画在浮层上面。现在浮层一律走 `showHistoryDropdown()` / `showSuggestionsDropdown()` / `hideDropdowns()` 三个入口，浮层开着时按钮置 `INVISIBLE`（**让画面不让位置**，列表不整体上移，浮层正好盖住它）。
+  - **模拟器实测**：点搜索框 → 候选词第一行完整可见、按钮不再压在上面；滚动 → 搜索框与排序条同时收缩（把时长临时调到 1500ms 抓过中间帧，两者同比例变形）、结束时列表紧贴顶栏；回滚 → 一起展开；切到「番剧」分类按钮消失、切回「视频」恢复；`logcat` 0 条 `FATAL EXCEPTION`。
+  - **验证**：`:app:assembleDebug`（coexist）通过；两 flavor 单测各 **87 套 / 941 例 / 0 失败**（纯 UI 改动，未新增用例）；markdownlint 40 文件 0 issue。
+- **第二轮审查（26.10.25，外部评审）修掉的 P1 + 文档失实**：
+  - **风控直接回 HTML 拦截页时回退链根本没启动**：`SearchApi` 只在拿到**已解析 JSON** 后才判 `shouldFallback`，而风控被拦时 B 站还可能直接回一张 `<!DOCTYPE html>` 的「出错啦」页——那会让 `NetWorkUtil.getJson` 的 doctype 重试耗尽后抛 `IOException`（或非 JSON 抛 `JSONException`），请求层就失败了，页面只显示「网络错误」，排序按钮也进不了风控态。实测形态见 `docs/review/agent-test-guide.md`（`412` + `<!DOCTYPE html>`）。新增 `SearchApi.fallbackToLegacy(keyword, legacyUrl, primary)`：请求层失败时同样兜一次旧接口；旧接口给出明确结论（风控 / 服务端错误码）就用它，两边都失败时**主链路是网络层失败就如实上抛**（真断网别诬陷成风控）、主链路是合法 JSON 的风控降级则抛 `RiskControlException`。
+  - **`getJsonOnce` 名不副实**：它原本仍走 `get()` → `executeWithDoctypeRetry`，而风控页正是 HTML，等于又重试 5 次——注释里「只发一次」是错的。现在改成**直连一次**（自己建 `Request`，不经过 doctype 重试），调用点只有 `SearchApi` 的回退链路。
+  - 清理审查指出的失实/死代码：`SearchSortOptions.SLOT_COUNT` 零引用且注释指向已废弃的 4 格排序条（删）；`SearchApi.resultOrThrow` 上叠加的两段 javadoc（合并）；`refreshSortBar` 的 KDoc 说「点它只提示」但实现会真的 `retry()`（改注释）；`SearchFragment` 未使用的 `ColorScheme` import（删）。
+  - 文档对齐：`FEATURES.md` 的排序按钮说明改成「点它会真的重试一次」；`bilibili-api-notes.md` §3.14 补「三种风控形态都会回退」与「`getJsonOnce` 连 doctype 重试也跳过」；`architecture-map.md` §6 的 http 明文清单移除 `SearchApi`（已改 `httpsUrl()`）。
+  - **切到首次访问的分类时排序按钮可能一直不出现**（审查「疑点 A」的加固）：`FragmentStateAdapter` 是懒创建的，`onPageSelected` 里 `findFragmentByTag("f$position")` 可能还是 null，那一刻 `refreshSortBar` 只能判成「本分类不支持排序」把按钮收掉，而 `sortBarEligible` 是缓存值、之后没人重算。现在 `onPageSelected` 之后 `viewPager.post { refreshSortBar() }` 补算一次（幂等，按当时的 currentItem 算，不会自旋）。审查侧的观察是「切 tab 时整体收起、上滑一次即恢复」，判断为 main 既有逻辑而非本功能引入；这条补算属于顺手加固，不是回归修复。
+  - **验证**：`:app:assembleDebug` 通过；两 flavor 单测各 **87 套 / 941 例 / 0 失败**；markdownlint 40 文件 0 issue。**HTML 风控回退这条新分支没法主动触发**（要 B 站真回拦截页），靠既有纯函数判据 + 构建与单测兜底，如实记在这里；本轮也**未上设备实测**（模拟器已关闭，且这条路径模拟器同样复现不了）。
+- **未做**：用户 / 直播的排序（它们的 `order` 是另一套键：`fans`/`level`、`online`/`live_time`），以及「最多弹幕 / 最多评论」两档（手表屏上弹窗列表已经够长）。
 
 ## 4. 历史章节索引
 

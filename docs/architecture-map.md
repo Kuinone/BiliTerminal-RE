@@ -381,9 +381,10 @@ CenterThreadPool.supplyAsyncWithLiveData { fetch...().getOrThrow() }
 2. **`AndroidManifest.xml` 不再全局开 `usesCleartextTraffic`**，改走
    `res/xml/network_security_config.xml`：`base-config` 禁止明文，只对 `bilibili.com` /
    `hdslb.com` / `bilivideo.com` / `afdiancdn.com` 放行。之所以不能一刀切禁明文，是因为解析层
-   仍有若干 `"http:" + url` 的拼接（`LiveCardAdapter` 直播封面、`SearchApi` 封面/头像、
-   `OpusParagraph` 图片）。**若要把这些也改成 https，必须先在真机验证对应 CDN 节点支持 https，
-   再考虑把域名从白名单移除。** 新增需要明文的域名要显式加进白名单并说明原因。
+   仍有若干 `"http:" + url` 的拼接（`LiveCardAdapter` 直播封面、`OpusParagraph` 图片）。
+   `SearchApi` 的封面/头像已于 26.10.24 统一改走 `httpsUrl()`（`//` 开头才补 `https:`，已是绝对地址的原样保留），
+   不再是"拼 http 再用白名单兜"的那一类。**若要把剩下的也改成 https，必须先在真机验证对应 CDN
+   节点支持 https，再把域名从白名单移除。** 新增需要明文的域名要显式加进白名单并说明原因。
 3. **登录凭据不得随备份外流**。所有 Cookie / 账号态存在 SharedPreferences，
    故 `android:allowBackup="false"`，并用 `res/xml/backup_rules.xml`（API ≤30）与
    `res/xml/data_extraction_rules.xml`（API 31+）排除 `sharedpref` 与 `database` 两个 domain。
@@ -681,7 +682,7 @@ CenterThreadPool.supplyAsyncWithLiveData { fetch...().getOrThrow() }
 
 - **巨型类**：`activity/player/PlayerActivity.kt` 166 KB / 3628 行、`activity/video/ShortVideoPlayerActivity.kt` 43 KB / 1017 行（26.10.10 实测）。`service/DownloadService.kt` 曾是第二条 65 KB 的巨型类，26.10.04 批次 8（E2）已拆到 **1284 行**，实现分居 `service/download/` 的 4 个文件（见 §7.27）。改播放相关功能前先想清楚在哪个位置插入；改下载相关功能请先读 §7.27 的锁与状态契约。
 - **Application 静态状态已收敛为一套**：26.10.02 起只有 `BiliTerminal.context`（`BiliTerminal.kt:47-48`，伴生对象 `@JvmField`，静态字段）与 `instance`（`:53`，`private WeakReference<InstanceActivity>`，只能经 `setInstance()`(`:85`) / `getInstanceActivityOnTop()`(`:90`) 访问），`BiliTerminalApp` 已整文件删除。**新代码一律用 `BiliTerminal`**。
-- **测试覆盖仍偏低**：`app/src/test/` 79 个文件（78 个 `*Test` 文件 + 1 个共享假实现 `FakeSharedPreferences.kt`），**79 个测试类**（`CalculatorEngineTest.kt` 里有 `CalculatorEngineTest` 与 `DisguisePrefsTest` 两个类），共 **841 个用例**（26.10.23 实测，两个 flavor 各 841、0 失败）。已有：`HotSearchApiTest`、`FavoriteApiTest`、`FollowApiTest`、`OpusApiTest`、`PrivateMsgApiTest`、`BangumiApiTest`、`DynamicApiTest`、`TopicApiTest`、`NoteApiTest`、`WatchLaterApiTest`、`PlayerApiPbpTest`、`ReplyApiTest`、`ReplyParseActionTest`、`ReplySortTest`、`NetWorkUtilTest`、`PerformanceManagerTest`、`BangumiUpdateCheckerTest`、`MsgNotifierTest`、`ApkVerifierTest`、`SettingsKeysTest`、`UpdateReleaseTest`、`MenuConfigTest`、`MySpaceConfigTest`、`ToolsUtilTest`、`StringUtilTest`（Java）、`HotSearchAdapterTest`、`TutorialDslTest`、`MediaClockSyncTest`（DFM 侧纯函数，源在 `DanmakuFlameMaster`）、`CalculatorEngineTest`、`DisguisePrefsTest`、`SkipCancelPolicyTest`、`PlayerDefaultsTest`、`ViewPointSkipTest`、`ColorSchemeTest`、`CornerStyleTest`、`FontStyleTest`、`AppearanceManagerTest`、`ViewCapabilityProbeTest`、`DownloadPathSpecTest`、`DownloadProgressMathTest`、`DownloadBatchStatsTest`。改动解析/配置/主题/能力探测逻辑时补纯 JVM 单测——注入 `SharedPreferencesUtil.sharedPreferences`，用 `util/FakeSharedPreferences.kt`（26.09.11 从 `NetWorkUtilTest` 的私有内部类提取为共享助手，别再抄一份）。
+- **测试覆盖仍偏低**：`app/src/test/` 87 个文件（86 个 `*Test` 文件 + 1 个共享假实现 `FakeSharedPreferences.kt`），**87 个测试类**（`CalculatorEngineTest.kt` 里有 `CalculatorEngineTest` 与 `DisguisePrefsTest` 两个类），共 **941 个用例**（26.10.24 实测，两个 flavor 各 941、0 失败）。已有：`HotSearchApiTest`、`FavoriteApiTest`、`FollowApiTest`、`OpusApiTest`、`PrivateMsgApiTest`、`BangumiApiTest`、`DynamicApiTest`、`TopicApiTest`、`NoteApiTest`、`WatchLaterApiTest`、`PlayerApiPbpTest`、`ReplyApiTest`、`ReplyParseActionTest`、`ReplySortTest`、`NetWorkUtilTest`、`PerformanceManagerTest`、`BangumiUpdateCheckerTest`、`MsgNotifierTest`、`ApkVerifierTest`、`SettingsKeysTest`、`UpdateReleaseTest`、`MenuConfigTest`、`MySpaceConfigTest`、`ToolsUtilTest`、`StringUtilTest`（Java）、`HotSearchAdapterTest`、`TutorialDslTest`、`MediaClockSyncTest`（DFM 侧纯函数，源在 `DanmakuFlameMaster`）、`CalculatorEngineTest`、`DisguisePrefsTest`、`SkipCancelPolicyTest`、`PlayerDefaultsTest`、`ViewPointSkipTest`、`ColorSchemeTest`、`CornerStyleTest`、`FontStyleTest`、`AppearanceManagerTest`、`ViewCapabilityProbeTest`、`DownloadPathSpecTest`、`DownloadProgressMathTest`、`DownloadBatchStatsTest`。改动解析/配置/主题/能力探测逻辑时补纯 JVM 单测——注入 `SharedPreferencesUtil.sharedPreferences`，用 `util/FakeSharedPreferences.kt`（26.09.11 从 `NetWorkUtilTest` 的私有内部类提取为共享助手，别再抄一份）。
 - **主题色表带缓存，失效点只有一处**：`ColorScheme.getCurrentTheme()`（26.09.11 起）缓存当前色表，**只由 `AppearanceManager.setTheme()` 经 `ColorScheme.invalidateCache()` 置空**。这是刻意的——36 个属性 getter 全走它，而列表滚动时一个 item 要调多次，此前每次都重读 SharedPreferences（热路径重复 IO）。**若将来给主题 key 增加第二个写入路径（比如直接 `SharedPreferencesUtil.putString(SettingsKeys.THEME, …)`），必须同步调用 `ColorScheme.invalidateCache()`，否则改主题后色表不跟着变且在 `onResume` 重建后依然错**。守卫测试：`ColorSchemeTest.themeCache_isInvalidatedOnEverySetTheme`、`colorGetters_doNotTouchSharedPreferencesAfterFirstRead`。
 - **主题体系有 3 个"裸 Activity"不参与**：`SplashActivity`、`GetIntentActivity` 不继承 `BaseActivity`（开屏/外链恒定 B站粉），`PlayerActivity` 自己 `setTheme` 但**不调 `applyWindowTheme`、也不参与 `onResume` 主题检测**。改主题相关行为时别以为全局都生效了。
 - **文案硬编码**：遗留页面标题/Toast 直接写中文字符串（Manifest 里 `android:label` 也是中文），只有设置页用 `desc_*` 资源。改文案按现有风格来，别顺手抽 `strings.xml`。
@@ -1693,7 +1694,7 @@ TTF/OTF/TTC，应用把它**拷进私有目录**（`filesDir/custom_font/custom_
 这些地方**当前是正确的**，只是可能显得「旧」或「不统一」。别在顺手重构/统一化的过程中改坏它们：
 
 - `util/AnimationUtils.java:43-45` 的 `crossFade`（100ms）与各详情页的 `crossFade` 用法 —— 加载态到内容态的过渡，删了就是「内容突然砸出来」。
-- 搜索框滚动隐藏逻辑（`SearchActivity.kt:495-518`）—— 唯一缺的是动画 `duration`，机制本身没问题。
+- 搜索框滚动隐藏逻辑（`SearchActivity.applyTopChrome`，26.10.24 起搜索框与排序条共用一条高度动画）—— 这一层收起的机制是「动真实高度、结束才 GONE」，别改回 `translationY`：列表锚在它下面，translation 不参与布局，收起后不补位。
 - 二维码三档缩放（`QRLoginFragment.kt:124-160`）—— 注意 `Guideline` 改 percent 后**必须 `requestLayout()`**（见 §8.5 第 8 条），这套缩放是踩坑后的产物。
 - 圆屏适配（`BaseActivity.kt:143-181`）与 `RotaryRecyclerView` / `RotaryScrollView` 的滚轮输入支持 —— 三件套的差异是刻意保留的（见 §8.4b 末注）。
 - `ThemeManager` 集中配色的**设计意图**：7 套主题 41 个字段的抽象是对的，问题只是「另有两套并行表」（见 §8.7）。
@@ -1792,7 +1793,7 @@ TTF/OTF/TTC，应用把它**拷进私有目录**（`filesDir/custom_font/custom_
 
 **不可单测**（内部发网络 / 依赖 Context / 弹 UI）：`DynamicApi.analyzeDynamic`、`MessageApi` 全部解析（SpannableString）、`PrivateMsgApi.getPrivateMsgList`、`LikeCoinFavApi.getVideoStats`。
 
-**测试覆盖现状（26.10.23 合并上游后实测）**：`app/src/test/` 79 个测试类 / 841 个用例（两个 flavor 各 841、0 失败）；api 层只有 10 个类的解析函数被覆盖（`HotSearchApiTest`、`FavoriteApiTest`、`FollowApiTest`、`OpusApiTest`、`PrivateMsgApiTest`、`BangumiApiTest`、`DynamicApiTest`、`TopicApiTest`、`NoteApiTest`、`WatchLaterApiTest`，另有 `PlayerApiPbpTest`、`ReplyApiTest`、`ReplySortTest` 覆盖部分纯逻辑）；`ui/appearance/` 下有 4 个测试类——`ColorSchemeTest` 覆盖 7 套主题的 `key → style` / `key → 色表` / 中文显示名映射、无 key 时的默认值、以及色表缓存的失效与读取次数；`CornerStyleTest` 覆盖圆角两档与「档位 → 覆盖样式」映射；`FontStyleTest` 覆盖字体文件头校验（含 WOFF 专门拒绝）与「未配置不加载」的性能约定；`AppearanceManagerTest` 覆盖外观版本号与唯一写入入口；`PerformanceManagerTest` 覆盖档位换算与图片/分页参数（见 §7.10）；`ApkVerifierTest` 覆盖更新包校验的判定规则（见 §7.11）；`SettingsKeysTest` 把 `player`/`play_qn`/`bangumi_update_notify_enable` 三个磁盘键名钉死（见 §7.12）；`PrivateMsgApiTest` 另覆盖会话列表解析（含 `top_ts`）、`opTypeForTop` 的 0/1 映射（见 §7.13）与图片消息 content 的字段/单位换算（见 §7.14）；`MsgNotifierTest` 覆盖新消息通知的提醒判据与正文拼装（见 §7.15）以及追番更新的文案；`BangumiApiTest` 覆盖追番列表解析（见 §7.16）；`BangumiUpdateCheckerTest` 覆盖追番快照序列化与更新判定（见 §7.16）。
+**测试覆盖现状（26.10.24 合并上游 + 加搜索排序后实测）**：`app/src/test/` 87 个测试类 / 941 个用例（两个 flavor 各 941、0 失败）；api 层只有 10 个类的解析函数被覆盖（`HotSearchApiTest`、`FavoriteApiTest`、`FollowApiTest`、`OpusApiTest`、`PrivateMsgApiTest`、`BangumiApiTest`、`DynamicApiTest`、`TopicApiTest`、`NoteApiTest`、`WatchLaterApiTest`，另有 `PlayerApiPbpTest`、`ReplyApiTest`、`ReplySortTest` 覆盖部分纯逻辑）；`ui/appearance/` 下有 4 个测试类——`ColorSchemeTest` 覆盖 7 套主题的 `key → style` / `key → 色表` / 中文显示名映射、无 key 时的默认值、以及色表缓存的失效与读取次数；`CornerStyleTest` 覆盖圆角两档与「档位 → 覆盖样式」映射；`FontStyleTest` 覆盖字体文件头校验（含 WOFF 专门拒绝）与「未配置不加载」的性能约定；`AppearanceManagerTest` 覆盖外观版本号与唯一写入入口；`PerformanceManagerTest` 覆盖档位换算与图片/分页参数（见 §7.10）；`ApkVerifierTest` 覆盖更新包校验的判定规则（见 §7.11）；`SettingsKeysTest` 把 `player`/`play_qn`/`bangumi_update_notify_enable` 三个磁盘键名钉死（见 §7.12）；`PrivateMsgApiTest` 另覆盖会话列表解析（含 `top_ts`）、`opTypeForTop` 的 0/1 映射（见 §7.13）与图片消息 content 的字段/单位换算（见 §7.14）；`MsgNotifierTest` 覆盖新消息通知的提醒判据与正文拼装（见 §7.15）以及追番更新的文案；`BangumiApiTest` 覆盖追番列表解析（见 §7.16）；`BangumiUpdateCheckerTest` 覆盖追番快照序列化与更新判定（见 §7.16）。
 
 ### API 层的坑
 

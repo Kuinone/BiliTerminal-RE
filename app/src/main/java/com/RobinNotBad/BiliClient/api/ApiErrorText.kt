@@ -36,4 +36,15 @@ object ApiErrorText {
     /** 「请求出错了，请稍后再试」——-400（请求非法/参数错误）。 */
     @JvmStatic
     fun requestIllegal(): String = "请求出错了，请稍后再试"
+
+    /**
+     * 「搜索被风控了，过一会儿再试」——搜索接口的**降级响应**：`code` 仍是 0，但 `data` 里
+     * 既没有 `result` 也没有 `seid`，只有一个 `v_voucher`（见 `docs/bilibili-api-notes.md` §3.13）。
+     *
+     * 这种响应**不能当成"没有结果"**：以前 `SearchApi` 对它返回 null，页面就只剩一个空列表，
+     * 用户完全不知道发生了什么（26.10.24 用户反馈「有时候搜出来什么都没有」就是这么来的）。
+     * 现在抛出去让页面把这句话弹给用户。
+     */
+    @JvmStatic
+    fun searchRejected(): String = "搜索被风控，请稍后再试"
 }

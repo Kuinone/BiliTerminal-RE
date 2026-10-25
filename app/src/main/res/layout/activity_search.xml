@@ -16,7 +16,30 @@
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/top" />
+        app:layout_constraintTop_toBottomOf="@+id/searchSortButton" />
+
+    <!-- 搜索结果排序按钮：只有支持 order 参数分类（视频 / 专栏）且已经搜过一次时才显示。
+         必须放在这里而不是 fragment 里——fragment 的 ViewPager 只对齐到顶栏下方，
+         搜索框是压在 fragment 上方的，控件放进 fragment 会被搜索框盖住（26.10.24 实测）。
+
+         为什么是裸 `<Button>` 而不是手写 background：MaterialComponents 主题会把 `<Button>`
+         inflate 成 MaterialButton 并套用主题里声明的 `materialButtonStyle`——默认主题（经典终端）
+         对应 `ButtonStyleTerminal`（#cc262626 半透明卡底 + 暖白字 + 圆角），换其它主题时自动
+         跟随各自的按钮样式。**不要**在这里写死 `@color/terminal_*`，那会在浅色主题下变成暗块。 -->
+    <Button
+        android:id="@+id/searchSortButton"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginHorizontal="@dimen/activity_padding_horizontal"
+        android:gravity="center"
+        android:minHeight="38dp"
+        android:textSize="13sp"
+        android:visibility="gone"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/searchbar"
+        tools:text="排序：综合"
+        tools:visibility="visible" />
 
     <com.RobinNotBad.BiliClient.ui.widget.RotaryRecyclerView
         android:id="@+id/history_recyclerview"

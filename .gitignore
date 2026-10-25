@@ -73,3 +73,6 @@ docs/superpowers/specs/2026-10-14-console-v2-design.md
 防止IDE配置误入版本库的配置目录
 .vscode/
 .idea/
+
+# 本地试验目录：biliapp/ 是用户单开的空文件夹，只作本地用途，不入库
+/biliapp/
