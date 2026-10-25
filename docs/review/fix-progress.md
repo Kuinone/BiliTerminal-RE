@@ -1421,6 +1421,19 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
   - **切到首次访问的分类时排序按钮可能一直不出现**（审查「疑点 A」的加固）：`FragmentStateAdapter` 是懒创建的，`onPageSelected` 里 `findFragmentByTag("f$position")` 可能还是 null，那一刻 `refreshSortBar` 只能判成「本分类不支持排序」把按钮收掉，而 `sortBarEligible` 是缓存值、之后没人重算。现在 `onPageSelected` 之后 `viewPager.post { refreshSortBar() }` 补算一次（幂等，按当时的 currentItem 算，不会自旋）。审查侧的观察是「切 tab 时整体收起、上滑一次即恢复」，判断为 main 既有逻辑而非本功能引入；这条补算属于顺手加固，不是回归修复。
   - **验证**：`:app:assembleDebug` 通过；两 flavor 单测各 **87 套 / 941 例 / 0 失败**；markdownlint 40 文件 0 issue。**HTML 风控回退这条新分支没法主动触发**（要 B 站真回拦截页），靠既有纯函数判据 + 构建与单测兜底，如实记在这里；本轮也**未上设备实测**（模拟器已关闭，且这条路径模拟器同样复现不了）。
 - **未做**：用户 / 直播的排序（它们的 `order` 是另一套键：`fans`/`level`、`online`/`live_time`），以及「最多弹幕 / 最多评论」两档（手表屏上弹窗列表已经够长）。
+### 3.63 下载卡在 20%：分片下载加看门狗 + Range 校验 + 强制 HTTP/1.1（26.10.25）
+
+- **缘起**：用户报「下载进度卡在 20% 不动」。20% 是 `DownloadService.processDownloadSection` 给 MP4 / 纯音频主文件写死的**起始基准**（`setDownloadProgress(id, 0.2f, ...)` 后 `downFile(..., 0.2f)`），所以卡在 20.0% 基本等于主文件的 `downFileSpeedSeg` 阶段一个字节都没再往前推（失败分支会清掉进度映射，因此不是"映射残留"）。
+- **实测（真实 B 站直链，51,973,319 字节的 720P MP4）**：单连接 h1.1 21.28s ≈ 2.44MB/s；5 路并发 Range（h1.1）聚合 ≈ 10.4MB/s（约 4.2 倍）；5 路 h2 流复用一条连接只有 ≈ 4.9MB/s 且**没有传输层停顿**（`maxGap` ≤ 173ms）——所以「多线程本身」没问题，问题在分片实现的容错。
+- **定位到的 4 个缺陷**：①轮询循环没有停滞看门狗，唯一的时间约束是 30s 总 join 预算，线程卡在 DNS／h2 流排队／读超时时进度一直停；②join 超时后不检查线程是否还活着就起单连接重下，两拨线程写同一个文件；③`downloadSegment` 不校验 `206`／`Content-Range`，若 CDN 忽略 Range 回 200，每片都把整个文件读一遍（5 片 = 5 倍流量，期间进度不动），最坏 3 次重试 × 5 片；④HEAD 没有 `callTimeout`，"连上但一直不给响应"可以无限期等下去。
+- **改法**：
+  - 新增 `service/download/SegmentDownloadPolicy.kt`（`internal object`，纯逻辑无 Android 依赖）：`STALL_TIMEOUT_MS = 12s` / `ABORT_JOIN_TIMEOUT_MS = 3s` / `FINISH_JOIN_TIMEOUT_MS = 30s`、`hasStalled` / `isPartialContent` / `isRangeIgnored` / `parseContentRangeStart` / `isContentRangeMismatch` / `shouldDisableSegmentMode`。
+  - `DownloadService.downFileSpeedSeg`：轮询里先判停滞（12s 没有新字节 → 记日志、取消在飞 Call、不再干等）→ 中止后只给 3s join 预算，线程没退出就报错（**绝不并发重下**）→ 停滞 / Range 不可用时回滚已计字节、把进度退回基准，再回退整文件单连接；命中后置 companion 的 `@Volatile segmentModeDisabled`，本次进程后续任务直接单连接（不复位）。
+  - `downloadSegment`：新增 `SegmentSharedState`（总字节 `AtomicLong`、失败 / Range 不可用 / 已中止三个 `AtomicBoolean`、在飞 `Call` 的 `CopyOnWriteArrayList`、每片最后收字节时刻 `AtomicLongArray`）替代原来的两个裸原子量；每片响应校验「200 = 忽略 Range」「非 206 失败」「Content-Range 起点不符」；读循环加 `written < expectLen` 上界且只写本片范围；每写一块就 `markByte(idx)` 喂看门狗。
+  - `downFileSpeed`：HEAD 单独用 15s `callTimeout`；下载专用 OkHttpClient 强制 `HTTP_1_1`（实测 5 连接 h1.1 ≈ 10.4MB/s，5 条 h2 流 ≈ 4.9MB/s）。
+- **结论：不删多线程**。删掉等于放弃实测约 4.2 倍的吞吐；项目自己的 `docs/superpowers/specs/2026-10-13-download-engine-optimization.md` 定的方向也是「分片健壮化 + 失败语义统一」，不是砍功能。
+- **验证**：`./gradlew.bat :app:assembleDebug` 双 flavor 成功；`:app:testStandardDebugUnitTest`、`:app:testCoexistDebugUnitTest` 各 **88 suites / 946 tests / 0 failures**（新增 `SegmentDownloadPolicyTest` 8 例）。
+- **遗留**：①分片失败兜底仍是「整文件单连接重下」，没有真正的断点续传（P0，见上述 spec）；②PCDN 域名失效时没有切 `backup_url`；③进度公式仍是 0.2 基准 + `%.1f`，大文件上的低速波动在界面上不明显。**未真机复现卡 20%**（本机 adb 无设备、模拟器未开），看门狗 / 降级路径靠单测与真实直链探针（临时探针单测与结果文件已删除，未进提交）验证。
 
 ## 4. 历史章节索引
 

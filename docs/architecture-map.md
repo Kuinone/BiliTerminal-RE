@@ -1042,6 +1042,8 @@ CenterThreadPool.supplyAsyncWithLiveData { fetch...().getOrThrow() }
 
 **26.10.13 完整性补丁（C3）**：高速单连接与分片失败后的单连接回退复用 `service/download/DownloadStreamTransfer.kt`（无 Android 依赖的流写入器）。GET 长度优先；HEAD 仅在响应成功且长度有效时作提示；未知长度保留 `-1`（不能伪造为 1）。必须真实 EOF、非空且已知长度精确相等才返回 `NORMAL`；网络读失败归 `ERR_NETWORK`，写入/flush 失败归 `ERR_FILE`。阶段完成只在资源关闭成功后发布，非暂停失败只清理本次目标文件（不删任务目录、不碰旧 `video.mp4`/`audio.m4a`）；建连及关闭异常同样优先保留暂停语义。`DownloadStreamTransferTest` 覆盖真实内存流与异常注入；DASH 阶段进度与续传尚未改；本地音轨防重的播放侧补丁见 §7.4（下载替换事务仍未改）。
 
+**26.10.25 分片看门狗与降级（`docs/review/fix-progress.md` §3.63）**：新增 `service/download/SegmentDownloadPolicy.kt`（73 行，`internal object` 纯逻辑，`SegmentDownloadPolicyTest` 8 例）——阈值 `STALL_TIMEOUT_MS = 12s` / `ABORT_JOIN_TIMEOUT_MS = 3s` / `FINISH_JOIN_TIMEOUT_MS = 30s`，判定 `hasStalled` / `isPartialContent` / `isRangeIgnored` / `parseContentRangeStart` / `isContentRangeMismatch` / `shouldDisableSegmentMode`。`downFileSpeedSeg` 的轮询循环**先判停滞再算进度**：超过 12s 没有任何分片收到新字节就 `Call.cancel()` 中止并回退整文件单连接（join 预算收紧到 3s，线程没退出直接报错，绝不并发重下）；`downloadSegment` 强制 `206` + `Content-Range` 起点校验、按分片边界限制写入量、每写一块喂一次看门狗；companion 的 `@Volatile segmentModeDisabled` 是**本次进程内**的降级记忆，命中后后续任务不再分片。下载专用 OkHttpClient 强制 `HTTP/1.1`（实测同一 CDN 直链：5 条 h1.1 连接聚合 ≈ 10.4MB/s vs 5 条 h2 流 ≈ 4.9MB/s），HEAD 额外加 15s `callTimeout`。**`pausedMap` / `speedLock` / companion 锁的三条约束不变**（见上）。
+
 ### 7.28 顶部工具条滚动自动收回（26.10.05 批次 8 新增）
 
 - **能力在基类 `activity/base/RefreshListActivity.kt`，默认关闭**：子类调 `setupAutoHideBars(vararg bars: View?)` 才生效（不调 = 零影响，所以对其它几十个列表页安全）。`activity_simple_refresh.xml` 里的 `filterBar`/`sortBar`/`manageBar`/`groupBar` 是 `SwipeRefreshLayout` **之上的兄弟节点**，不在 RecyclerView 内，**不会随列表滚走**，只能手动改 `layoutParams.height` 做收放。**没做成 adapter 头部项**：那会重映射所有业务 adapter 的 `viewType`/`adapterPosition`（同 §7.23 的理由）。
