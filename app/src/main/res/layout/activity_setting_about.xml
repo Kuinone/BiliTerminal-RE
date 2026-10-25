@@ -270,10 +270,27 @@
                     android:paddingVertical="6dp"
                     android:orientation="vertical">
 
+                    <!-- 三列：RE 版主要开发者 → 原版主要开发者 → 联合开发者。
+                         「紫色空灵」是 RE 版（当前这版）的主要开发者，单独成一列放最前；
+                         他的身份改由列名表达，卡片简介位因此留空（原 about_dev_trae 已复用为列名）。 -->
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_gravity="center"
+                        android:text="@string/about_dev_trae"
+                        android:textSize="14sp" />
+
+                    <LinearLayout
+                        android:id="@+id/developer_re_container"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_gravity="center"
+                        android:layout_marginTop="6dp"
                         android:text="@string/text_activitysettingabout_05"
                         android:textSize="14sp" />
 
