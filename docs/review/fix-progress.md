@@ -1424,13 +1424,16 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
 
 ### 3.63 「我的」页左上箭头方向错误（26.10.25，用户反馈）
 
+**规则**（26.10.25 用户明确）：**由菜单唤起的一级页**用 `arrow_down`，点它打开菜单并在同级页面间切换；**一级页的子栏目**用 `arrow_back`，点它返回上一级。图标与行为必须一致。
+
 - **现象**：菜单进「我的」，顶栏标题左边是 `←`（返回箭头），但点它并不返回——打开的是菜单。
-- **根因**：`BaseActivity.kt:584` 对 `InstanceActivity` 装的是「点顶栏打开菜单」（`setMenuClick`），对其它页面装的才是「返回」（`setTopbarExit`）。`MySpaceActivity : InstanceActivity()`，属于菜单级，图标该是 `arrow_down`；但 `activity_myspace.xml:28` 写死了 `@drawable/arrow_back`。
+- **根因**：`BaseActivity.kt:584` 对 `InstanceActivity` 装的是「点顶栏打开菜单」（`setMenuClick`），对其它页面装的才是「返回」（`setTopbarExit`）。`MySpaceActivity : InstanceActivity()` 属于菜单级，图标该是 `arrow_down`；但 `activity_myspace.xml:28` 写死了 `@drawable/arrow_back`。
 - **为什么不能只改布局**：这个布局被 `MySpaceMoreActivity : BaseActivity()`（返回级）复用，它那边 `arrow_back` 才是对的。改布局等于把「更多」页改坏。
-- **修法**：角色判定收进 `InstanceActivity.setMenuClick()`——装监听时顺手把 `pageName` 的开头图标覆盖成 `arrow_down`。菜单级一律朝下、返回级保持布局里的 `arrow_back`，新页面继承 `InstanceActivity` 就自动对。
-- **顺带修好的同一个 bug**：`TodoListActivity`（`activity_todo_list.xml` 同样写死 `arrow_back` + 继承 `InstanceActivity`）。`LocalListActivity` 不受影响（顶层它自己就设 `arrow_down`，进文件夹后设 `arrow_back`，都在基类之后执行）。
-- **实测（MuMu Android 15 x86_64 / coexist debug）**：「我的」页箭头为 `⌄`、点顶栏打开 `MenuActivity` ✓；「更多」页仍是 `‹`、点顶栏返回 ✓；`TO DO清单` 页箭头也变成 `⌄` ✓；`logcat` 0 条 `FATAL EXCEPTION`。
-- 坑已记进 `docs/agents/pitfalls.md`「基类与列表」。
+- **修法一（图标跟随角色）**：角色判定收进 `InstanceActivity.setMenuClick()`——装监听时顺手把 `pageName` 的开头图标覆盖成 `arrow_down`。菜单级一律朝下、返回级保持布局里的 `arrow_back`，新页面继承 `InstanceActivity` 就自动对。
+- **修法二（子栏目站错队）**：`TodoListActivity`（「TO DO清单」）是从「设置」进的**子栏目**（`SettingGroupActivity:725` / `SettingsIndex:197`），却继承了 `InstanceActivity`——于是顶栏点开菜单、图标也被修法一改成了 `⌄`，反过来错。已改成 `: BaseActivity()`，同时 `activity_todo_list.xml` 里原本写死的 `arrow_back` 就此正确。核对过菜单 14 个入口：全部经 `InstanceActivity`（含 `RefreshMainActivity` 间接继承），只有它一个子栏目混进来。
+- **不受影响**：`LocalListActivity`（菜单「缓存」）顶层自己就设 `arrow_down`、进文件夹后设 `arrow_back`，两次都在基类之后执行。
+- **实测（MuMu Android 15 x86_64 / coexist debug）**：菜单页 `^`（自身，收起菜单）；「设置」`⌄`、「我的」`⌄` 且点顶栏打开 `MenuActivity` ✓；「TO DO清单」`‹` 且点顶栏返回 `SettingMainActivity` ✓；「更多」仍是 `‹` 且返回 ✓；`logcat` 0 条 `FATAL EXCEPTION`。
+- 规则已记进 `docs/agents/pitfalls.md`「基类与列表」。
 
 ## 4. 历史章节索引
 
