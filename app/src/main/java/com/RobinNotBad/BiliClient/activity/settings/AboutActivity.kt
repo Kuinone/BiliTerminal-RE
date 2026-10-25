@@ -44,7 +44,7 @@ class AboutActivity : BaseActivity() {
     companion object {
         /** RE 版（当前这版）的主要开发者。身份由列名 `about_dev_trae` 表达，卡片简介位留空。 */
         private val DEVELOPERS_RE = listOf(
-            Developer("紫色空灵", "", R.mipmap.avatar_zise, 591904067L),
+            Developer("紫色空灵", "RE：哔哩终端主要开发者", R.mipmap.avatar_zise, 591904067L),
         )
 
         /** 主要开发者。 */

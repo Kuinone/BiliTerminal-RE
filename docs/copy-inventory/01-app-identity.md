@@ -57,7 +57,7 @@
 - **位置**：`app/src/main/res/values/strings.xml`（`R.string.about_dev_trae`）
 - **出现在哪**：关于页开发者卡片**第一列的列名**（`activity_setting_about.xml` 的
   `developer_re_container` 上方），26.10.25 起「紫色空灵」从联合开发者里独立成一列
-- **用途**：标明 RE 版（当前这版）的主要开发者；他卡片上的简介位因此留空，
+- **用途**：标明 RE 版（当前这版）的主要开发者；
   身份只在这一个地方说一次
 - **原文**：
 
