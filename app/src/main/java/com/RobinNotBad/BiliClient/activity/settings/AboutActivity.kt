@@ -45,6 +45,7 @@ class AboutActivity : BaseActivity() {
         /** RE 版（当前这版）的主要开发者。身份由列名 `about_dev_trae` 与卡片简介位共同表达。 */
         private val DEVELOPERS_RE = listOf(
             Developer("紫色空灵", "", R.mipmap.avatar_zise, 591904067L, R.string.about_dev_trae_desc),
+            Developer("千awa", "", R.mipmap.avatar_qianawa, 1786791133L, R.string.about_dev_qianawa),
         )
 
         /** 主要开发者。 */
