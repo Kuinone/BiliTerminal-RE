@@ -139,6 +139,29 @@ class DownloadProgressMathTest {
         assertTrue("base!=end 时应得到 Infinity", infinite.isInfinite())
     }
 
+    // ---------- DASH 阶段进度 ----------
+
+    @Test
+    fun dashStageEnds_严格递增且首尾正确() {
+        assertEquals("附件段终点", 0.12f, DownloadProgressMath.DASH_ATTACH_END, 1e-6f)
+        assertEquals("视频段终点", 0.52f, DownloadProgressMath.DASH_VIDEO_END, 1e-6f)
+        assertEquals("音频段终点（合并段起点）", 0.88f, DownloadProgressMath.DASH_AUDIO_END, 1e-6f)
+        assertEquals("整条进度条终点", 1.0f, DownloadProgressMath.DASH_MERGE_END, 1e-6f)
+        assertTrue("阶段边界必须递增，否则进度条会倒退",
+            DownloadProgressMath.DASH_ATTACH_END < DownloadProgressMath.DASH_VIDEO_END
+                && DownloadProgressMath.DASH_VIDEO_END < DownloadProgressMath.DASH_AUDIO_END
+                && DownloadProgressMath.DASH_AUDIO_END < DownloadProgressMath.DASH_MERGE_END)
+    }
+
+    @Test
+    fun dashMergeProgress_映射到合并区间并夹住越界值() {
+        assertEquals("合并开始前停在音频段终点", 0.88f, DownloadProgressMath.dashMergeProgress(0f), 1e-6f)
+        assertEquals("合并完成正好走到 100%", 1.0f, DownloadProgressMath.dashMergeProgress(1f), 1e-6f)
+        assertEquals("中点", 0.94f, DownloadProgressMath.dashMergeProgress(0.5f), 1e-6f)
+        assertEquals("负数按 0 处理", 0.88f, DownloadProgressMath.dashMergeProgress(-1f), 1e-6f)
+        assertEquals("超过 1 按 1 处理，不许冲过进度条", 1.0f, DownloadProgressMath.dashMergeProgress(2f), 1e-6f)
+    }
+
     // ---------- 伪进度 ----------
 
     @Test

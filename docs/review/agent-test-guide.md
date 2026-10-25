@@ -107,6 +107,7 @@ adb pull $LOG/bridge-last.txt ./bridge-last.txt        # 拷到本地（实测�
 | `activities` | — | 列出全部可启动的 Activity 全名 |
 | `notutorials` | — | 把全部教程标记为已读（不做的后果见 §6） |
 | `http` | `--es url` `[--es method]` `[--es data]` `[--es headers '<JSON>']` `[--ez appheaders true]` | 发一次请求，响应体全文落盘。**`appheaders` 默认 false（26.10.19 起）：不带应用请求头（含登录 Cookie / `X-Install-Id`）；显式传 true 才用应用自己的登录态与请求头** |
+| `merge` | `--es video <视频m4s>` `--es audio <音频m4s>` `[--es out <输出mp4>]` | 直接跑一次 `util/MediaMerger.mergeAv`（DASH 音视频重封装），返回返回码 / 耗时 / 输入输出字节数 / 产物轨道与采样数 |
 | `log` | `[--es file]` `[--es bytes]` | 读日志尾部（默认 `rebili.log`，65536 字节） |
 | `logs` | — | 列出日志文件及大小 |
 | `logclear` | `[--es file]` | 清空日志 |
@@ -243,6 +244,31 @@ adb shell am broadcast -n <包名>/com.RobinNotBad.BiliClient.debug.DebugBridge 
 
 > 实测（26.10.16）：触发后服务端收到 `log` 11140 字符 / 45 行，分隔行 `--- 应用日志（内存缓冲，最近若干行）---` 位于中间，前后两段各就各位，且正则自检无明文凭证。
 
+### 4.8 离线验证 DASH 音视频重封装
+
+完整下载要登录 + 选 1080P 才走得到合并分支；而最容易出错的是容器层（MediaExtractor 读分片 MP4 + MediaMuxer 按 sampleTime 归并），拿两条现成的 B 站 m4s 就能单独验：
+
+```bash
+adb shell mkdir -p /sdcard/Android/data/<包名>/files
+adb push video.m4s /sdcard/Android/data/<包名>/files/v.m4s
+adb push audio.m4s /sdcard/Android/data/<包名>/files/a.m4s
+adb shell am broadcast -n <包名>/com.RobinNotBad.BiliClient.debug.DebugBridge \
+  --es token rebili-agent-bridge --es cmd merge \
+  --es video /sdcard/Android/data/<包名>/files/v.m4s \
+  --es audio /sdcard/Android/data/<包名>/files/a.m4s
+
+# 返回示例（26.10.25，Android 14 x86_64 模拟器，匿名 360P 样本）——
+# result=OK(0) cost=3381ms
+# in video=3867429B audio=1265842B
+# out=.../debug_merge.mp4 exists=true size=5167200B
+# progress=0,20,50,90
+# tracks=2
+#   #0 mime=video/hevc samples=2992 durationUs=199269000 lastSampleUs=200029811
+#   #1 mime=audio/mp4a-latm samples=8584 durationUs=199319750 lastSampleUs=199296439
+```
+
+判据：`tracks=2`、两条轨的 `samples` 与源文件一致、`durationUs` 接近视频时长；`progress` 里能看到整十档回调说明合并阶段在推进进度条。**返回 `OK` 但 `tracks<2` 或采样数为 0，就是容器层回归**（产物会被删除，调用方保留双文件）。若 `out` 落在 `/sdcard/Android/data/...` 报文件不存在，可把样本先 `run-as` 拷进应用私有目录（`/data/data/<包名>/files/`）再传绝对路径。
+
 ---
 
 ## 5. 日志与落盘
@@ -329,3 +355,4 @@ GET https://api.bilibili.com/x/...&dm_img_list=…&dm_img_inter=…&dm_cover_img
 | `app/src/main/java/com/RobinNotBad/BiliClient/BiliTerminal.kt` | `AGENT_TEST_MODE`、`applyLogSwitches()`、当前前台 Activity |
 | `app/src/main/java/com/RobinNotBad/BiliClient/activity/SplashActivity.kt` | Agent 模式下跳过 UETool 悬浮窗 |
 | `app/src/main/java/com/RobinNotBad/BiliClient/util/SettingsKeys.kt` | `DEV_AGENT_MODE` / `DEV_LOG_FILE` |
+| `app/src/main/java/com/RobinNotBad/BiliClient/util/MediaMerger.kt` | DASH 双文件重封装（`merge` 命令直接调它；下载流程在 `DownloadService.mergeDashPair` 里用，见 §4.8） |

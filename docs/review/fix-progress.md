@@ -23,7 +23,7 @@
 - **依赖仓库**：`settings.gradle` 已把 aliyun 的 `google` / `public` / `gradle-plugin` 三个镜像前置，`google()`/`mavenCentral()`/jitpack 仅作兜底。
 - **改了 `res/` 文件集合时**：`:app:clean` 与后续命令**必须分两次 Gradle 调用**，且带 `--no-build-cache --no-configuration-cache`，否则会回放陈旧资源（症状是 `Unresolved reference 'R.layout.xxx'`）。
 - **版本一致性**：`:app:verifyVersionConsistency` 以 `strings.xml` 的 `update_log_current` 为锚点校验版本一致性；发版说明也由 CI 从它抽取（抽不到直接拒绝发版）。
-- **单测（静态计数，26.10.25 合并上游（分片看门狗 / 断网兜底 / 圆屏适配）+ 本方分片加固后实测）**：**88 个测试类 / 952 个用例**，两个 flavor 完全相同（同源码），0 失败 0 错误 0 跳过。计数方式：`app/src/test/` 下 `*Test.kt|java` 计数（另有共享假实现 `util/FakeSharedPreferences.kt`），`app/build/test-results/testStandardDebugUnitTest/TEST-*.xml` 的 `tests=` 求和。用例数一律以机器产出为准，队友口述数字不进入文档。
+- **单测（静态计数，26.10.25 合并上游（DASH 合并单文件 / wrapper 8.14.5）+ 本方开发者列表后实测）**：**88 个测试类 / 954 个用例**，两个 flavor 完全相同（同源码），0 失败 0 错误 0 跳过。计数方式：`app/src/test/` 下 `*Test.kt|java` 计数（另有共享假实现 `util/FakeSharedPreferences.kt`），`app/build/test-results/testStandardDebugUnitTest/TEST-*.xml` 的 `tests=` 求和。用例数一律以机器产出为准，队友口述数字不进入文档。
 - **26.10.10 那一轮的构建记录（历史，留作「改 minSdk / 重跑 release 链路」时的验证口径）**：`minSdk 24 → 19` 全部改动（含 jsoup 1.16.1、7 个 `res/drawable-v21` 资源）落盘后，按「`clean` → `assembleRelease` → `lintRelease` → 单测」四步跑完（均带 `--no-configuration-cache`，`clean` 与 `assemble` 分两次调用），四步全 `BUILD SUCCESSFUL`（37s / 2m13s / 1m25s / 39s）。当时单测汇总 **49 suites / 460 tests / 0 failures**（任务名当时还是 `testDebugUnitTest`，现已带 flavor 前缀），最新 XML 时间 `2026-10-09T22:59:04`（晚于当轮 APK 出包时间 22:56:58，覆盖了当轮全部源码改动）。`:app:lintRelease` 的 **`NewApi` 从 22 条降到 2 条**，且这 2 条就是 `PlayerActivity.kt:1981` 的已知假阳性。发版前仍建议再跑一次确认。
 - **「自动跳过片头片尾」已恢复上线（26.10.22）**：26.10.10 的紧急撤回**已解除**，`SkipOpEdPrefs.FEATURE_ENABLED` 回到 `true`，设置入口与搜索索引均已恢复；口径按用户拍板改为**默认关闭**（`DEFAULT_ENABLED = false`，老用户存档里显式写的值仍然优先）。恢复细节见 §3.3「恢复记录」，乱跳的三个根因修复见 §3.55。
 - **本轮基建改动（26.10.10）**：**`minSdk 24 → 21 → 19（Android 4.4）`**，唯一落点是 `app/build.gradle:21`。两级下调的成本不同，分开记：
@@ -39,6 +39,8 @@
 ## 2. 未完成待办
 
 ### 2.1 真机未验证（无设备 / 无登录态）
+
+- [ ] **DASH 下载合并单文件（§3.66）端到端未验证**：需要登录态 + 选 1080P，本机只有模拟器且未登录。容器层已用两条现成 m4s 走 DebugBridge `merge` 实测通过（`result=OK`、`tracks=2`、采样数与源一致），**但「真实下载 → 合并 → 本地列表只剩视频 → 内置播放器有声」整条链路没跑过**。真机用例：登录后下载一个 1080P 视频，观察进度走完 0.88–1.00 的「合并音视频」阶段、目录里只有 `video.mp4`（无 `audio.m4a`、无 `video_merging.tmp`）、本地页直接播放有声；再故意制造合并失败（如把磁盘写满）确认保留双文件且下载不报错。
 
 - [ ] **图片保存改造（对比审计 §3.3 P2-2，第二批）真机未验证**：Android 10+ 默认目录改为应用专属、下载完成经 MediaStore 发布进 `Pictures/哔哩终端/`。用例：看图页下载图片 → 相册可见、无 0 字节残留；再下载同一张覆盖不产生两份；自定义公共目录时行为不变；API 28 及以下仍落公共 Pictures。日志判据 `adb logcat -s PictureMediaStore`。
 - [ ] **直播弹幕 wss 校验（§3.3 P2-6）真机未验证**：正常直播间能连、能收弹幕；`host_list` 缺失/异常时应提示而不是继续裸连；握手 Cookie 只剩 `SESSDATA` 后，需确认长连接鉴权仍成功。
@@ -1478,7 +1480,26 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
   - `.\gradlew.bat :app:assembleDebug` 与 `.\gradlew.bat :app:testStandardDebugUnitTest` 均通过。
 - **遗留**：①真手表 / 真圆屏设备未验证（本机只有 MuMu 模拟器）；②没有加 `onStart()` 热刷新钩子——`MenuActivity.killAndJump()` 会先 finish 下层页面，从设置页回到短视频页必然是新实例（冷启动路径），root padding 与内缩都随新实例一次性生效；③验证后期 B 站短视频信息流接口偶发 `API error code=-400: 请求错误`（`ShortVideoFeedApi.x/v2/feed/index/story` 与动态兜底都失败），与本次改动无关；重试后恢复，最终构建复测正常。
 
-### 3.66 「我的」页左上箭头方向错误（26.10.25，用户反馈）
+### 3.66 DASH 下载完成后合并成单文件：1080P+ 也像 720P 一样一个文件（26.10.25，用户要求）
+
+- **缘起**：用户提出「B 站 1080p 以上的缓存视频分视频流和音频流的分开的，现在我想让你给他变成和 720p 一样的合并的视频」。
+- **现状（为什么以前是双文件）**：`processDownloadSection` 里 `qn<=64` 走 `PlayerApi.getVideo`（`fnval=1`，音视频合一 MP4）；1080P+ 只能走 DASH，下成 `video.mp4` + `audio.m4a`，播放时由 `PlayerActivity.audioTrackUrl` 额外挂一条外部音轨。合并层历史上存在过（`util/MediaMerger.kt`），2026-08-18 `25893f3` 因「合并阶段无进度卡 85%」「旧实现先删视频再改名有丢数据风险」被移除，2026-09-11 `183523f` 删掉了类本体；`docs/superpowers/specs/2026-10-13-download-engine-optimization.md` 还写着「不做合并」。这次**决策反转**：两个旧硬伤现在分别有「进度分段常量」与「`safeReplaceTemp` 先备份再替换」的现成解法。
+- **改法**：
+  - 新增 `app/src/main/java/com/RobinNotBad/BiliClient/util/MediaMerger.kt`（`object MediaMerger`，259 行）：两个 `MediaExtractor` 各取第一条 `video/*` / `audio/*` 轨，**按 `sampleTime` 归并**写入 `MediaMuxer(MUXER_OUTPUT_MPEG_4)`（改掉旧实现「每轮一视频一音频」的交替写）；关键帧标志用 `MediaExtractor.SAMPLE_FLAG_SYNC`（避开 API 21 才有的 `BUFFER_FLAG_KEY_FRAME`）；`setOrientationHint` 透传旋转；写前查 `StatFs` 剩余空间（需 ≥ 两输入之和 + 4MB）；返回码 `RESULT_OK / NO_TRACK / NO_SPACE / STOPPED / FAILED`，**非 OK 一律删产物**。KDoc 写明「失败必须保留双文件、不得判下载失败」。
+  - `service/download/DownloadPathSpec.kt`：新增 `FILE_VIDEO_MERGING = "video_merging.tmp"`（刻意不用 `.mp4` 后缀，避免被 `LocalListActivity` 对历史 `video_merged_temp.mp4` 的兼容改名逻辑误认成成品）。
+  - `service/download/DownloadProgressMath.kt`：新增 `DASH_ATTACH_END = 0.12f` / `DASH_VIDEO_END = 0.52f` / `DASH_AUDIO_END = 0.88f` / `DASH_MERGE_END = 1.0f` 与 `dashMergeProgress(fraction)`；`DownloadProgressMathTest` 新增 2 例（严格递增 + 区间映射/夹取）。
+  - `service/DownloadService.kt`：单 P / 多 P 两处 DASH 分支在 `replaceDashPairOrFail` 之后调 `mergeDashPair`（新增私有方法）——先判 `isPaused` 再合并；合并进度驱动 `setDownloadProgress`，`shouldStop = { !started }`；成功 `safeReplaceTemp(merged, video.mp4)` 后删 `audio.m4a`，失败只记日志。
+  - `util/FileUtil.java`：`cleanDownloadTempFiles` 增加删除 `video_merging.tmp`。
+  - `res/values/strings.xml`：新增 `text_download_merging`「合并音视频」。
+  - `app/src/debug/.../DebugBridge.kt`：新增 `merge` 命令（给两条 m4s 直接跑一次 `MediaMerger`，回显返回码/耗时/产物轨道与采样数），`help` 与 `docs/review/agent-test-guide.md` §4.8 同步。
+  - 新增设计文档 `docs/superpowers/specs/2026-10-25-dash-merge-single-file.md`（含历史决策反转说明与 API 19 兼容性依据）。
+- **验证**：
+  - 构建：`.\gradlew.bat :app:assembleDebug` 双 flavor 成功；`:app:testStandardDebugUnitTest`、`:app:testCoexistDebugUnitTest` 各 **88 suites / 954 tests / 0 failures**（`app/build/test-results/` 下 `TEST-*.xml` 求和）。
+  - 设备侧容器验证（Wear OS 模拟器 `sdk_gwear_x86_64`，Android 14，装 `standardDebug` universal 包；注意 **x86 单 ABI 包装不上**，本模拟器 `abilist=x86_64,arm64-v8a` 没有 32 位）：把仓库根的两条匿名 360P 样本 m4s（视频 3,867,429B / 音频 1,265,842B）经 `run-as` 拷进应用私有目录，广播 `--es cmd merge` → `result=OK(0) cost=3381ms`、产物 5,167,200B、`tracks=2`（`video/hevc` 2992 samples / `audio/mp4a-latm` 8584 samples，与源文件一致）、`progress=0,20,50,90`。
+  - 踩到的坑：`adb shell` 推到 `/sdcard/Android/data/<包名>/files/` 的文件，应用进程里 `File.isFile` 看不到（广播返回「文件不存在」）；改用 `adb push /data/local/tmp` + `run-as cp` 进 `/data/data/<包名>/files/` 后正常。**这是验证路径的坑，不影响真实下载**（真实下载由应用自己写外部目录）。
+- **遗留**：①真实登录态下载 1080P→合并→本地播放整条链路未跑（见 §2.1）；②真手表未验证；③HEVC 视频轨写入需 API 24+，但 `DashData` 选流优先 AVC，正常路径不触发；④合并期间多占约一份文件大小的磁盘空间，空间不足直接跳过合并（保留双文件）。
+
+### 3.67 「我的」页左上箭头方向错误（26.10.25，用户反馈）
 
 **规则**（26.10.25 用户明确）：**由菜单唤起的一级页**用 `arrow_down`，点它打开菜单并在同级页面间切换；**一级页的子栏目**用 `arrow_back`，点它返回上一级。图标与行为必须一致。
 

@@ -4,6 +4,8 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.media.MediaExtractor
+import android.media.MediaFormat
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
@@ -12,6 +14,7 @@ import com.RobinNotBad.BiliClient.BuildConfig
 import com.RobinNotBad.BiliClient.util.CenterThreadPool
 import com.RobinNotBad.BiliClient.util.CrashTrail
 import com.RobinNotBad.BiliClient.util.Logu
+import com.RobinNotBad.BiliClient.util.MediaMerger
 import com.RobinNotBad.BiliClient.util.NetWorkUtil
 import com.RobinNotBad.BiliClient.util.SharedPreferencesUtil
 import com.RobinNotBad.BiliClient.tutorial.TutorialStore
@@ -22,6 +25,7 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import java.io.File
+import java.nio.ByteBuffer
 import java.util.concurrent.TimeUnit
 
 /**
@@ -148,6 +152,7 @@ class DebugBridge : BroadcastReceiver() {
             "activities" -> activities(context)
             "notutorials" -> noTutorials()
             "http" -> http(context, intent)
+            "merge" -> merge(context, intent)
             "log" -> log(intent)
             "logs" -> logs()
             "logclear" -> logClear(intent)
@@ -174,6 +179,9 @@ class DebugBridge : BroadcastReceiver() {
         |  --es cmd notutorials              把全部教程标记为已读（否则教程页会盖住你拉起的页面）
         |  --es cmd http --es url <URL> [--es method GET|POST] [--es data <体>]
         |            [--es headers '<JSON>'] [--ez appheaders true]  (默认不带 Cookie)
+        |  --es cmd merge --es video <视频m4s> --es audio <音频m4s> [--es out <输出mp4>]
+        |                                    直接跑一次 MediaMerger（DASH 音视频重封装），
+        |                                    输出默认在 Android/data/<包名>/files/debug_merge.mp4，回显轨道与采样数
         |  --es cmd log [--es file rebili.log|http.log] [--es bytes 65536]
         |  --es cmd logs                     列出日志文件及大小
         |  --es cmd logclear [--es file <名>]   清空日志（默认清业务日志）
@@ -571,6 +579,93 @@ class DebugBridge : BroadcastReceiver() {
                 appendLine("file=${file?.absolutePath ?: "<不可用>"}")
                 appendLine(preview)
             }.trimEnd()
+        }
+    }
+
+    // ==================== 音视频合并验证 ====================
+
+    /**
+     * 直接调一次 [MediaMerger.mergeAv]，在真机上验证 DASH 音视频重封装这条链路。
+     *
+     * 存在的意义：完整下载流程要登录 + 选 1080P 才走得到合并分支，但最容易出错的是容器层
+     * （MediaExtractor 读分片 MP4 + MediaMuxer 按 sampleTime 归并）——拿两条现成的 m4s 就能单独验。
+     * 输出默认落在应用自己的外部文件目录（`Android/data/<包名>/files/debug_merge.mp4`），
+     * 不需要任何存储权限；回显里再用 MediaExtractor 读一遍产物，确认轨道与采样数不是空壳。
+     */
+    private fun merge(context: Context, intent: Intent): String {
+        val videoPath = intent.getStringExtra("video") ?: return "ERR: 缺少 --es video <视频片段路径>"
+        val audioPath = intent.getStringExtra("audio") ?: return "ERR: 缺少 --es audio <音频片段路径>"
+        val video = File(videoPath)
+        val audio = File(audioPath)
+        if (!video.isFile) return "ERR: 视频文件不存在：$videoPath"
+        if (!audio.isFile) return "ERR: 音频文件不存在：$audioPath"
+
+        val defaultOut = File(context.getExternalFilesDir(null) ?: context.cacheDir, "debug_merge.mp4")
+        val out = File(intent.getStringExtra("out") ?: defaultOut.absolutePath)
+        out.absoluteFile.parentFile?.mkdirs()
+
+        val progressMarks = ArrayList<Int>()
+        var lastMark = -1
+        val startAt = System.currentTimeMillis()
+        val result = MediaMerger.mergeAv(
+            videoFile = video,
+            audioFile = audio,
+            mergedFile = out,
+            onProgress = { fraction ->
+                val percent = (fraction * 100).toInt()
+                // 只在整十处记一个标记，回显里能看出进度回调确实按区间推进
+                if (percent != lastMark && percent % 10 == 0) {
+                    lastMark = percent
+                    progressMarks.add(percent)
+                }
+            },
+            shouldStop = { false }
+        )
+        val cost = System.currentTimeMillis() - startAt
+        val resultName = when (result) {
+            MediaMerger.RESULT_OK -> "OK"
+            MediaMerger.RESULT_NO_TRACK -> "NO_TRACK"
+            MediaMerger.RESULT_NO_SPACE -> "NO_SPACE"
+            MediaMerger.RESULT_STOPPED -> "STOPPED"
+            else -> "FAILED"
+        }
+        return buildString {
+            appendLine("result=$resultName($result) cost=${cost}ms")
+            appendLine("in video=${video.length()}B audio=${audio.length()}B")
+            appendLine("out=${out.absolutePath} exists=${out.isFile} size=${out.length()}B")
+            appendLine("progress=${if (progressMarks.isEmpty()) "<无回调>" else progressMarks.joinToString(",")}")
+            if (result == MediaMerger.RESULT_OK) append(describeMp4(out))
+        }.trimEnd()
+    }
+
+    /** 用 MediaExtractor 读一遍 MP4，报告轨道类型、声明时长与采样数（验证产物不是空壳）。 */
+    private fun describeMp4(file: File): String {
+        val extractor = MediaExtractor()
+        return try {
+            extractor.setDataSource(file.absolutePath)
+            buildString {
+                appendLine("tracks=${extractor.trackCount}")
+                val buffer = ByteBuffer.allocateDirect(256 * 1024)
+                for (i in 0 until extractor.trackCount) {
+                    val format = extractor.getTrackFormat(i)
+                    val mime = format.getString(MediaFormat.KEY_MIME) ?: "?"
+                    extractor.selectTrack(i)
+                    var samples = 0
+                    var lastSampleUs = 0L
+                    while (extractor.readSampleData(buffer, 0) >= 0) {
+                        samples++
+                        lastSampleUs = extractor.sampleTime
+                        extractor.advance()
+                    }
+                    extractor.unselectTrack(i)
+                    val durationUs = if (format.containsKey(MediaFormat.KEY_DURATION)) format.getLong(MediaFormat.KEY_DURATION) else -1L
+                    appendLine("  #$i mime=$mime samples=$samples durationUs=$durationUs lastSampleUs=$lastSampleUs")
+                }
+            }
+        } catch (e: Exception) {
+            "\nERR: 读取产物失败：${e.javaClass.simpleName}: ${e.message}"
+        } finally {
+            runCatching { extractor.release() }
         }
     }
 
