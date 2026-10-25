@@ -3,6 +3,7 @@ package com.RobinNotBad.BiliClient.activity.base
 import android.content.Intent
 import android.os.Bundle
 import android.view.KeyEvent
+import android.widget.TextView
 import com.RobinNotBad.BiliClient.BiliTerminal
 import com.RobinNotBad.BiliClient.R
 import com.RobinNotBad.BiliClient.activity.MenuActivity
@@ -26,8 +27,20 @@ open class InstanceActivity : BaseActivity() {
         super.onCreate(savedInstanceState)
     }
 
+    /**
+     * 装载「点顶栏打开菜单」，并把顶栏图标统一成朝下的菜单箭头。
+     *
+     * 图标必须和点击行为一致：[BaseActivity] 对 [InstanceActivity] 装的是「打开菜单」，
+     * 对其它页面装的才是「返回」。但布局是共享的——`activity_myspace.xml` 同时被
+     * `MySpaceActivity`（菜单级）和 `MySpaceMoreActivity`（返回级，`BaseActivity`）复用，
+     * 布局里只能写一个箭头。所以角色判定放在这里：菜单级一律覆盖成 `arrow_down`，
+     * 返回级那个布局里的 `arrow_back` 保持不动。（26.10.25 用户反馈「我的」页左上箭头方向错误）
+     */
     fun setMenuClick() {
         findViewById<android.view.View>(R.id.top).setOnClickListener { menuClick.run() }
+        findViewById<TextView>(R.id.pageName)?.setCompoundDrawablesRelativeWithIntrinsicBounds(
+            R.drawable.arrow_down, 0, 0, 0
+        )
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {

@@ -14,6 +14,7 @@
 ## 基类与列表
 
 - `BaseActivity.kt:282` 用 `if (this !is InstanceActivity) setTopbarExit()` 做**向下判断**——任何「让 `RefreshMainActivity` 继承 `RefreshListActivity`」的方案都会把顶栏行为从「打开菜单」变成「点击即返回」。
+- **顶栏左箭头必须与「点顶栏干什么」一致**（26.10.25 用户反馈「我的」页箭头方向错误）：`BaseActivity` 给 `InstanceActivity` 装的是「打开菜单」、给其它页面装的才是「返回」（`BaseActivity.kt:584`），所以**菜单级页面必须是 `arrow_down`、返回级才是 `arrow_back`**。坑在布局复用：`activity_myspace.xml` 同时被 `MySpaceActivity`（菜单级）与 `MySpaceMoreActivity`（返回级）使用，布局里只能写一个值。现在由 `InstanceActivity.setMenuClick()` 在装载监听时按角色统一覆盖成 `arrow_down`——**新页面别再靠布局自己写对**，凡继承 `InstanceActivity` 就自动是菜单箭头。`LocalListActivity` 是唯一例外（进文件夹后自己改成 `arrow_back`，因为它那时点顶栏是退出文件夹）。
 - **`cell_video_list` / `cell_dynamic_video` 的 id 是跨包事实协议**：改 id 会同时打破 `PrivateMsgAdapter`、`DynamicHolder`、`NoticeHolder`、`OpusContentAdapter`。
 - **`notifyItemRangeInserted` 的起点由 adapter 的 `getItemCount()` 决定，`+1` 多数是"头部占位"**：`ReplyAdapter` / `UserDynamicAdapter` / 系列详情内部 adapter 的 `getItemCount()` 都是 `data.size + 1`，通知起点要 `sizeBefore + 1`；而 `VideoCardAdapter` / `ArticleCardAdapter` / `LiveCardAdapter` 无头部、起点就是 `sizeBefore`。**看到 `+1` 先读 `getItemCount()` 再判越界**（26.10.04 批次 3 修掉 4 处真 bug，详见 `docs/architecture-map.md` §7.9）。
 - **设备档位参数一律从 `PerformanceManager` 取**（图片质量/宽度、分页大小）：`GlideUtil` 里的 `QUALITY_*` / `MAX_W_*` 四个常量已于 26.10.04 删除，**不要在任何调用点重新写死**，否则又变回"两处真相"（详见 `docs/architecture-map.md` §7.10）。

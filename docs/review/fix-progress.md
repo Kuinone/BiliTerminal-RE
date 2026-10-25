@@ -1422,6 +1422,16 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
   - **验证**：`:app:assembleDebug` 通过；两 flavor 单测各 **87 套 / 941 例 / 0 失败**；markdownlint 40 文件 0 issue。**HTML 风控回退这条新分支没法主动触发**（要 B 站真回拦截页），靠既有纯函数判据 + 构建与单测兜底，如实记在这里；本轮也**未上设备实测**（模拟器已关闭，且这条路径模拟器同样复现不了）。
 - **未做**：用户 / 直播的排序（它们的 `order` 是另一套键：`fans`/`level`、`online`/`live_time`），以及「最多弹幕 / 最多评论」两档（手表屏上弹窗列表已经够长）。
 
+### 3.63 「我的」页左上箭头方向错误（26.10.25，用户反馈）
+
+- **现象**：菜单进「我的」，顶栏标题左边是 `←`（返回箭头），但点它并不返回——打开的是菜单。
+- **根因**：`BaseActivity.kt:584` 对 `InstanceActivity` 装的是「点顶栏打开菜单」（`setMenuClick`），对其它页面装的才是「返回」（`setTopbarExit`）。`MySpaceActivity : InstanceActivity()`，属于菜单级，图标该是 `arrow_down`；但 `activity_myspace.xml:28` 写死了 `@drawable/arrow_back`。
+- **为什么不能只改布局**：这个布局被 `MySpaceMoreActivity : BaseActivity()`（返回级）复用，它那边 `arrow_back` 才是对的。改布局等于把「更多」页改坏。
+- **修法**：角色判定收进 `InstanceActivity.setMenuClick()`——装监听时顺手把 `pageName` 的开头图标覆盖成 `arrow_down`。菜单级一律朝下、返回级保持布局里的 `arrow_back`，新页面继承 `InstanceActivity` 就自动对。
+- **顺带修好的同一个 bug**：`TodoListActivity`（`activity_todo_list.xml` 同样写死 `arrow_back` + 继承 `InstanceActivity`）。`LocalListActivity` 不受影响（顶层它自己就设 `arrow_down`，进文件夹后设 `arrow_back`，都在基类之后执行）。
+- **实测（MuMu Android 15 x86_64 / coexist debug）**：「我的」页箭头为 `⌄`、点顶栏打开 `MenuActivity` ✓；「更多」页仍是 `‹`、点顶栏返回 ✓；`TO DO清单` 页箭头也变成 `⌄` ✓；`logcat` 0 条 `FATAL EXCEPTION`。
+- 坑已记进 `docs/agents/pitfalls.md`「基类与列表」。
+
 ## 4. 历史章节索引
 
 > 完整正文在 `docs/archive/review/fix-progress-history.md`。**编号在历史上有重复**（`## 二十二` / `## 二十九` 各出现两次、`## 30.` 是阿拉伯数字写法，原为不打断既有交叉引用而保持不动），下表**以归档文件的物理行序为准**。
