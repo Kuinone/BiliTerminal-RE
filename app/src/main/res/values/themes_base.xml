@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 7 套主题的公共父类：暗色 = Material 暗色基底（与改动前完全一致）。
+     亮色模式下由 values-notnight/themes_base.xml 换成 Material 亮色基底，
+     于是 textColorPrimary / colorOnSurface 等未在主题里显式设置的属性也跟着变深。 -->
+<resources>
+    <style name="Base.Theme.BiliTerminal" parent="Theme.MaterialComponents.NoActionBar" />
+</resources>

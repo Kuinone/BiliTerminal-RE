@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 亮色模式（uiMode 非夜间）下的颜色覆盖。values/ 里的同名颜色 = 暗色，本文件只放要变的。
+     名字里的 _dark 是历史命名（原只有暗色），这里刻意沿用，好让 themes.xml / drawable 一行不改就切换。
+     ⚠️ 与 ColorScheme.kt 的 LIGHT 色表必须同步（同一份数据由 tools/appearance/gen_light_mode.py 生成）。
+     ⚠️ 不要在这里覆盖 terminal_bgblack / bgblack：冷启动窗口由系统按系统 uiMode 绘制，覆盖会让暗色用户也闪白屏。 -->
+<resources>
+    <!-- B站粉 -->
+    <color name="background_dark">#FFF7F2F4</color>
+    <color name="surface_dark">#FFFFFFFF</color>
+    <color name="card_dark">#FFFFFFFF</color>
+    <color name="card_dark_secondary">#FFFCEEF3</color>
+    <color name="text_primary_dark">#FF2B2026</color>
+    <color name="text_secondary_dark">#FF6B5862</color>
+    <color name="text_tertiary_dark">#FF9A8892</color>
+    <color name="divider_dark">#FFF0E4E9</color>
+    <color name="on_surface_bili">#FF2B2026</color>
+    <!-- 知乎蓝 -->
+    <color name="zhihu_background_dark">#FFF1F5FA</color>
+    <color name="zhihu_surface_dark">#FFFFFFFF</color>
+    <color name="zhihu_card_dark">#FFFFFFFF</color>
+    <color name="zhihu_card_dark_secondary">#FFEAF2FD</color>
+    <color name="zhihu_text_primary_dark">#FF15202E</color>
+    <color name="zhihu_text_secondary_dark">#FF4F5F73</color>
+    <color name="zhihu_text_tertiary_dark">#FF8090A3</color>
+    <color name="zhihu_divider_dark">#FFE2EAF4</color>
+    <color name="on_surface_zhihu">#FF15202E</color>
+    <!-- 爱奇艺绿（主色压深，白底对比度） -->
+    <color name="iqiyi_background_dark">#FFF0F7F3</color>
+    <color name="iqiyi_surface_dark">#FFFFFFFF</color>
+    <color name="iqiyi_card_dark">#FFFFFFFF</color>
+    <color name="iqiyi_card_dark_secondary">#FFE4F4EA</color>
+    <color name="iqiyi_text_primary_dark">#FF13241A</color>
+    <color name="iqiyi_text_secondary_dark">#FF4A6656</color>
+    <color name="iqiyi_text_tertiary_dark">#FF7C9686</color>
+    <color name="iqiyi_divider_dark">#FFDEEEE4</color>
+    <color name="on_surface_iqiyi">#FF13241A</color>
+    <color name="iqiyi_brand">#FF00A84E</color>
+    <color name="iqiyi_deep">#FF008A3F</color>
+    <color name="iqiyi_accent">#FF00C759</color>
+    <color name="iqiyi_light">#FF33D47A</color>
+    <!-- 紫色空灵 -->
+    <color name="purple_fantasy_background_dark">#FFF5F1FA</color>
+    <color name="purple_fantasy_surface_dark">#FFFFFFFF</color>
+    <color name="purple_fantasy_card_dark">#FFFFFFFF</color>
+    <color name="purple_fantasy_card_dark_secondary">#FFEFE6F8</color>
+    <color name="purple_fantasy_text_primary_dark">#FF231A2E</color>
+    <color name="purple_fantasy_text_secondary_dark">#FF5D4D70</color>
+    <color name="purple_fantasy_text_tertiary_dark">#FF8E80A0</color>
+    <color name="purple_fantasy_divider_dark">#FFEAE1F4</color>
+    <color name="on_surface_purple">#FF231A2E</color>
+    <!-- 五彩斑斓（黄色强调色换琥珀） -->
+    <color name="rainbow_background_dark">#FFFFF6F1</color>
+    <color name="rainbow_surface_dark">#FFFFFFFF</color>
+    <color name="rainbow_card_dark">#FFFFFFFF</color>
+    <color name="rainbow_card_dark_secondary">#FFFFEEE5</color>
+    <color name="rainbow_text_primary_dark">#FF2D1D1D</color>
+    <color name="rainbow_text_secondary_dark">#FF6D5454</color>
+    <color name="rainbow_text_tertiary_dark">#FFA08787</color>
+    <color name="rainbow_divider_dark">#FFF7E5DE</color>
+    <color name="on_surface_rainbow">#FF2D1D1D</color>
+    <color name="rainbow_brand">#FFF25C5C</color>
+    <color name="rainbow_deep">#FFC94444</color>
+    <color name="rainbow_accent">#FFE8A100</color>
+    <!-- 经典灰（主色压深） -->
+    <color name="classic_gray_background_dark">#FFF1F1F5</color>
+    <color name="classic_gray_surface_dark">#FFFFFFFF</color>
+    <color name="classic_gray_card_dark">#FFFFFFFF</color>
+    <color name="classic_gray_card_dark_secondary">#FFEAEAF2</color>
+    <color name="classic_gray_text_primary_dark">#FF1E1E2A</color>
+    <color name="classic_gray_text_secondary_dark">#FF595968</color>
+    <color name="classic_gray_text_tertiary_dark">#FF8A8A9A</color>
+    <color name="classic_gray_divider_dark">#FFE6E6EE</color>
+    <color name="on_surface_classic_gray">#FF1E1E2A</color>
+    <color name="classic_gray_brand">#FF6E6EE6</color>
+    <color name="classic_gray_deep">#FF5555C8</color>
+    <color name="classic_gray_accent">#FF8787FB</color>
+    <color name="classic_gray_light">#FFA3A3FD</color>
+    <!-- 经典终端·纸质终端 -->
+    <color name="terminal_window_bg">#FFF2EDEE</color>
+    <color name="terminal_textwhite">#FF2A2326</color>
+    <color name="terminal_text_primary">#FF2A2326</color>
+    <color name="terminal_text_secondary">#FF6B6266</color>
+    <color name="terminal_text_tertiary">#FF958B90</color>
+    <color name="terminal_card_bg">#CCFFFFFF</color>
+    <color name="terminal_surface">#FFFFFFFF</color>
+    <color name="terminal_color_ripple">#26000000</color>
+    <color name="terminal_text_transparent">#61000000</color>
+    <color name="terminal_divider">#26000000</color>
+    <color name="terminal_link">#FF1E88C8</color>
+    <color name="on_surface_terminal">#FF2A2326</color>
+    <!-- 通用（图标 / 分隔线 / 进度槽 / 叠加层） -->
+    <color name="text_primary">#FF3A3438</color>
+    <color name="text_secondary">#FF6B5F66</color>
+    <color name="list_divider">#1F000000</color>
+    <color name="surface_darker">#FFE6E2E5</color>
+    <color name="text_transparent">#30000000</color>
+    <color name="hint_on_bg">#61000000</color>
+    <color name="overlay_fill_weak">#0A000000</color>
+    <color name="overlay_stroke_weak">#26000000</color>
+    <color name="overlay_text_weak">#8A000000</color>
+</resources>

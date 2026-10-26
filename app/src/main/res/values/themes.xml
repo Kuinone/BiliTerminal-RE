@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:tools="http://schemas.android.com/tools">
 
-    <style name="Theme.BiliClient" parent="Theme.MaterialComponents.NoActionBar">
+    <style name="Theme.BiliClient" parent="Base.Theme.BiliTerminal">
         <item name="android:windowFullscreen">true</item>
         <item name="android:windowBackground">@color/background_dark</item>
         <item name="statusBarBackground">@color/pink_brand</item>
@@ -97,7 +97,7 @@
     <!-- 知乎蓝主题 (Zhihu Blue Theme) -->
     <!-- =========================================================== -->
 
-    <style name="Theme.ZhihuBlue" parent="Theme.MaterialComponents.NoActionBar">
+    <style name="Theme.ZhihuBlue" parent="Base.Theme.BiliTerminal">
         <item name="android:windowFullscreen">true</item>
         <item name="android:windowBackground">@color/zhihu_background_dark</item>
         <item name="statusBarBackground">@color/zhihu_brand</item>
@@ -216,7 +216,7 @@
     <!-- 爱奇艺绿主题 (IQIYI Green Theme) -->
     <!-- =========================================================== -->
 
-    <style name="Theme.IQIYIGreen" parent="Theme.MaterialComponents.NoActionBar">
+    <style name="Theme.IQIYIGreen" parent="Base.Theme.BiliTerminal">
         <item name="android:windowFullscreen">true</item>
         <item name="android:windowBackground">@color/iqiyi_background_dark</item>
         <item name="statusBarBackground">@color/iqiyi_brand</item>
@@ -335,7 +335,7 @@
     <!-- 紫色空灵主题 (Purple Fantasy Theme) -->
     <!-- =========================================================== -->
 
-    <style name="Theme.PurpleFantasy" parent="Theme.MaterialComponents.NoActionBar">
+    <style name="Theme.PurpleFantasy" parent="Base.Theme.BiliTerminal">
         <item name="android:windowFullscreen">true</item>
         <item name="android:windowBackground">@color/purple_fantasy_background_dark</item>
         <item name="statusBarBackground">@color/purple_fantasy_brand</item>
@@ -454,7 +454,7 @@
     <!-- 五彩斑斓主题 (Rainbow Fantasy Theme) -->
     <!-- =========================================================== -->
 
-    <style name="Theme.RainbowFantasy" parent="Theme.MaterialComponents.NoActionBar">
+    <style name="Theme.RainbowFantasy" parent="Base.Theme.BiliTerminal">
         <item name="android:windowFullscreen">true</item>
         <item name="android:windowBackground">@color/rainbow_background_dark</item>
         <item name="statusBarBackground">@color/rainbow_brand</item>
@@ -573,7 +573,7 @@
     <!-- 经典灰主题 (Classic Gray Theme) -->
     <!-- =========================================================== -->
 
-    <style name="Theme.ClassicGray" parent="Theme.MaterialComponents.NoActionBar">
+    <style name="Theme.ClassicGray" parent="Base.Theme.BiliTerminal">
         <item name="android:windowFullscreen">true</item>
         <item name="android:windowBackground">@color/classic_gray_background_dark</item>
         <item name="statusBarBackground">@color/classic_gray_brand</item>
@@ -694,9 +694,9 @@
     <!-- #ebe0e2 暖白字 + #cc262626 半透明 6dp 卡片                     -->
     <!-- =========================================================== -->
 
-    <style name="Theme.ClassicTerminal" parent="Theme.MaterialComponents.NoActionBar">
+    <style name="Theme.ClassicTerminal" parent="Base.Theme.BiliTerminal">
         <item name="android:windowFullscreen">true</item>
-        <item name="android:windowBackground">@color/terminal_bgblack</item>
+        <item name="android:windowBackground">@color/terminal_window_bg</item>
         <item name="statusBarBackground">@color/terminal_pink</item>
         <item name="android:colorForeground">@color/terminal_textwhite</item>
         <item name="colorOnPrimary">@color/text_on_primary</item>
@@ -708,7 +708,7 @@
         <!-- 其余 6 套主题都有 colorSurface / android:colorBackground，默认主题此前缺这 4 项，
              Material 控件（卡片、弹窗、选中态）会回退到 MaterialComponents 默认值，与本主题不符 -->
         <item name="colorSurface">@color/terminal_surface</item>
-        <item name="android:colorBackground">@color/terminal_bgblack</item>
+        <item name="android:colorBackground">@color/terminal_window_bg</item>
         <item name="alertDialogTheme">@style/ThemeOverlay.ClassicTerminal.Dialog</item>
         <item name="colorControlActivated">@color/terminal_pink</item>
         <item name="colorControlNormal">@color/terminal_color_ripple</item>

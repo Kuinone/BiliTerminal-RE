@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 亮 / 暗两套模式都要用到、原先写死在布局里的颜色。本文件 = 暗色取值（与原字面量完全一致），
+     亮色取值在 values-notnight/colors_light.xml。 -->
+<resources>
+    <!-- 经典终端主题的窗口底色（原直接用 terminal_bgblack；闪屏仍用 terminal_bgblack，保持冷启动纯黑） -->
+    <color name="terminal_window_bg">#000000</color>
+    <!-- 深色底上的输入提示文字（原 #80ffffff） -->
+    <color name="hint_on_bg">#80FFFFFF</color>
+    <!-- 投票卡片：底 / 描边 / 次要文字（原 #1AFFFFFF / #33FFFFFF / #88FFFFFF） -->
+    <color name="overlay_fill_weak">#1AFFFFFF</color>
+    <color name="overlay_stroke_weak">#33FFFFFF</color>
+    <color name="overlay_text_weak">#88FFFFFF</color>
+    <!-- 压在视频 / 图片上的图标与文字：两种模式都必须是浅色（不进 notnight 覆盖） -->
+    <color name="overlay_icon">#EBE0E2</color>
+    <color name="overlay_text">#FFFFFF</color>
+</resources>

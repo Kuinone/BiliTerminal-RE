@@ -16,7 +16,7 @@
         android:id="@+id/top"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:background="@color/bgblack">
+        android:background="?android:attr/colorBackground">
 
         <TextView
             android:id="@+id/pageName"
@@ -65,7 +65,7 @@
             android:minHeight="38dp"
             android:paddingHorizontal="6dp"
             android:paddingVertical="6dp"
-            android:textColorHint="#80ffffff"
+            android:textColorHint="@color/hint_on_bg"
             android:textSize="13sp"
             android:inputType="textMultiLine" />
 

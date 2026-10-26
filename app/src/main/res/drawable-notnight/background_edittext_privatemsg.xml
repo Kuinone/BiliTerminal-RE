@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 亮色模式版本：原 #262626 系深灰底在浅色页面上是一块黑斑，改为极淡的黑色叠加（自动吸收主题底色）。 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <solid android:color="#0A000000" />
+    <stroke
+        android:width="2dp"
+        android:color="#24000000" />
+    <corners android:radius="@dimen/card_round" />
+</shape>
