@@ -1,6 +1,11 @@
 package com.RobinNotBad.BiliClient.ui.appearance
 
 import android.app.Activity
+import android.content.Context
+import android.graphics.drawable.Drawable
+import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.StateListDrawable
+import androidx.core.content.ContextCompat
 import com.RobinNotBad.BiliClient.R
 import com.RobinNotBad.BiliClient.util.SettingsKeys
 import com.RobinNotBad.BiliClient.util.SharedPreferencesUtil
@@ -49,5 +54,93 @@ object GlassStyle {
     fun applyTo(activity: Activity) {
         if (!isEnabled()) return
         activity.theme.applyStyle(overlayResId(ColorScheme.getCurrentThemeName()), true)
+    }
+
+    // ==================== 代码侧的玻璃背景 ====================
+    //
+    // 覆盖层只管得到「走 materialCardViewStyle / materialButtonStyle 的控件」。下面这些地方的背景是
+    // 写死的 shape drawable 或在代码里 setBackgroundColor，覆盖层够不着，只能在设置背景时换成玻璃版：
+    // - 播放器里的分P / 字幕选择、互动视频选项（PlayerActivity 不继承 BaseActivity，本就不叠覆盖层）
+    // - 评论区的楼中楼预览框、「UP主觉得很赞」标签
+    // 色值与 themes_glass.xml 同源（colors_glass.xml），**不另抄一份**。
+
+    /** 一套主题的玻璃色（已解析成 ARGB）。 */
+    class Palette(val card: Int, val stroke: Int, val fill: Int, val fillStroke: Int)
+
+    /** 主题 key → [card, stroke, fill, fillStroke] 的颜色资源 id（纯函数）。 */
+    fun paletteRes(themeKey: String): IntArray = when (themeKey) {
+        ColorScheme.THEME_ZHIHU_BLUE -> intArrayOf(
+            R.color.glass_card_zhihu, R.color.glass_stroke_zhihu,
+            R.color.glass_btn_bg_fill_zhihu, R.color.glass_btn_stroke_zhihu
+        )
+        ColorScheme.THEME_IQIYI_GREEN -> intArrayOf(
+            R.color.glass_card_iqiyi, R.color.glass_stroke_iqiyi,
+            R.color.glass_btn_bg_fill_iqiyi, R.color.glass_btn_stroke_iqiyi
+        )
+        ColorScheme.THEME_PURPLE_FANTASY -> intArrayOf(
+            R.color.glass_card_purple_fantasy, R.color.glass_stroke_purple_fantasy,
+            R.color.glass_btn_bg_fill_purple_fantasy, R.color.glass_btn_stroke_purple_fantasy
+        )
+        ColorScheme.THEME_RAINBOW_FANTASY -> intArrayOf(
+            R.color.glass_card_rainbow, R.color.glass_stroke_rainbow,
+            R.color.glass_btn_bg_fill_rainbow, R.color.glass_btn_stroke_rainbow
+        )
+        ColorScheme.THEME_CLASSIC_GRAY -> intArrayOf(
+            R.color.glass_card_classic_gray, R.color.glass_stroke_classic_gray,
+            R.color.glass_btn_bg_fill_classic_gray, R.color.glass_btn_stroke_classic_gray
+        )
+        ColorScheme.THEME_CLASSIC_TERMINAL -> intArrayOf(
+            R.color.glass_card_terminal, R.color.glass_stroke_terminal,
+            R.color.glass_btn_bg_fill_terminal, R.color.glass_btn_stroke_terminal
+        )
+        else -> intArrayOf(
+            R.color.glass_card_pink, R.color.glass_stroke_pink,
+            R.color.glass_btn_bg_fill_pink, R.color.glass_btn_stroke_pink
+        )
+    }
+
+    fun palette(context: Context): Palette {
+        val ids = paletteRes(ColorScheme.getCurrentThemeName())
+        return Palette(
+            ContextCompat.getColor(context, ids[0]),
+            ContextCompat.getColor(context, ids[1]),
+            ContextCompat.getColor(context, ids[2]),
+            ContextCompat.getColor(context, ids[3])
+        )
+    }
+
+    private fun box(fill: Int, stroke: Int, radiusPx: Float, strokePx: Int) = GradientDrawable().apply {
+        shape = GradientDrawable.RECTANGLE
+        cornerRadius = radiusPx
+        setColor(fill)
+        setStroke(strokePx, stroke)
+    }
+
+    private fun strokePx(context: Context) =
+        maxOf(1, (context.resources.displayMetrics.density + 0.5f).toInt())
+
+    /** 卡片圆角的像素值（与 XML 里的 `@dimen/card_round` 一致）。 */
+    fun cornerPx(context: Context): Float = context.resources.getDimension(R.dimen.card_round)
+
+    /**
+     * 不可点的玻璃面板：卡片色 + 高亮色细描边（楼中楼预览框、「UP主觉得很赞」标签）。
+     */
+    fun panelBackground(context: Context, radiusPx: Float = cornerPx(context)): Drawable {
+        val p = palette(context)
+        return box(p.card, p.stroke, radiusPx, strokePx(context))
+    }
+
+    /**
+     * 可点的玻璃选项：平时 = 面板样式，按下 / [selected] = 主色淡底 + 高亮色描边（与玻璃按钮一致）。
+     * 每次调用新建，只在绑定时用。
+     */
+    fun choiceBackground(context: Context, selected: Boolean, radiusPx: Float = cornerPx(context)): Drawable {
+        val p = palette(context)
+        val sw = strokePx(context)
+        val active = box(p.fill, p.fillStroke, radiusPx, sw)
+        return StateListDrawable().apply {
+            addState(intArrayOf(android.R.attr.state_pressed), active)
+            addState(intArrayOf(), if (selected) box(p.fill, p.fillStroke, radiusPx, sw) else box(p.card, p.stroke, radiusPx, sw))
+        }
     }
 }

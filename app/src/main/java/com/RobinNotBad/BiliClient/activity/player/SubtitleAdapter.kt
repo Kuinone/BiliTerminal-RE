@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.activity.player
 
+import com.RobinNotBad.BiliClient.ui.appearance.ColorScheme
+import com.RobinNotBad.BiliClient.ui.appearance.GlassStyle
 import android.annotation.SuppressLint
 import android.content.Context
 import android.view.LayoutInflater
@@ -61,7 +63,10 @@ class SubtitleAdapter : RecyclerView.Adapter<SubtitleAdapter.Holder>() {
             if (currentIndex < 0 || list == null || currentIndex >= list!!.size)
                 return
             button.text = list!![currentIndex].lang
-            if (isSelected) {
+            if (GlassStyle.isEnabled()) {
+                button.setTextColor(if (isSelected) ColorScheme.SECONDARY else ColorScheme.TEXT_PRIMARY)
+                button.background = GlassStyle.choiceBackground(button.context, isSelected)
+            } else if (isSelected) {
                 button.setTextColor(com.RobinNotBad.BiliClient.ui.appearance.ColorScheme.getOnPrimary(context!!))
                 button.setBackgroundColor(com.RobinNotBad.BiliClient.ui.appearance.ColorScheme.getPrimary(context!!))
             } else {

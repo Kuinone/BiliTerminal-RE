@@ -1,5 +1,6 @@
 package com.RobinNotBad.BiliClient.activity.player
 
+import com.RobinNotBad.BiliClient.ui.appearance.GlassStyle
 import android.annotation.SuppressLint
 import android.view.LayoutInflater
 import android.view.View
@@ -57,7 +58,11 @@ class PageSelectorAdapter : RecyclerView.Adapter<PageSelectorAdapter.Holder>() {
 
             pageName.text = "P" + (currentIndex + 1) + " " + pagenames!![currentIndex]
 
-            if (isSelected) {
+            if (GlassStyle.isEnabled()) {
+                // 玻璃质感：选中 = 主色淡底 + 高亮描边；选中文字用高亮色（深主色压在半透明底上对比度不足）
+                pageName.setTextColor(if (isSelected) ColorScheme.SECONDARY else ColorScheme.TEXT_PRIMARY)
+                itemView.background = GlassStyle.choiceBackground(itemView.context, isSelected)
+            } else if (isSelected) {
                 pageName.setTextColor(ColorScheme.PRIMARY)
                 itemView.setBackgroundResource(R.drawable.background_card)
             } else {

@@ -1532,7 +1532,7 @@ setOnLoadMoreListener { page -> load(page) } // 4. page 已由基类自增，别
 | `CornerStyle.kt` | 卡片圆角 | `ui_corner_radius` | `square`（默认）/ `rounded` |
 | `FontStyle.kt` | 自定义字体（用户从文件管理器选字体文件） | `ui_font_path` | 有 / 无（默认无） |
 | `AmbientGlow.kt` | 弥散光晕：7 套主题各一份 `Spec`（顶部底色 + 1～2 团径向光晕），`ColorScheme.applyWindowTheme` 开启时把它设为**窗口背景**、content 背景置空；关闭时走原纯色路径，零开销。无 blur / 噪点层，draw 内零分配 | `ui_ambient_glow` | 开 / 关（默认关） |
-| `GlassStyle.kt` | 玻璃质感：7 份 `GlassOverlay.<X>`（`values/themes_glass.xml` + `colors_glass.xml`）只替换 `materialCardViewStyle` / `materialButtonStyle` 两个**具体样式引用**，`BaseActivity.onCreate` 在 `super.onCreate` 后 `theme.applyStyle(force=true)`；关闭零开销。卡片 / 按钮 elevation 必须为 0（半透明底下阴影会透出）。布局里内联写死底色的选择卡片 / 次要按钮改读 `?attr/choiceCardColor` / `?attr/secondaryButtonTint`（`values/attrs_glass.xml`，主主题默认值 = colorSurface）——**新增会 inflate 布局的主题必须定义这两个属性，否则 inflate 崩** | `ui_glass_components` | 开 / 关（默认关） |
+| `GlassStyle.kt` | 玻璃质感：7 份 `GlassOverlay.<X>`（`values/themes_glass.xml` + `colors_glass.xml`）只替换 `materialCardViewStyle` / `materialButtonStyle` 两个**具体样式引用**，`BaseActivity.onCreate` 在 `super.onCreate` 后 `theme.applyStyle(force=true)`；关闭零开销。卡片 / 按钮 elevation 必须为 0（半透明底下阴影会透出）。布局里内联写死底色的选择卡片 / 次要按钮改读 `?attr/choiceCardColor` / `?attr/secondaryButtonTint`（`values/attrs_glass.xml`，主主题默认值 = colorSurface）——**新增会 inflate 布局的主题必须定义这两个属性，否则 inflate 崩**。覆盖层够不着的写死 shape / 代码设色背景（播放器分P / 字幕 / 互动选项、楼中楼预览框、「UP主觉得很赞」）走 `GlassStyle.choiceBackground` / `panelBackground`，色值同源 `colors_glass.xml` | `ui_glass_components` | 开 / 关（默认关） |
 | `ThemeTint.kt` | 给 XML 里只能写死颜色的 drawable（API 19 不能用 `?attr/`）在设置图片时按 `ColorScheme` 着色：点赞/投币/收藏激活态、私信发送按钮、投票选中框等 | — | — |
 | `AppearanceApplier.kt` | 把外观（自定义字体等）落到视图树上：`applyToContentView`，由 `BaseActivity.kt:388` 调用 | — | — |
 
@@ -1756,6 +1756,7 @@ TTF/OTF/TTC，应用把它**拷进私有目录**（`filesDir/custom_font/custom_
 - 圆屏适配（`BaseActivity.kt:143-181`）与 `RotaryRecyclerView` / `RotaryScrollView` 的滚轮输入支持 —— 三件套的差异是刻意保留的（见 §8.4b 末注）。
 - `ThemeManager` 集中配色的**设计意图**：7 套主题 41 个字段的抽象是对的，问题只是「另有两套并行表」（见 §8.7）。
 - 视频卡片的 `MaterialCardView` + 主题 ripple 组合 —— 这是「有反馈」的那一半，是标准；另一半应向它对齐，**不是反过来**。
+- 评论区「UP」身份标签恒定红底 `#F44336`（`ReplyAdapter.UP_BADGE_COLOR`）—— 产品要求的刻意硬编码，不跟主题。
 - 弹幕恒定白字 + 黑阴影（`DanmakuManager.kt:157,168`）—— 不受主题控制是**刻意的可读性选择**，不要「顺手主题化」。
 
 **明确「不做」的：裸 `Activity` 收编**（`PlayerActivity` / `ImageViewerActivity` / `SplashActivity` / `GetIntentActivity`）。`PlayerActivity.kt:102` 是 `class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener`，**不继承 `BaseActivity`**，是全应用唯一这样的核心页。理由：播放器保持黑色系统栏是**有意为之**（继承 `BaseActivity` 会把顶栏与主题窗背景带进来），且该文件 3000+ 行，收益不抵回归风险。26.09.10 视觉报告已评估过一次并记为不做，别当漏改来「顺手统一」。其余视觉技术债（顶栏 45 份手抄、无障碍缺口、播放器热区、自适应图标）见 `docs/review/fix-progress.md` §2.4。
