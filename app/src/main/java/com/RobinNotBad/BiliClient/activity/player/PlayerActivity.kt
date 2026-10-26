@@ -298,6 +298,15 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
          * 否则连续两段（片头紧接着片尾）时后一段会被静默期吃掉。
          */
         private const val SKIP_QUIET_AFTER_SEEK_MS = 600L
+
+        /**
+         * 字幕底边距（dp）：控制栏「显示」时取 [SUBTITLE_MARGIN_BOTTOM_CONTROLBAR_DP]，
+         * 要让字幕浮在底部控制栏之上（＝控制栏 59dp + 进度文字约 17dp，与 `activity_player.xml`
+         * 里字幕的初始 76dp 对齐）；控制栏「收起/锁定」时底下没有控制栏占位，取较小的
+         * [SUBTITLE_MARGIN_BOTTOM_COLLAPSED_DP]（仅留进度文字那段 17dp），字幕随之下沉贴近屏幕底部。
+         */
+        private const val SUBTITLE_MARGIN_BOTTOM_CONTROLBAR_DP = 76f
+        private const val SUBTITLE_MARGIN_BOTTOM_COLLAPSED_DP = 17f
     }
 
     @Volatile // 被 PlaybackService 定时线程读（serviceDurationMs）
@@ -1166,7 +1175,20 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
         // 锁定按钮在 control_layout 之外（锁定时要把整条控制栏一起藏掉），显隐要跟控制栏同步
         lock_btn.visibility = View.VISIBLE
 
+        // 控制栏浮现，字幕要抬高到控制栏之上，否则会被控制栏盖住
+        setSubtitleBottomMargin(SUBTITLE_MARGIN_BOTTOM_CONTROLBAR_DP)
+
         autohideReset()
+    }
+
+    /**
+     * 字幕在 control_layout 之外（锁定时不被整条控制栏一起置 GONE），底边距不会随控制栏显隐自动变化，
+     * 所以这里手动调：控制栏收起后底下腾出空间，字幕要下沉，不能继续悬在控制栏原来的高度。
+     */
+    private fun setSubtitleBottomMargin(marginDp: Float) {
+        val lp = text_subtitle.layoutParams as RelativeLayout.LayoutParams
+        lp.bottomMargin = ToolsUtil.dp2px(marginDp)
+        text_subtitle.layoutParams = lp
     }
 
     private val progressbarEnable = Runnable { seekbar_progress.isEnabled = true }
@@ -1189,6 +1211,8 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
             btn_debug.visibility = View.GONE
         }
         lock_btn.visibility = View.GONE
+        // 控制栏收起后底下没了控制栏占位，字幕下沉到贴近屏幕底部；锁定态同样走这里，字幕保持可见且落在低位
+        setSubtitleBottomMargin(SUBTITLE_MARGIN_BOTTOM_COLLAPSED_DP)
         if (screen_round) {
             text_progress.gravity = Gravity.CENTER
             text_progress.setPadding(0, 0, 0, ToolsUtil.dp2px(8f))
@@ -1280,6 +1304,8 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
                 lock_btn.visibility = View.GONE
                 // 倍速文字现在挂在左侧列里，不随 control_layout 一起隐藏，得单独收掉
                 text_speed.visibility = View.GONE
+                // 锁定时控制栏整体 GONE 而字幕仍显示，底下没了控制栏占位，字幕要下沉到低位
+                setSubtitleBottomMargin(SUBTITLE_MARGIN_BOTTOM_COLLAPSED_DP)
                 lock_btn.setImageResource(R.drawable.icon_player_lock)
                 lock_btn.contentDescription = getString(R.string.desc_player_lock_unlocked)
             }
@@ -1289,6 +1315,8 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
                 layout_control.visibility = View.GONE
                 lock_btn.visibility = View.VISIBLE
                 text_speed.visibility = View.GONE
+                // 锁定时控制栏整体 GONE 而字幕仍显示，底下没了控制栏占位，字幕要下沉到低位
+                setSubtitleBottomMargin(SUBTITLE_MARGIN_BOTTOM_COLLAPSED_DP)
                 lock_btn.setImageResource(R.drawable.icon_player_lock)
                 lock_btn.contentDescription = getString(R.string.desc_player_lock_unlocked)
             }
