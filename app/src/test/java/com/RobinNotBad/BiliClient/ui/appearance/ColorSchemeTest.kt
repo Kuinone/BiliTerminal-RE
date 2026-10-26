@@ -280,20 +280,23 @@ class ColorSchemeTest {
     }
 
     /**
-     * 步骤 1 的性能目标：色表只在首次读取时碰一次 SharedPreferences。
+     * 步骤 1 的性能目标：色表只在首次读取时碰 SharedPreferences。
      *
      * 手表上列表滚动时，一个 item 的绑定就要调多次色表 getter（36 个 getter 全走 getCurrentTheme）。
-     * 此前每次都会重新读一遍 SharedPreferences 再跑一遍 `when`；本测试把「读一次就够」钉死，
+     * 此前每次都会重新读一遍 SharedPreferences 再跑一遍 `when`；本测试把「首次读完就不再读」钉死，
      * 防止将来有人把缓存改回直读而不自知。
+     *
+     * 首次读取是**两次**字符串读：主题 key（`theme_selector`）+ 颜色模式 key（`ui_color_mode`，
+     * 26.10.26 暗色 / 亮色模式新增）。两者都只在缓存未命中时读，命中后一次都不读——后半段断言才是本测试的核心。
      */
     @Test
     fun colorGetters_doNotTouchSharedPreferencesAfterFirstRead() {
         AppearanceManager.setTheme(ColorScheme.THEME_ZHIHU_BLUE)
 
-        // 第一次 getter 触发一次真实读取，之后应命中缓存
+        // 第一次 getter 触发真实读取（主题 + 颜色模式各一次），之后应命中缓存
         ColorScheme.PRIMARY
         val readsAfterWarmUp = fakePrefs.stringReadCount
-        assertEquals("首次读取应当恰好读一次 SharedPreferences", 1, readsAfterWarmUp)
+        assertEquals("首次读取应当恰好读两次 SharedPreferences（主题 + 颜色模式）", 2, readsAfterWarmUp)
 
         repeat(100) {
             ColorScheme.PRIMARY
