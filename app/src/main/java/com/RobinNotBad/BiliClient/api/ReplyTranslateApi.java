@@ -66,6 +66,28 @@ public class ReplyTranslateApi {
      */
     public static final int MAX_BATCH_RPIDS = 20;
 
+    /**
+     * 评论区「文A」翻译入口是否对用户可见。
+     *
+     * <p>暂时关闭：接口对「外语评论 → 中文」这条链路没有找到样本做过真机验证，先把入口藏起来，
+     * 实现、单测与文档全部保留；验证通过后把这里改回 {@code true} 就恢复显示，不用再动 UI 代码。
+     *
+     * <p>入口关掉时 UI 侧不显示按钮、不显示译文区，也不会挂点击事件，用户看不到任何翻译痕迹。
+     */
+    public static final boolean UI_ENABLED = false;
+
+    /**
+     * 评论区译文的目标语言：简体中文（{@code zh}）。
+     *
+     * <p>App 只有中文界面（{@code resConfigs "zh"}），所以译文固定成中文、<b>不跟随系统语言</b>：
+     * 否则系统语言是英文的手表会把中文评论翻成英文，与界面语言不一致。
+     *
+     * <p>取的是文档 §4.3 实测过的 {@code language=zh} 最小头（base64 {@code CgQKAnpo}）。
+     * 服务端拿它跟源语言比较：源评论已经是中文时返回空译文——这是「无需翻译」而不是错误，
+     * 见类注释里对空 map 的说明。
+     */
+    public static final Locale TARGET_LOCALE = Locale.SIMPLIFIED_CHINESE;
+
     /** 响应体大小上限：翻译响应很小（≤20 条评论），超过这个量级说明拿到的不是预期数据。 */
     private static final int MAX_RESPONSE_BYTES = 8 * 1024 * 1024;
 

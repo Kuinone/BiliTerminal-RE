@@ -203,6 +203,18 @@ class ReplyTranslateApiTest {
     }
 
     @Test
+    fun buildLocaleHeader_targetLocaleIsSimplifiedChinese() {
+        // 产品决定：UI 只能把评论译成中文，不跟随系统语言（ReplyAdapter 用 TARGET_LOCALE 而不是系统 Locale）。
+        // 这条测试把该决定钉死，防止以后又不小心改回 Locale.getDefault()。
+        assertEquals("目标语言必须是简体中文", "zh", ReplyTranslateApi.TARGET_LOCALE.language)
+        assertEquals(
+            "TARGET_LOCALE 编出来的头必须是文档实测过的 zh 值",
+            "CgQKAnpo",
+            ReplyTranslateApi.buildLocaleHeader(ReplyTranslateApi.TARGET_LOCALE)
+        )
+    }
+
+    @Test
     fun buildLocaleHeader_handlesNonTwoLetterLanguage() {
         // 主流程只会走到 2 字母语言（en/ja/zh），但长度字段必须按 protobuf 规则通用处理：
         // fil 的编码是 0a 05 | 0a 03 66 69 6c（Locale 长度 5、LocaleIds 长度 3）。

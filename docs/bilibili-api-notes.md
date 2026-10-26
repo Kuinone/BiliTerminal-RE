@@ -191,5 +191,7 @@
 - **错误形态**：HTTP 仍是 200。成功时 `grpc-status: 0`/`bili-status-code: 0` 在 trailers；`trailers-only` 业务错误时这两个头直接出现在响应头里（如 `bili-status-code=12002`「当前页面评论功能已关闭」）。OkHttp 4.12 的 `Response.trailers()` 可用，但保险做法是**先查响应头、body 读尽后再 best-effort 查 trailers**。
 - **空 map 不是错误**：评论已经是目标语言、或服务端判定不可译时都会返回空 map；`reply_control.translation_switch`（`ReplyInfo` field 37）只有 0/1/2/3 四态，且翻译成功时恒为 3（SHOW_ORIGIN），没有区分度。
 - **无法预判能否翻译**：REST `/x/v2/reply` 返回的 `translation_switch` 恒为 1（UNSUPPORTED 语义之外的占位），只有带 locale 头的 gRPC `MainList` 才会直接带译文。本项目列表走 REST，所以只能**点按钮时再调** `TranslateReply`。
-- **本仓库的取舍**：按条懒翻译（不预取整页、不批量）、目标语言 = `Locale.getDefault().getLanguage()`（跟随系统语言）、不重试、失败只提示一次「翻译失败，请稍后再试」。
+- **本仓库的取舍**：按条懒翻译（不预取整页、不批量）、目标语言**固定为简体中文 `zh`**（`ReplyTranslateApi.TARGET_LOCALE`；App 只有中文界面，不跟随系统语言）、不重试、失败只提示一次「翻译失败，请稍后再试」。
+- **实测边界**：`zh` 目标头只验证过「请求被接受、中文源评论返回空译文」（源=目标），**外语评论翻成中文尚未实测**（当时没有可用的外语评论样本）；en/ja 目标头有真实译文。
+- **当前 UI 状态**：入口暂时隐藏（`ReplyTranslateApi.UI_ENABLED = false`，26.10.26），接口实现与单测保留；恢复显示只需把开关改回 `true`。
 - **已知限制**：`grpc.biliapi.net` 只支持 HTTP/2；minSdk 19/20 的旧设备没有 ALPN，OkHttp 协商不出 h2 会直接抛 `IOException`（不会自动降级），UI 侧按普通网络失败提示。

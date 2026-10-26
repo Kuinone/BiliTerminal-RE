@@ -1370,13 +1370,14 @@ CenterThreadPool.supplyAsyncWithLiveData { fetch...().getOrThrow() }
 
 ### 7.55 评论区翻译：gRPC `TranslateReply` 的接入约束（26.10.26 新增）
 
+- **当前状态：入口隐藏**：`ReplyTranslateApi.UI_ENABLED = false`，`ReplyAdapter.bindTranslation` 在开关关闭时把 `item_reply_translate` 与 `replyTranslation` 置 `GONE` 并清空点击事件。实现、单测、文档全部保留；外语评论→中文实测通过后改回 `true` 即恢复显示，不需要改 UI 代码。
 - **API 类**：`api/ReplyTranslateApi.java`（新建，不走命名空间里的 REST 约定）。请求 `POST https://grpc.biliapi.net/bilibili.main.community.reply.v1.Reply/TranslateReply`，`content-type: application/grpc`，body 是「1 字节 `0x00` + 4 字节大端长度 + protobuf」，即 5 字节头。
-- **目标语言靠头传**：`x-bili-locale-bin: base64(Locale{ c_locale=1 { language=1; script=2; region=3 } })`。本项目只写语言（`Locale.getDefault().getLanguage()`），实测 en=`CgQKAmVu`、ja=`CgQKAmph`、zh=`CgQKAnpo`；**不发这个头服务端必然不返回译文**。
+- **目标语言靠头传**：`x-bili-locale-bin: base64(Locale{ c_locale=1 { language=1; script=2; region=3 } })`。本项目只写语言，且**固定为简体中文**（`ReplyTranslateApi.TARGET_LOCALE` → `zh`，不跟随系统语言），实测 en=`CgQKAmVu`、ja=`CgQKAmph`、zh=`CgQKAnpo`；**不发这个头服务端必然不返回译文**。
 - **成功判据只看 `translated_content`**（`ReplyInfo` field 17 → `Content.message` field 1 非空）：空 map 不是错误（评论已经是目标语言 / 不可译都会这样），`reply_control.translation_switch` 在翻译成功时恒为 3，没有区分度；REST `/x/v2/reply` 返回的 `translation_switch` 恒为 1，**因此列表页无法预判某条评论能不能翻，只能点按钮时再调**。
 - **失败判据**：正常响应 HTTP 200；业务错误是 `trailers-only`，`grpc-status`/`bili-status-code` 出现在响应头（例：`bili-status-code=12002` = 当前页面评论功能已关闭）。实现里先查响应头、再 best-effort 查 `Response.trailers()`（OkHttp 4.12 支持）。按产品决定**不重试、不换语言**，失败只提示一次（`ReplyAdapter` 用 `Logu.e` 留诊断，避免和 `MsgUtil.err(IOException)` 的默认网络错误提示叠成两个 toast）。
 - **UI 约定**：按钮是操作行的 `item_reply_translate`（文A 图标，contentDescription=`text_reply_translate`），译文写在正文下方的 `replyTranslation`；译文只替换正文，不发新的评论请求。列表的 `realPosition` 与 adapter 下标差 1（`isDetail` 时差 2），点按钮时必须用 `ReplyAdapter` 里同一套映射反推，不要把 position 直接当 `replyList` 下标。
 - **限制**：`grpc.biliapi.net` 只有 HTTP/2，API 19/20 没有 ALPN 会直接 `IOException`（OkHttp 不自动降级），按普通网络失败提示。楼中楼内嵌预览（`cell_reply_child` 的纯 TextView）不参与翻译，只有列表行 / 详情页行有按钮。
-- **测试**：`app/src/test/java/com/RobinNotBad/BiliClient/api/ReplyTranslateApiTest.kt`（21 例：帧头、hex 黄金样本、packed rpids、int64 负数补位、locale base64、空/坏数据容错）与 `model/ReplyTranslationTest.kt`（7 例：三种译文状态与 toggle）。
+- **测试**：`app/src/test/java/com/RobinNotBad/BiliClient/api/ReplyTranslateApiTest.kt`（22 例：帧头、hex 黄金样本、packed rpids、int64 负数补位、locale base64（含「目标语言必须是 zh」的护栏）、空/坏数据容错）与 `model/ReplyTranslationTest.kt`（7 例：三种译文状态与 toggle）。
 
 ## 8. UI 基建速查（新增页面临摹用）
 

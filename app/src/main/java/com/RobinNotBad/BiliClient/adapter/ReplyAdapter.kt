@@ -55,7 +55,6 @@ import java.io.IOException
 import java.util.ArrayList
 import java.util.Collections
 import java.util.HashSet
-import java.util.Locale
 import org.json.JSONException
 
 @SuppressLint("ClickableViewAccessibility")
@@ -697,6 +696,14 @@ class ReplyAdapter(
      * <p>请求在途时禁用点击并把 alpha 压到 0.35，避免用户在响应回来之前连点、重复发翻译请求。
      */
     private fun bindTranslation(reply: Reply, holder: ReplyHolder) {
+        // 入口暂时隐藏（ReplyTranslateApi.UI_ENABLED=false）：按钮与译文区一起收起来，
+        // 也不挂点击事件，界面上不出现任何翻译痕迹；开关打开后下面的绑定逻辑原样生效。
+        if (!ReplyTranslateApi.UI_ENABLED) {
+            holder.item_reply_translate.visibility = View.GONE
+            holder.replyTranslation.visibility = View.GONE
+            holder.item_reply_translate.setOnClickListener(null)
+            return
+        }
         holder.replyTranslation.text = reply.translatedMessage
         holder.replyTranslation.visibility =
             if (reply.translationShown && reply.hasTranslation()) View.VISIBLE else View.GONE
@@ -737,7 +744,8 @@ class ReplyAdapter(
 
         CenterThreadPool.run {
             try {
-                val header = ReplyTranslateApi.buildLocaleHeader(Locale.getDefault())
+                // 固定译成简体中文：App 只有中文界面，不跟随系统语言（见 ReplyTranslateApi.TARGET_LOCALE）
+                val header = ReplyTranslateApi.buildLocaleHeader(ReplyTranslateApi.TARGET_LOCALE)
                 val text = ReplyTranslateApi.translateReply(type, oid, reply.rpid, header)
                 CenterThreadPool.runOnUiThread {
                     reply.translationLoading = false
