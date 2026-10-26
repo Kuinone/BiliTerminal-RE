@@ -40,6 +40,7 @@
 - **压在视频 / 图片上的图标与文字**用 `*_overlay` 图标与 `@color/overlay_icon` / `overlay_text`（没有亮色覆盖，永远浅色）。
 - 代码设色用 `ColorScheme` 的 getter（已按模式切换）；**播放器里**（`PlayerActivity` 是 `forceDark` 上下文）用 `ColorScheme.darkColors()`。
 - 不要在 `values-notnight` 覆盖 `terminal_bgblack` / `bgblack`：冷启动窗口按**系统** uiMode 绘制，覆盖会让暗色用户在手表上闪白。
+- **只做手动切换，不做「跟随系统」**（产品决定）：手表系统几乎固定报非夜间，跟随系统在手表上等于永远亮色。别加 `MODE_NIGHT_FOLLOW_SYSTEM` 或按时间自动切换。
 - 切换模式只走设置页的「颜色模式」：`AppearanceManager.setColorMode` → 刷新 `BiliTerminal.context` → `ColorMode.applyGlobal()`（AppCompat 自动重建页面）。
 
 ## 弹窗

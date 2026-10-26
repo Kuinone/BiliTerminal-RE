@@ -21,6 +21,11 @@ import com.RobinNotBad.BiliClient.util.SharedPreferencesUtil
  * 手表系统普遍报告 `NIGHT_NO`（Wear OS 实测 `uiMode=0x16`）。如果暗色模式不显式设成 NIGHT_YES，
  * 暗色用户在手表上就会命中 `-notnight`，整个应用变成亮色。
  *
+ * ## 只做手动切换，不做「跟随系统」（产品决定，别加回来）
+ * 模式只由用户在「外观设置 → 颜色模式」里主动选择；不提供「跟随系统 / 按时间自动」档，
+ * 也不要用 `MODE_NIGHT_FOLLOW_SYSTEM`。理由：手表系统几乎固定报 `NIGHT_NO`，「跟随系统」在手表上
+ * 等于「永远亮色」，用户会以为暗色坏了。
+ *
  * ## 永远暗色的地方
  * 播放器（`PlayerActivity`）与闪屏用 `forceDark = true` 取上下文，始终命中暗色资源；
  * 压在视频 / 图片上的图标与文字改用不参与覆盖的 `overlay_*` 资源。
