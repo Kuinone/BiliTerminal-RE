@@ -41,6 +41,9 @@ object AmbientGlow {
     /** 线性渐变在高度的这个比例处回到主题背景色（对应参考稿的 `bottom-color 50%`）。 */
     const val FADE_END = 0.5f
 
+    /** 亮色模式的渐变终点：浅底上色差更难察觉，顶部晕染多铺一段。 */
+    const val LIGHT_FADE_END = 0.62f
+
     /**
      * 一团光晕。
      * @param color 中心颜色（含 alpha，即参考稿的 `glow-color × glow-opacity`）
@@ -50,8 +53,11 @@ object AmbientGlow {
      */
     class Glow(val color: Int, val cx: Float, val cy: Float, val radius: Float)
 
-    /** 一套主题的光晕方案：[top] 为顶部底色，底部颜色取主题背景色（见 [createDrawable]）。 */
-    class Spec(val top: Int, val glows: Array<Glow>)
+    /**
+     * 一套主题的光晕方案：[top] 为顶部底色，底部颜色取主题背景色（见 [createDrawable]）；
+     * [fadeEnd] 为线性渐变回到背景色的位置（占高度比例）。
+     */
+    class Spec(val top: Int, val glows: Array<Glow>, val fadeEnd: Float = FADE_END)
 
     fun isEnabled(): Boolean = SharedPreferencesUtil.getBoolean(KEY, DEFAULT)
 
@@ -65,43 +71,54 @@ object AmbientGlow {
         if (light) lightSpecFor(themeKey) else darkSpecFor(themeKey)
 
     /**
-     * 亮色模式的光晕：浅底上「提亮」没有意义，改成**主色的淡彩晕染**（像晨光透过彩色玻璃）——
-     * 顶部底色是背景向主色偏 8% 左右的浅色，光晕用主题高亮色、alpha 0x40～0x66，正文仍是深色、对比度不受影响。
+     * 亮色模式的光晕：浅底上「提亮」没有意义，改成**主色的彩色晕染**（像晨光透过彩色玻璃）。
+     *
+     * 26.10.26 加强：第一版沿用暗色的强度，实测在浅底上几乎看不出来（浅色区域里同样的色差，
+     * 人眼感知更弱，而且晕染色比底色暗、读起来像「发灰」而不是「发光」）。现在按 CIELAB 色差对齐暗色：
+     * 光晕中心对页面底色 ΔE ≈ 32～42（暗色 23～45），顶部底色 ΔE ≈ 10～16（暗色 8～24），
+     * 半径放大一档、渐变回底色的位置下移到 62%。正文是深色，对比度不受影响。
      */
     private fun lightSpecFor(themeKey: String): Spec = when (themeKey) {
         ColorScheme.THEME_ZHIHU_BLUE -> Spec(
-            top = 0xFFDFEAF8.toInt(),
-            glows = arrayOf(Glow(0x5C6DB0FF, 0.5f, 0.04f, 0.62f))
+            top = 0xFFCCDDF4.toInt(),
+            glows = arrayOf(Glow(0x995AA2F8.toInt(), 0.5f, 0.04f, 0.70f)),
+            fadeEnd = LIGHT_FADE_END
         )
         ColorScheme.THEME_IQIYI_GREEN -> Spec(
-            top = 0xFFDDF2E5.toInt(),
-            glows = arrayOf(Glow(0x5266F0A3, 0.5f, 0.02f, 0.58f))
+            top = 0xFFC9E8D5.toInt(),
+            glows = arrayOf(Glow(0x8533CC7A.toInt(), 0.5f, 0.03f, 0.66f)),
+            fadeEnd = LIGHT_FADE_END
         )
         ColorScheme.THEME_PURPLE_FANTASY -> Spec(
-            top = 0xFFECE1F7.toInt(),
+            top = 0xFFDDCBF1.toInt(),
             glows = arrayOf(
-                Glow(0x5CBA7FE8, 0.5f, 0.05f, 0.66f),
-                Glow(0x40C9A0F0, 0.88f, 0.42f, 0.42f)
-            )
+                Glow(0x8CAD6BE3.toInt(), 0.5f, 0.05f, 0.72f),
+                Glow(0x70C9A0F0, 0.88f, 0.42f, 0.46f)
+            ),
+            fadeEnd = LIGHT_FADE_END
         )
         ColorScheme.THEME_RAINBOW_FANTASY -> Spec(
-            top = 0xFFFFEDE3.toInt(),
+            top = 0xFFF6D3C6.toInt(),
             glows = arrayOf(
-                Glow(0x5CFF8E8E, 0.22f, 0.03f, 0.55f),
-                Glow(0x4D4ECDC4, 0.80f, 0.06f, 0.52f)
-            )
+                Glow(0x99FF8080.toInt(), 0.22f, 0.03f, 0.62f),
+                Glow(0x8C45C7BE.toInt(), 0.80f, 0.06f, 0.58f)
+            ),
+            fadeEnd = LIGHT_FADE_END
         )
         ColorScheme.THEME_CLASSIC_GRAY -> Spec(
-            top = 0xFFE6E6F3.toInt(),
-            glows = arrayOf(Glow(0x52A3A3FD, 0.5f, 0.04f, 0.60f))
+            top = 0xFFD3D3EE.toInt(),
+            glows = arrayOf(Glow(0x858C8CF5.toInt(), 0.5f, 0.04f, 0.68f)),
+            fadeEnd = LIGHT_FADE_END
         )
         ColorScheme.THEME_CLASSIC_TERMINAL -> Spec(
-            top = 0xFFF6DDE5.toInt(),
-            glows = arrayOf(Glow(0x59FF8CB0, 0.5f, 0.04f, 0.60f))
+            top = 0xFFEFC8D6.toInt(),
+            glows = arrayOf(Glow(0x94FF7AA6.toInt(), 0.5f, 0.04f, 0.68f)),
+            fadeEnd = LIGHT_FADE_END
         )
         else -> Spec(
-            top = 0xFFFBE3EC.toInt(),
-            glows = arrayOf(Glow(0x66FF8CB0, 0.5f, 0.04f, 0.62f))
+            top = 0xFFF4D0DF.toInt(),
+            glows = arrayOf(Glow(0x99FF85AD.toInt(), 0.5f, 0.04f, 0.70f)),
+            fadeEnd = LIGHT_FADE_END
         )
     }
 
@@ -190,7 +207,7 @@ object AmbientGlow {
             val unit = min(w, h)
 
             basePaint.shader = LinearGradient(
-                0f, top, 0f, top + h * FADE_END,
+                0f, top, 0f, top + h * spec.fadeEnd,
                 spec.top, bottom, Shader.TileMode.CLAMP
             )
             for (i in spec.glows.indices) {

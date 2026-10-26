@@ -26,7 +26,7 @@
         <item name="radioButtonStyle">@style/RadioButtonStyle</item>
         <item name="recyclerViewStyle">@style/ListStyle</item>
 
-        <item name="colorSwitchThumbNormal">@color/text_primary_dark</item>
+        <item name="colorSwitchThumbNormal">@color/pink_switch_thumb</item>
         <item name="colorControlActivated">@color/pink_brand</item>
         <item name="colorControlNormal">@color/color_ripple</item>
         <item name="colorControlHighlight">@color/color_ripple</item>
@@ -122,7 +122,7 @@
         <item name="radioButtonStyle">@style/RadioButtonStyleZhihu</item>
         <item name="recyclerViewStyle">@style/ListStyleZhihu</item>
 
-        <item name="colorSwitchThumbNormal">@color/zhihu_text_primary_dark</item>
+        <item name="colorSwitchThumbNormal">@color/zhihu_switch_thumb</item>
         <item name="colorControlActivated">@color/zhihu_brand</item>
         <item name="colorControlNormal">@color/zhihu_color_ripple</item>
         <item name="colorControlHighlight">@color/zhihu_color_ripple</item>
@@ -185,7 +185,7 @@
     <style name="ButtonStyleZhihu" parent="Widget.MaterialComponents.Button">
         <item name="background">@drawable/gradient_button_bg_zhihu</item>
         <item name="cornerRadius">@dimen/card_round</item>
-        <item name="android:textColor">@color/zhihu_text_primary_dark</item>
+        <item name="android:textColor">@color/zhihu_btn_text</item>
         <item name="android:insetTop">2dp</item>
         <item name="android:insetBottom">2dp</item>
         <item name="android:paddingLeft">16dp</item>
@@ -241,7 +241,7 @@
         <item name="radioButtonStyle">@style/RadioButtonStyleIQIYI</item>
         <item name="recyclerViewStyle">@style/ListStyleIQIYI</item>
 
-        <item name="colorSwitchThumbNormal">@color/iqiyi_text_primary_dark</item>
+        <item name="colorSwitchThumbNormal">@color/iqiyi_switch_thumb</item>
         <item name="colorControlActivated">@color/iqiyi_brand</item>
         <item name="colorControlNormal">@color/iqiyi_color_ripple</item>
         <item name="colorControlHighlight">@color/iqiyi_color_ripple</item>
@@ -304,7 +304,7 @@
     <style name="ButtonStyleIQIYI" parent="Widget.MaterialComponents.Button">
         <item name="background">@drawable/gradient_button_bg_iqiyi</item>
         <item name="cornerRadius">@dimen/card_round</item>
-        <item name="android:textColor">@color/iqiyi_text_primary_dark</item>
+        <item name="android:textColor">@color/iqiyi_btn_text</item>
         <item name="android:insetTop">2dp</item>
         <item name="android:insetBottom">2dp</item>
         <item name="android:paddingLeft">16dp</item>
@@ -360,7 +360,7 @@
         <item name="radioButtonStyle">@style/RadioButtonStylePurpleFantasy</item>
         <item name="recyclerViewStyle">@style/ListStylePurpleFantasy</item>
 
-        <item name="colorSwitchThumbNormal">@color/purple_fantasy_text_primary_dark</item>
+        <item name="colorSwitchThumbNormal">@color/purple_fantasy_switch_thumb</item>
         <item name="colorControlActivated">@color/purple_fantasy_brand</item>
         <item name="colorControlNormal">@color/purple_fantasy_color_ripple</item>
         <item name="colorControlHighlight">@color/purple_fantasy_color_ripple</item>
@@ -423,7 +423,7 @@
     <style name="ButtonStylePurpleFantasy" parent="Widget.MaterialComponents.Button">
         <item name="background">@drawable/gradient_button_bg_purple_fantasy</item>
         <item name="cornerRadius">@dimen/card_round</item>
-        <item name="android:textColor">@color/purple_fantasy_text_primary_dark</item>
+        <item name="android:textColor">@color/purple_fantasy_btn_text</item>
         <item name="android:insetTop">2dp</item>
         <item name="android:insetBottom">2dp</item>
         <item name="android:paddingLeft">16dp</item>
@@ -479,7 +479,7 @@
         <item name="radioButtonStyle">@style/RadioButtonStyleRainbow</item>
         <item name="recyclerViewStyle">@style/ListStyleRainbow</item>
 
-        <item name="colorSwitchThumbNormal">@color/rainbow_text_primary_dark</item>
+        <item name="colorSwitchThumbNormal">@color/rainbow_switch_thumb</item>
         <item name="colorControlActivated">@color/rainbow_brand</item>
         <item name="colorControlNormal">@color/rainbow_color_ripple</item>
         <item name="colorControlHighlight">@color/rainbow_color_ripple</item>
@@ -542,7 +542,7 @@
     <style name="ButtonStyleRainbow" parent="Widget.MaterialComponents.Button">
         <item name="background">@drawable/gradient_button_bg_rainbow</item>
         <item name="cornerRadius">@dimen/card_round</item>
-        <item name="android:textColor">@color/rainbow_text_primary_dark</item>
+        <item name="android:textColor">@color/rainbow_btn_text</item>
         <item name="android:insetTop">2dp</item>
         <item name="android:insetBottom">2dp</item>
         <item name="android:paddingLeft">16dp</item>
@@ -598,7 +598,7 @@
         <item name="radioButtonStyle">@style/RadioButtonStyleClassicGray</item>
         <item name="recyclerViewStyle">@style/ListStyleClassicGray</item>
 
-        <item name="colorSwitchThumbNormal">@color/classic_gray_text_primary_dark</item>
+        <item name="colorSwitchThumbNormal">@color/classic_gray_switch_thumb</item>
         <item name="colorControlActivated">@color/classic_gray_brand</item>
         <item name="colorControlNormal">@color/classic_gray_color_ripple</item>
         <item name="colorControlHighlight">@color/classic_gray_color_ripple</item>
@@ -661,7 +661,7 @@
     <style name="ButtonStyleClassicGray" parent="Widget.MaterialComponents.Button">
         <item name="background">@drawable/gradient_button_bg_classic_gray</item>
         <item name="cornerRadius">@dimen/card_round</item>
-        <item name="android:textColor">@color/classic_gray_text_primary_dark</item>
+        <item name="android:textColor">@color/classic_gray_btn_text</item>
         <item name="android:insetTop">2dp</item>
         <item name="android:insetBottom">2dp</item>
         <item name="android:paddingLeft">16dp</item>
@@ -772,6 +772,9 @@
 
     <style name="ButtonStyleTerminal" parent="Widget.MaterialComponents.Button">
         <item name="backgroundTint">@color/terminal_card_bg</item>
+        <!-- 亮色下浅色按钮压在浅色纸底上不够分明，补一道细描边；暗色下宽度是 0dp（观感不变） -->
+        <item name="strokeColor">@color/terminal_divider</item>
+        <item name="strokeWidth">@dimen/terminal_btn_stroke_width</item>
         <item name="cornerRadius">@dimen/card_round</item>
         <item name="android:textColor">@color/terminal_textwhite</item>
         <item name="android:insetTop">2dp</item>
