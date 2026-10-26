@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 压在图片上的按钮底（看图页的下载 / 页码）：两种颜色模式都保持深色，与原 background_grey_cardview 暗色取值一致。 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <corners android:radius="@dimen/card_round" />
+    <solid android:color="#dd262626" />
+</shape>

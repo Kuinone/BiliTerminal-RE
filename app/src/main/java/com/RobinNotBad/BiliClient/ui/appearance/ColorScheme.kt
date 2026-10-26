@@ -4,6 +4,7 @@ import com.RobinNotBad.BiliClient.util.UiText
 
 import android.app.Activity
 import android.content.Context
+import android.graphics.drawable.ColorDrawable
 import android.os.Build
 import android.view.Window
 import android.view.WindowManager
@@ -381,6 +382,239 @@ object ColorScheme {
         CORNER_RADIUS = 6f                       // 老版 card_round 6dp
     )
 
+    // ==================== 亮色模式（见 ColorMode） ====================
+
+    /**
+     * 一套主题在亮色模式下要换掉的字段；未列出的（点赞红、播放器、圆角等）沿用暗色表。
+     * ⚠️ 与 `res/values-notnight/colors_light.xml` 同源（同一份数据由 tools/appearance/gen_light_mode.py 生成），改色两边一起改。
+     */
+    class LightPalette(
+        val primary: Int,
+        val primaryDark: Int,
+        val primaryLight: Int,
+        val secondary: Int,
+        val background: Int,
+        val surface: Int,
+        val card: Int,
+        val cardWithAlpha: Int,
+        val textPrimary: Int,
+        val textSecondary: Int,
+        val textTertiary: Int,
+        val border: Int,
+        val divider: Int,
+        val ripple: Int,
+        val link: Int,
+        val info: Int,
+        val share: Int,
+        val success: Int? = null,
+        val gold: Int? = null
+    )
+
+    /** 暗色表 + 亮色覆盖 = 亮色表。导航栏取亮色背景（系统栏图标随之变深）。 */
+    private class LightColors(base: ThemeColors, p: LightPalette) : ThemeColors(
+        PRIMARY = p.primary,
+        PRIMARY_DARK = p.primaryDark,
+        PRIMARY_LIGHT = p.primaryLight,
+        SECONDARY = p.secondary,
+        SURFACE = p.surface,
+        CARD = p.card,
+        CARD_WITH_ALPHA = p.cardWithAlpha,
+        BACKGROUND = p.background,
+        TEXT_PRIMARY = p.textPrimary,
+        TEXT_SECONDARY = p.textSecondary,
+        TEXT_TERTIARY = p.textTertiary,
+        ON_PRIMARY = base.ON_PRIMARY,
+        ON_SURFACE = p.textPrimary,
+        ON_CARD = p.textPrimary,
+        ON_BACKGROUND = p.textPrimary,
+        ON_BUTTON = p.textPrimary,
+        LIKE_COLOR = base.LIKE_COLOR,
+        COIN_COLOR = p.gold ?: base.COIN_COLOR,
+        FAV_COLOR = p.primary,
+        SHARE_COLOR = p.share,
+        SUCCESS = p.success ?: base.SUCCESS,
+        WARNING = base.WARNING,
+        ERROR = base.ERROR,
+        INFO = p.info,
+        PLAYER_BG = base.PLAYER_BG,
+        PLAYER_CONTROL_BG = base.PLAYER_CONTROL_BG,
+        PLAYER_PROGRESS_BG = base.PLAYER_PROGRESS_BG,
+        PLAYER_PROGRESS_FILL = p.primary,
+        BORDER = p.border,
+        DIVIDER = p.divider,
+        RIPPLE = p.ripple,
+        GOLD = p.gold ?: base.GOLD,
+        VIP_COLOR = p.primary,
+        STATUS_BAR_COLOR = p.primary,
+        NAV_BAR_COLOR = p.background,
+        CORNER_RADIUS = base.CORNER_RADIUS,
+        LINK = p.link
+    )
+
+    private val LIGHT_PALETTES: Map<ThemeColors, LightPalette> by lazy {
+        mapOf(
+        BilibiliPink to LightPalette(
+            primary = 0xFFFF6699.toInt(),
+            primaryDark = 0xFFE84B85.toInt(),
+            primaryLight = 0xFFE84B85.toInt(),
+            secondary = 0xFFFFB3CA.toInt(),
+            background = 0xFFF4E7DF.toInt(),
+            surface = 0xFFFAF0E8.toInt(),
+            card = 0xFFFEF7F1.toInt(),
+            cardWithAlpha = 0xE6FEF7F1.toInt(),
+            textPrimary = 0xFF2B2026.toInt(),
+            textSecondary = 0xFF6B5862.toInt(),
+            textTertiary = 0xFF9A8892.toInt(),
+            border = 0xFFE7DBD1.toInt(),
+            divider = 0xFFEEE2D9.toInt(),
+            ripple = 0x30FF6699.toInt(),
+            link = 0xFF1A8FD8.toInt(),
+            info = 0xFF1890FF.toInt(),
+            share = 0xFFE84B85.toInt()
+        ),
+        ZhihuBlue to LightPalette(
+            primary = 0xFF056DE8.toInt(),
+            primaryDark = 0xFF0354B5.toInt(),
+            primaryLight = 0xFF2F7FE6.toInt(),
+            secondary = 0xFF6DB0FF.toInt(),
+            background = 0xFFEEE9E1.toInt(),
+            surface = 0xFFF6F1E9.toInt(),
+            card = 0xFFFBF8F1.toInt(),
+            cardWithAlpha = 0xE6FBF8F1.toInt(),
+            textPrimary = 0xFF15202E.toInt(),
+            textSecondary = 0xFF4F5F73.toInt(),
+            textTertiary = 0xFF8090A3.toInt(),
+            border = 0xFFE2DCD3.toInt(),
+            divider = 0xFFE9E3DB.toInt(),
+            ripple = 0x30056DE8.toInt(),
+            link = 0xFF0A63C9.toInt(),
+            info = 0xFF056DE8.toInt(),
+            share = 0xFF0354B5.toInt()
+        ),
+        IQIYIGreen to LightPalette(
+            primary = 0xFF00A84E.toInt(),
+            primaryDark = 0xFF008A3F.toInt(),
+            primaryLight = 0xFF00873E.toInt(),
+            secondary = 0xFF33D47A.toInt(),
+            background = 0xFFEDEADC.toInt(),
+            surface = 0xFFF5F1E6.toInt(),
+            card = 0xFFFBF8F0.toInt(),
+            cardWithAlpha = 0xE6FBF8F0.toInt(),
+            textPrimary = 0xFF13241A.toInt(),
+            textSecondary = 0xFF4A6656.toInt(),
+            textTertiary = 0xFF7C9686.toInt(),
+            border = 0xFFE1DDCF.toInt(),
+            divider = 0xFFE8E4D6.toInt(),
+            ripple = 0x3000A84E.toInt(),
+            link = 0xFF008A3F.toInt(),
+            info = 0xFF00A84E.toInt(),
+            share = 0xFF008A3F.toInt()
+        ),
+        PurpleFantasy to LightPalette(
+            primary = 0xFF7B2CBF.toInt(),
+            primaryDark = 0xFF5A1F8F.toInt(),
+            primaryLight = 0xFF8A45C8.toInt(),
+            secondary = 0xFFBA7FE8.toInt(),
+            background = 0xFFF2E8E1.toInt(),
+            surface = 0xFFF8F0E9.toInt(),
+            card = 0xFFFDF7F1.toInt(),
+            cardWithAlpha = 0xE6FDF7F1.toInt(),
+            textPrimary = 0xFF231A2E.toInt(),
+            textSecondary = 0xFF5D4D70.toInt(),
+            textTertiary = 0xFF8E80A0.toInt(),
+            border = 0xFFE6DBD3.toInt(),
+            divider = 0xFFECE2DB.toInt(),
+            ripple = 0x307B2CBF.toInt(),
+            link = 0xFF6A22AD.toInt(),
+            info = 0xFF7B2CBF.toInt(),
+            share = 0xFF5A1F8F.toInt()
+        ),
+        RainbowFantasy to LightPalette(
+            primary = 0xFFF25C5C.toInt(),
+            primaryDark = 0xFFC94444.toInt(),
+            primaryLight = 0xFFB87D00.toInt(),
+            secondary = 0xFFFF8E8E.toInt(),
+            background = 0xFFF5E7DA.toInt(),
+            surface = 0xFFFAF0E5.toInt(),
+            card = 0xFFFEF7EF.toInt(),
+            cardWithAlpha = 0xE6FEF7EF.toInt(),
+            textPrimary = 0xFF2D1D1D.toInt(),
+            textSecondary = 0xFF6D5454.toInt(),
+            textTertiary = 0xFFA08787.toInt(),
+            border = 0xFFE8DBCD.toInt(),
+            divider = 0xFFEFE2D5.toInt(),
+            ripple = 0x30F25C5C.toInt(),
+            link = 0xFF1F8FB0.toInt(),
+            info = 0xFFF25C5C.toInt(),
+            share = 0xFFE07B1F.toInt(),
+            gold = 0xFFE6A800.toInt()
+        ),
+        ClassicGray to LightPalette(
+            primary = 0xFF6E6EE6.toInt(),
+            primaryDark = 0xFF5555C8.toInt(),
+            primaryLight = 0xFF6464DC.toInt(),
+            secondary = 0xFFA3A3FD.toInt(),
+            background = 0xFFF0E8E1.toInt(),
+            surface = 0xFFF7F1E9.toInt(),
+            card = 0xFFFCF7F1.toInt(),
+            cardWithAlpha = 0xE6FCF7F1.toInt(),
+            textPrimary = 0xFF1E1E2A.toInt(),
+            textSecondary = 0xFF595968.toInt(),
+            textTertiary = 0xFF8A8A9A.toInt(),
+            border = 0xFFE4DBD3.toInt(),
+            divider = 0xFFEBE3DA.toInt(),
+            ripple = 0x306E6EE6.toInt(),
+            link = 0xFF1E88C8.toInt(),
+            info = 0xFF1E88C8.toInt(),
+            share = 0xFF1E88C8.toInt()
+        ),
+        ClassicTerminal to LightPalette(
+            primary = 0xFFFF6699.toInt(),
+            primaryDark = 0xFFE84B85.toInt(),
+            primaryLight = 0xFFD9437A.toInt(),
+            secondary = 0xFFFFB3CA.toInt(),
+            background = 0xFFEBDFCF.toInt(),
+            surface = 0xFFF6EDDF.toInt(),
+            card = 0xCCFDF6EC.toInt(),
+            cardWithAlpha = 0xCCFDF6EC.toInt(),
+            textPrimary = 0xFF2A2326.toInt(),
+            textSecondary = 0xFF6B6266.toInt(),
+            textTertiary = 0xFF958B90.toInt(),
+            border = 0x33000000.toInt(),
+            divider = 0x26000000.toInt(),
+            ripple = 0x26000000.toInt(),
+            link = 0xFF1E88C8.toInt(),
+            info = 0xFF1E88C8.toInt(),
+            share = 0xFF1E88C8.toInt(),
+            success = 0xFF2E9E44.toInt()
+        )
+        )
+    }
+
+    /** 亮色表按暗色表实例缓存（每套主题只建一次）。 */
+    private val lightTables = HashMap<ThemeColors, ThemeColors>()
+
+    private fun lightOf(base: ThemeColors): ThemeColors = synchronized(lightTables) {
+        lightTables.getOrPut(base) { LIGHT_PALETTES[base]?.let { LightColors(base, it) } ?: base }
+    }
+
+    /** 主题 key → 暗色表（模式无关）。 */
+    private fun darkTableOf(theme: String): ThemeColors = when (theme) {
+        THEME_ZHIHU_BLUE -> ZhihuBlue
+        THEME_IQIYI_GREEN -> IQIYIGreen
+        THEME_PURPLE_FANTASY -> PurpleFantasy
+        THEME_RAINBOW_FANTASY -> RainbowFantasy
+        THEME_CLASSIC_GRAY -> ClassicGray
+        THEME_CLASSIC_TERMINAL -> ClassicTerminal
+        else -> BilibiliPink
+    }
+
+    /**
+     * 当前主题的**暗色**表，不管当前是什么模式。给永远暗色的播放器（`PlayerActivity` 用
+     * `forceDark` 上下文）里的代码设色用——那里的资源是暗色，全局 getter 在亮色模式下却会返回亮色值。
+     */
+    fun darkColors(): ThemeColors = darkTableOf(getCurrentThemeName())
+
     /**
      * 当前主题色表的缓存。
      *
@@ -398,15 +632,9 @@ object ColorScheme {
     private fun getCurrentTheme(): ThemeColors {
         cachedColors?.let { return it }
         val theme = SharedPreferencesUtil.getString(PREF_KEY_THEME, THEME_DEFAULT)
-        val colors = when (theme) {
-            THEME_ZHIHU_BLUE -> ZhihuBlue
-            THEME_IQIYI_GREEN -> IQIYIGreen
-            THEME_PURPLE_FANTASY -> PurpleFantasy
-            THEME_RAINBOW_FANTASY -> RainbowFantasy
-            THEME_CLASSIC_GRAY -> ClassicGray
-            THEME_CLASSIC_TERMINAL -> ClassicTerminal
-            else -> BilibiliPink
-        }
+        val dark = darkTableOf(theme)
+        // 亮 / 暗模式也只在缓存未命中时读一次（切换模式走 AppearanceManager.setColorMode，同样会 invalidateCache）
+        val colors = if (ColorMode.isLight()) lightOf(dark) else dark
         cachedColors = colors
         return colors
     }
@@ -481,9 +709,13 @@ object ColorScheme {
         if (AmbientGlow.isEnabled()) {
             // 弥散光晕画在窗口背景上（DecorView 整屏，含「界面边距」留出的外圈，不会在边距处断层），
             // content 自己不再铺纯色，否则会把光晕整块盖住。关闭时走下面的原路径，零额外开销。
-            window.setBackgroundDrawable(AmbientGlow.createDrawable(getCurrentThemeName(), BACKGROUND))
+            window.setBackgroundDrawable(AmbientGlow.createDrawable(getCurrentThemeName(), BACKGROUND, ColorMode.isLight()))
             rootView?.background = null
         } else {
+            // 窗口底色也换成主题背景：*.NoSwipe.AppCompat 主题的 windowBackground 是纯黑，
+            // 开了「界面边距」时外圈露出的就是它——亮色模式下会是一圈黑框。
+            // 窗口背景本来就要画，这里只是换个颜色，不增加绘制。
+            window.setBackgroundDrawable(ColorDrawable(BACKGROUND))
             rootView?.setBackgroundColor(BACKGROUND)
         }
     }

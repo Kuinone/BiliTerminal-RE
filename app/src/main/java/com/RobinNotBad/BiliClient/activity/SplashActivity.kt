@@ -75,7 +75,8 @@ class SplashActivity : Activity() {
     }
 
     override fun attachBaseContext(newBase: Context?) {
-        super.attachBaseContext(BiliTerminal.getFitDisplayContext(newBase))
+        // forceDark：闪屏底色是纯黑（冷启动窗口由系统画，没法跟随模式），文字也必须保持浅色
+        super.attachBaseContext(BiliTerminal.getFitDisplayContext(newBase, forceDark = true))
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {

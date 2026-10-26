@@ -1,5 +1,6 @@
 package com.RobinNotBad.BiliClient.model;
 
+import com.RobinNotBad.BiliClient.ui.appearance.ColorScheme;
 import static com.RobinNotBad.BiliClient.util.LinkUrlUtil.TYPE_WEB_URL;
 
 import android.graphics.Color;
@@ -97,7 +98,8 @@ public class OpusParagraph {
 
         // 空 blockquote（children 均为空文本）时 length()==0，旧代码 length()-1 = -1 会让 setSpan 抛越界
         if (stringBuilder.length() > 0) {
-            stringBuilder.setSpan(new BackgroundColorSpan(0x33ffffff),
+            // 引用块底色：正文色 20% 叠加（原写死白 20%，亮色模式下在白底上看不见）
+            stringBuilder.setSpan(new BackgroundColorSpan((ColorScheme.INSTANCE.getTEXT_PRIMARY() & 0x00FFFFFF) | 0x33000000),
                     0, stringBuilder.length(),
                     Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         }

@@ -598,7 +598,8 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
     }
 
     override fun attachBaseContext(newBase: Context) {
-        super.attachBaseContext(BiliTerminal.getFitDisplayContext(newBase))
+        // forceDark：播放器永远暗色（黑底、白图标），不随「亮色模式」切换，见 ColorMode
+        super.attachBaseContext(BiliTerminal.getFitDisplayContext(newBase, forceDark = true))
     }
 
     private fun getExtras(): Boolean {

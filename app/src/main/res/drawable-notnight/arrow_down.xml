@@ -1,0 +1,10 @@
+<!-- 亮色模式版本（tools/appearance/gen_light_mode.py 生成）：浅色填充 → 深色 #3A3438。改图标时 drawable/ 与本目录两份一起改。 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="16dp"
+    android:height="16dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#3A3438"
+        android:pathData="M7.41,8.59L12,13.17l4.59,-4.58L18,10l-6,6 -6,-6 1.41,-1.41z" />
+</vector>

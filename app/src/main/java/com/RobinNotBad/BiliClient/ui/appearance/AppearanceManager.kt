@@ -48,6 +48,7 @@ object AppearanceManager {
      */
     data class Appearance(
         val themeKey: String,
+        val colorMode: String,
         val cornerRadius: String,
         val fontPath: String,
         val ambientGlow: Boolean,
@@ -71,6 +72,7 @@ object AppearanceManager {
     fun snapshot(): Appearance = Appearance(
         // 用配色模块的读取入口而不是自己拼默认值，避免默认主题出现第二份定义。
         themeKey = ColorScheme.getCurrentThemeName(),
+        colorMode = ColorMode.current(),
         cornerRadius = CornerStyle.current(),
         fontPath = FontStyle.currentPath(),
         ambientGlow = AmbientGlow.isEnabled(),
@@ -83,6 +85,18 @@ object AppearanceManager {
     /** 写入主题配色。写完立即失效 [ColorScheme] 的色表缓存。 */
     fun setTheme(themeKey: String) {
         SharedPreferencesUtil.putStringSync(SettingsKeys.THEME, themeKey)
+        ColorScheme.invalidateCache()
+        bumpVersion()
+    }
+
+    /**
+     * 写入暗色 / 亮色模式（已规整到合法值）。色表缓存随之失效。
+     *
+     * 只管落盘 + 版本号；让资源真正切换的 `ColorMode.applyGlobal()` 与刷新全局 context
+     * 由调用方（设置页）紧接着做——它们要碰 Android 类，放这里会让本对象没法在 JVM 单测里跑。
+     */
+    fun setColorMode(mode: String) {
+        SharedPreferencesUtil.putStringSync(ColorMode.KEY, ColorMode.normalize(mode))
         ColorScheme.invalidateCache()
         bumpVersion()
     }

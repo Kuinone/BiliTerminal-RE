@@ -1,0 +1,15 @@
+<!-- 亮色模式版本（tools/appearance/gen_light_mode.py 生成）：API 21+ 版：按主题正文色着色（?android:attr/colorForeground）。改图标时 drawable/ 与本目录两份一起改。 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:tint="?android:attr/colorForeground"
+    android:width="18dp"
+    android:height="18dp"
+    android:viewportWidth="24.0"
+    android:viewportHeight="24.0">
+    <path
+        android:pathData="M12 16.99V17M12 7V14M21 12C21 16.9706 16.9706 21 12 21C7.02944 21 3 16.9706 3 12C3 7.02944 7.02944 3 12 3C16.9706 3 21 7.02944 21 12Z"
+        android:fillColor="#00000000"
+        android:strokeColor="#3A3438"
+        android:strokeWidth="1.7"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+</vector>

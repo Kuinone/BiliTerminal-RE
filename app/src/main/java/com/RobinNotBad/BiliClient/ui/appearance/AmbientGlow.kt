@@ -41,6 +41,9 @@ object AmbientGlow {
     /** 线性渐变在高度的这个比例处回到主题背景色（对应参考稿的 `bottom-color 50%`）。 */
     const val FADE_END = 0.5f
 
+    /** 亮色模式的渐变终点：浅底上色差更难察觉，顶部晕染多铺一段。 */
+    const val LIGHT_FADE_END = 0.62f
+
     /**
      * 一团光晕。
      * @param color 中心颜色（含 alpha，即参考稿的 `glow-color × glow-opacity`）
@@ -50,8 +53,11 @@ object AmbientGlow {
      */
     class Glow(val color: Int, val cx: Float, val cy: Float, val radius: Float)
 
-    /** 一套主题的光晕方案：[top] 为顶部底色，底部颜色取主题背景色（见 [createDrawable]）。 */
-    class Spec(val top: Int, val glows: Array<Glow>)
+    /**
+     * 一套主题的光晕方案：[top] 为顶部底色，底部颜色取主题背景色（见 [createDrawable]）；
+     * [fadeEnd] 为线性渐变回到背景色的位置（占高度比例）。
+     */
+    class Spec(val top: Int, val glows: Array<Glow>, val fadeEnd: Float = FADE_END)
 
     fun isEnabled(): Boolean = SharedPreferencesUtil.getBoolean(KEY, DEFAULT)
 
@@ -61,7 +67,65 @@ object AmbientGlow {
      * 设计原则：顶部底色 = 背景色向主色偏 15% 左右；光晕色 = 主色压暗到不抢正文的亮度，
      * 对暖白 / 冷白正文保持足够对比度。
      */
-    fun specFor(themeKey: String): Spec = when (themeKey) {
+    fun specFor(themeKey: String, light: Boolean = false): Spec =
+        if (light) lightSpecFor(themeKey) else darkSpecFor(themeKey)
+
+    /**
+     * 亮色模式的光晕：浅底上「提亮」没有意义，改成**主色的彩色晕染**（像晨光透过彩色玻璃）。
+     *
+     * 26.10.26 加强：第一版沿用暗色的强度，实测在浅底上几乎看不出来（浅色区域里同样的色差，
+     * 人眼感知更弱，而且晕染色比底色暗、读起来像「发灰」而不是「发光」）。现在按 CIELAB 色差对齐暗色：
+     * 光晕中心对页面底色 ΔE ≈ 37～45（暗色 23～45），顶部底色 ΔE ≈ 13～15（暗色 8～24），
+     * 半径放大一档、渐变回底色的位置下移到 62%。正文是深色，对比度不受影响。
+     *
+     * 亮色底色改米白后（见 `tools/appearance/gen_light_mode.py` 的 `CREAM`）：[Spec.top] = 米白底色向第一团光晕色
+     * 混合到上述色差。**改了米白底色要重算这里的 top**，否则顶部会和底色接不上。
+     */
+    private fun lightSpecFor(themeKey: String): Spec = when (themeKey) {
+        ColorScheme.THEME_ZHIHU_BLUE -> Spec(
+            top = 0xFFCFDAE6.toInt(),
+            glows = arrayOf(Glow(0x995AA2F8.toInt(), 0.5f, 0.04f, 0.70f)),
+            fadeEnd = LIGHT_FADE_END
+        )
+        ColorScheme.THEME_IQIYI_GREEN -> Spec(
+            top = 0xFFCBE5CA.toInt(),
+            glows = arrayOf(Glow(0x8533CC7A.toInt(), 0.5f, 0.03f, 0.66f)),
+            fadeEnd = LIGHT_FADE_END
+        )
+        ColorScheme.THEME_PURPLE_FANTASY -> Spec(
+            top = 0xFFE5D0E1.toInt(),
+            glows = arrayOf(
+                Glow(0x76AD6BE3.toInt(), 0.5f, 0.05f, 0.72f),
+                Glow(0x70C9A0F0, 0.88f, 0.42f, 0.46f)
+            ),
+            fadeEnd = LIGHT_FADE_END
+        )
+        ColorScheme.THEME_RAINBOW_FANTASY -> Spec(
+            top = 0xFFF8CDC3.toInt(),
+            glows = arrayOf(
+                Glow(0x99FF8080.toInt(), 0.22f, 0.03f, 0.62f),
+                Glow(0x8C45C7BE.toInt(), 0.80f, 0.06f, 0.58f)
+            ),
+            fadeEnd = LIGHT_FADE_END
+        )
+        ColorScheme.THEME_CLASSIC_GRAY -> Spec(
+            top = 0xFFDCD6E5.toInt(),
+            glows = arrayOf(Glow(0x858C8CF5.toInt(), 0.5f, 0.04f, 0.68f)),
+            fadeEnd = LIGHT_FADE_END
+        )
+        ColorScheme.THEME_CLASSIC_TERMINAL -> Spec(
+            top = 0xFFF0C7C5.toInt(),
+            glows = arrayOf(Glow(0x94FF7AA6.toInt(), 0.5f, 0.04f, 0.68f)),
+            fadeEnd = LIGHT_FADE_END
+        )
+        else -> Spec(
+            top = 0xFFF7CFD3.toInt(),
+            glows = arrayOf(Glow(0x99FF85AD.toInt(), 0.5f, 0.04f, 0.70f)),
+            fadeEnd = LIGHT_FADE_END
+        )
+    }
+
+    private fun darkSpecFor(themeKey: String): Spec = when (themeKey) {
         // 知乎蓝：深海蓝，居中一团
         ColorScheme.THEME_ZHIHU_BLUE -> Spec(
             top = 0xFF142540.toInt(),
@@ -106,8 +170,8 @@ object AmbientGlow {
     }
 
     /** 为当前主题创建背景 drawable。每个 Activity 创建一次（冷路径），不缓存。 */
-    fun createDrawable(themeKey: String, background: Int): Drawable =
-        AmbientGlowDrawable(specFor(themeKey), background)
+    fun createDrawable(themeKey: String, background: Int, light: Boolean = false): Drawable =
+        AmbientGlowDrawable(specFor(themeKey, light), background)
 
     /** 保留 RGB、把 alpha 乘以 [factor]。渐变终点用「同色 alpha=0」而不是透明黑，避免边缘发灰。 */
     internal fun scaleAlpha(color: Int, factor: Float): Int {
@@ -146,7 +210,7 @@ object AmbientGlow {
             val unit = min(w, h)
 
             basePaint.shader = LinearGradient(
-                0f, top, 0f, top + h * FADE_END,
+                0f, top, 0f, top + h * spec.fadeEnd,
                 spec.top, bottom, Shader.TileMode.CLAMP
             )
             for (i in spec.glows.indices) {

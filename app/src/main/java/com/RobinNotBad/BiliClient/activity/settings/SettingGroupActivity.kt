@@ -1,5 +1,6 @@
 package com.RobinNotBad.BiliClient.activity.settings
 
+import com.RobinNotBad.BiliClient.ui.appearance.ColorMode
 import com.RobinNotBad.BiliClient.util.UiText
 
 import android.app.Activity
@@ -326,6 +327,22 @@ class SettingGroupActivity : RefreshListActivity() {
      */
     private fun buildAppearanceGroup() {
         title("配色")
+        listChoose(
+            "颜色模式",
+            getString(R.string.desc_setting_color_mode),
+            ColorMode.KEY,
+            ColorMode.DEFAULT,
+            ColorMode.DISPLAY_NAMES,
+            ColorMode.VALUES
+        ) { oldValue, newValue ->
+            if (oldValue != newValue) {
+                AppearanceManager.setColorMode(newValue)
+                // 全局 context（Toast / Glide 占位图等用它取资源）按新模式重建
+                BiliTerminal.context = BiliTerminal.getFitDisplayContext(applicationContext)
+                // 通知 AppCompat 切换夜间位：所有 AppCompat 页面（含本页）会被它自动重建，这里不再手动 recreate
+                ColorMode.applyGlobal()
+            }
+        }
         listChoose(
             "主题配色",
             "选择应用的主题配色方案",
