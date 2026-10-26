@@ -1,5 +1,6 @@
 package com.RobinNotBad.BiliClient.model;
 
+import com.RobinNotBad.BiliClient.ui.appearance.ColorScheme;
 import static com.RobinNotBad.BiliClient.api.ReplyApi.TOP_TIP;
 import static com.RobinNotBad.BiliClient.api.ReplyApi.isDislikedAction;
 import static com.RobinNotBad.BiliClient.api.ReplyApi.isLikedAction;
@@ -166,7 +167,7 @@ public class Reply implements Serializable {
             int start = voteMatcher.start();
             int end = voteMatcher.end();
             messageSpannable.replace(start, end, voteLabel);
-            messageSpannable.setSpan(new ForegroundColorSpan(0xFFFE679A), start, start + voteLabel.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            messageSpannable.setSpan(new ForegroundColorSpan(ColorScheme.INSTANCE.getPRIMARY()), start, start + voteLabel.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
             messageSpannable.setSpan(new UnderlineSpan(), start, start + voteLabel.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         }
 

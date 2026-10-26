@@ -1,5 +1,6 @@
 package com.RobinNotBad.BiliClient.adapter
 
+import com.RobinNotBad.BiliClient.ui.appearance.ThemeTint
 import com.RobinNotBad.BiliClient.util.UiText
 
 import android.annotation.SuppressLint
@@ -76,7 +77,8 @@ class ReplyAdapter(
 
     private val roundSmallPx = context.resources.getDimension(R.dimen.round_small).toInt()
     private val likeDrawable0 = ContextCompat.getDrawable(context, R.drawable.icon_reply_like0)
-    private val likeDrawable1 = ContextCompat.getDrawable(context, R.drawable.icon_reply_like1)
+    // 已赞图标原写死 #fb6789；与同一行「已赞」数字（ColorScheme.LIKE_COLOR）同色
+    private val likeDrawable1 = ThemeTint.tinted(context, R.drawable.icon_reply_like1, ColorScheme.LIKE_COLOR)
 
     // 点赞去重：记录正在请求中的评论 rpid。
     // 不加这个的话用户连点会连发好几次点赞/取消请求，服务端按最后一次算而界面按每次算，
@@ -225,7 +227,7 @@ class ReplyAdapter(
                         .append(" ")
                 name_str.setSpan(
                         RadiusBackgroundSpan(2, roundSmallPx,
-                                Color.WHITE, Color.argb(140, 158, 186, 232)),
+                                Color.WHITE, ColorScheme.withPrimaryAlpha(140)),
                         last_length + 1, name_str.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
                 name_str.setSpan(RelativeSizeSpan(0.8f), last_length + 1, name_str.length,
                         Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)

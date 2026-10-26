@@ -1,5 +1,8 @@
 package com.RobinNotBad.BiliClient.activity.settings
 
+import android.graphics.PorterDuff
+import android.graphics.drawable.LayerDrawable
+import com.RobinNotBad.BiliClient.ui.appearance.ColorScheme
 import android.annotation.SuppressLint
 import android.os.Bundle
 import android.view.View
@@ -53,6 +56,11 @@ class UpdateActivity : BaseActivity() {
         loadingOverlay = findViewById(R.id.loading_overlay)
         loadingText = findViewById(R.id.loading_text)
         downloadProgress = findViewById(R.id.download_progress)
+        // progress_horizontal 的进度层写死 @color/pink：只给进度层着主题主色，底槽不动
+        (downloadProgress.progressDrawable?.mutate() as? LayerDrawable)
+            ?.findDrawableByLayerId(android.R.id.progress)
+            // 用 colorFilter 而非 DrawableCompat.wrap：API < 23 上 wrap 会返回新包装对象，改不到层里的原件
+            ?.setColorFilter(ColorScheme.PRIMARY, PorterDuff.Mode.SRC_IN)
         progressText = findViewById(R.id.progress_text)
         cancelBtn = findViewById(R.id.cancel_btn)
         downloadBtn = findViewById(R.id.download_btn)

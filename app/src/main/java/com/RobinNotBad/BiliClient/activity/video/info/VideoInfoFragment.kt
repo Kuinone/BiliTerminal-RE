@@ -1,5 +1,6 @@
 package com.RobinNotBad.BiliClient.activity.video.info
 
+import com.RobinNotBad.BiliClient.ui.appearance.ThemeTint
 import com.RobinNotBad.BiliClient.util.UiText
 
 import android.annotation.SuppressLint
@@ -81,7 +82,7 @@ class VideoInfoFragment : BaseFragment() {
     private val favLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { o ->
         val code = o.resultCode
         if (code == RESULT_ADDED) {
-            fav.setImageResource(R.drawable.icon_fav_1)
+            ThemeTint.setActiveIcon(fav, R.drawable.icon_fav_1)
         } else if (code == RESULT_DELETED) {
             fav.setImageResource(R.drawable.icon_fav_0)
         }
@@ -341,11 +342,11 @@ class VideoInfoFragment : BaseFragment() {
         } else tagsText.visibility = View.GONE
 
         if (videoInfo!!.stats.coined != 0)
-            coin.setImageResource(R.drawable.icon_coin_1)
+            ThemeTint.setActiveIcon(coin, R.drawable.icon_coin_1)
         if (videoInfo!!.stats.liked)
-            like.setImageResource(R.drawable.icon_like_1)
+            ThemeTint.setActiveIcon(like, R.drawable.icon_like_1)
         if (videoInfo!!.stats.favoured)
-            fav.setImageResource(R.drawable.icon_fav_1)
+            ThemeTint.setActiveIcon(fav, R.drawable.icon_fav_1)
 
         CenterThreadPool.run {
             try {
@@ -456,7 +457,7 @@ class VideoInfoFragment : BaseFragment() {
                             if (videoInfo!!.stats.liked)
                                 likeLabel.text = StringUtil.toWan((++videoInfo!!.stats.like).toLong())
                             else likeLabel.text = StringUtil.toWan((--videoInfo!!.stats.like).toLong())
-                            like.setImageResource(if (videoInfo!!.stats.liked) R.drawable.icon_like_1 else R.drawable.icon_like_0)
+                            ThemeTint.setToggleIcon(like, videoInfo!!.stats.liked, R.drawable.icon_like_1, R.drawable.icon_like_0)
                         }
                     } else if (isAdded) {
                         var msg = ApiErrorText.opFailedWithDetail(result)
@@ -465,7 +466,7 @@ class VideoInfoFragment : BaseFragment() {
                             65006 -> {
                                 msg = UiText.of("已经点赞过了喵~")
                                 videoInfo!!.stats.liked = true
-                                runOnUiThread { like.setImageResource(R.drawable.icon_like_1) }
+                                runOnUiThread { ThemeTint.setActiveIcon(like, R.drawable.icon_like_1) }
                             }
                         }
                         MsgUtil.showMsg(msg)
@@ -498,7 +499,7 @@ class VideoInfoFragment : BaseFragment() {
                             runOnUiThread {
                                 MsgUtil.showMsg(UiText.of("投币成功"))
                                 coinLabel.text = StringUtil.toWan((++videoInfo!!.stats.coin).toLong())
-                                coin.setImageResource(R.drawable.icon_coin_1)
+                                ThemeTint.setActiveIcon(coin, R.drawable.icon_coin_1)
                             }
                         } else if (isAdded) {
                             var msg = UiText.of("投币失败：") + result
@@ -643,9 +644,9 @@ class VideoInfoFragment : BaseFragment() {
                                 val code = LikeCoinFavApi.triple(aid)
                                 if (code == 0) {
                                     runOnUiThread {
-                                        coin.setImageResource(R.drawable.icon_coin_1)
-                                        like.setImageResource(R.drawable.icon_like_1)
-                                        fav.setImageResource(R.drawable.icon_fav_1)
+                                        ThemeTint.setActiveIcon(coin, R.drawable.icon_coin_1)
+                                        ThemeTint.setActiveIcon(like, R.drawable.icon_like_1)
+                                        ThemeTint.setActiveIcon(fav, R.drawable.icon_fav_1)
                                     }
                                     MsgUtil.showMsg(UiText.of("三连成功"))
                                 } else MsgUtil.showMsg(UiText.fmt(UiText.of("三连失败，错误码：%1\$s"), code))

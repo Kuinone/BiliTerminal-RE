@@ -1,5 +1,6 @@
 package com.RobinNotBad.BiliClient.adapter.user
 
+import com.RobinNotBad.BiliClient.ui.appearance.ColorScheme
 import android.content.Context
 import android.graphics.Color
 import android.view.LayoutInflater
@@ -76,11 +77,12 @@ open class UserListAdapter(
 
         // 缓存上次解析的颜色值和原始字符串，避免重复调用 Color.parseColor
         private var cachedColorString: String? = null
-        private var cachedColor: Int = Color.WHITE
+        private var cachedColor: Int = ColorScheme.TEXT_PRIMARY
 
         fun getCachedColor(colorString: String?): Int {
+            // 非大会员昵称走主题正文色（原写死纯白，在暖白 / 冷白主题里都显得突兀）
             if (colorString.isNullOrEmpty()) {
-                return Color.WHITE
+                return ColorScheme.TEXT_PRIMARY
             }
             if (colorString == cachedColorString) {
                 return cachedColor
@@ -89,7 +91,7 @@ open class UserListAdapter(
             cachedColor = try {
                 Color.parseColor(colorString)
             } catch (e: IllegalArgumentException) {
-                Color.WHITE
+                ColorScheme.TEXT_PRIMARY
             }
             return cachedColor
         }

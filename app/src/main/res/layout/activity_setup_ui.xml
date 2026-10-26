@@ -124,7 +124,6 @@
                     android:paddingEnd="8dp"
                     android:textColor="?android:attr/textColorPrimary"
                     android:textColorHint="#80ffffff"
-                    android:textCursorDrawable="@drawable/cursor_drawable"
                     android:textSize="13sp" />
 
                 <TextView
@@ -176,7 +175,6 @@
                         android:inputType="number"
                         android:textColor="?android:attr/textColorPrimary"
                         android:textColorHint="#80ffffff"
-                        android:textCursorDrawable="@drawable/cursor_drawable"
                         android:textSize="13sp"
                         app:layout_constraintBottom_toBottomOf="parent"
                         app:layout_constraintEnd_toStartOf="@id/desc2"
@@ -221,7 +219,6 @@
                         android:inputType="number"
                         android:textColor="?android:attr/textColorPrimary"
                         android:textColorHint="#80ffffff"
-                        android:textCursorDrawable="@drawable/cursor_drawable"
                         android:textSize="13sp"
                         app:layout_constraintBottom_toBottomOf="parent"
                         app:layout_constraintEnd_toStartOf="@id/desc4"

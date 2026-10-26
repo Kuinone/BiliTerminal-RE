@@ -160,12 +160,8 @@ class UserDynamicAdapter(
             msgBtn.visibility = if (followed) View.VISIBLE else View.GONE
             followBtn.backgroundTintList = ColorStateList
                 .valueOf(
-                    if (followed) Color.argb(0xDD, 0x26, 0x26, 0x26) else Color.argb(
-                        0xFE,
-                        0xF0,
-                        0x5D,
-                        0x8E
-                    )
+                    // 原写死 #F05D8E / #DD262626：未关注 = 主题主色，已关注 = 主题卡片色
+                    if (followed) ColorScheme.CARD_WITH_ALPHA else ColorScheme.PRIMARY
                 )
             followBtn.text = if (followed) UiText.of("已关注") else UiText.of("关注")
         }

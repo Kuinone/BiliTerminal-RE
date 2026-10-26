@@ -1,5 +1,6 @@
 package com.RobinNotBad.BiliClient.activity.vote
 
+import com.RobinNotBad.BiliClient.ui.appearance.ColorScheme
 import com.RobinNotBad.BiliClient.util.UiText
 
 import android.annotation.SuppressLint
@@ -165,8 +166,8 @@ class VoteInfoActivity : BaseActivity() {
         }
         voteStatus.setTextColor(
             when {
-                hasVoted || info.isExpired() -> ContextCompat.getColor(this, R.color.text_tertiary_dark)
-                else -> ContextCompat.getColor(this, R.color.pink_brand)
+                hasVoted || info.isExpired() -> ColorScheme.TEXT_TERTIARY
+                else -> ColorScheme.PRIMARY
             }
         )
 
@@ -213,8 +214,8 @@ class VoteInfoActivity : BaseActivity() {
             val isSelected = votedIdx.contains(option.opt_idx) || selectedOptions.contains(option.opt_idx)
             if (isSelected) {
                 indicator.text = if (multiChoice) "☑" else "●"
-                indicator.setTextColor(ContextCompat.getColor(this, R.color.pink_brand))
-                textView.setTextColor(ContextCompat.getColor(this, R.color.pink_brand))
+                indicator.setTextColor(ColorScheme.PRIMARY)
+                textView.setTextColor(ColorScheme.PRIMARY)
             }
 
             // 图片投票 - 裁剪成小缩略图，与文字、按钮并排显示

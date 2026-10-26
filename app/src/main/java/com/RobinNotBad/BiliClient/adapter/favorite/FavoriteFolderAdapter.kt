@@ -1,5 +1,9 @@
 package com.RobinNotBad.BiliClient.adapter.favorite
 
+import android.graphics.drawable.LayerDrawable
+import android.graphics.drawable.ColorDrawable
+import android.graphics.drawable.Drawable
+import com.RobinNotBad.BiliClient.ui.appearance.ColorScheme
 import com.RobinNotBad.BiliClient.util.UiText
 
 import android.annotation.SuppressLint
@@ -93,7 +97,11 @@ class FavoriteFolderAdapter(
                 favoriteHolder.name.text = UiText.of("图文收藏夹")
                 favoriteHolder.count.text = ""
                 Glide.with(BiliTerminal.context!!).asDrawable()
-                    .load(StringUtil.getDrawable(context, R.drawable.article_fav_cover))
+                    // 封面底色原写死在矢量图里（老版粉 #fb8787），现在矢量图只留白色图标，底色取主题主色
+                    .load(LayerDrawable(arrayOf<Drawable>(
+                        ColorDrawable(ColorScheme.PRIMARY),
+                        StringUtil.getDrawable(context, R.drawable.article_fav_cover)
+                    )))
                     .transition(GlideUtil.getTransitionOptions())
                     .apply(RequestOptions.bitmapTransform(RoundedCorners(ToolsUtil.dp2px(5f))))
                     .diskCacheStrategy(DiskCacheStrategy.AUTOMATIC)

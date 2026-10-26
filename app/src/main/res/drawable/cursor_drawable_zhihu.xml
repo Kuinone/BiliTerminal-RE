@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 输入光标：跟随主题主色（原 7 套主题共用 cursor_drawable 的 B站粉）。改色同步 colors.xml。 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <solid android:color="@color/zhihu_brand" />
+    <size android:width="3dp" />
+</shape>

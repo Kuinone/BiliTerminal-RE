@@ -157,7 +157,7 @@
 
     <style name="EditTextStyleZhihu" parent="Widget.AppCompat.EditText">
         <item name="android:textColorHint">@color/zhihu_text_tertiary_dark</item>
-        <item name="android:textCursorDrawable">@drawable/cursor_drawable</item>
+        <item name="android:textCursorDrawable">@drawable/cursor_drawable_zhihu</item>
         <item name="android:textColor">@color/zhihu_text_primary_dark</item>
     </style>
 
@@ -273,7 +273,7 @@
 
     <style name="EditTextStyleIQIYI" parent="Widget.AppCompat.EditText">
         <item name="android:textColorHint">@color/iqiyi_text_tertiary_dark</item>
-        <item name="android:textCursorDrawable">@drawable/cursor_drawable</item>
+        <item name="android:textCursorDrawable">@drawable/cursor_drawable_iqiyi</item>
         <item name="android:textColor">@color/iqiyi_text_primary_dark</item>
     </style>
 
@@ -389,7 +389,7 @@
 
     <style name="EditTextStylePurpleFantasy" parent="Widget.AppCompat.EditText">
         <item name="android:textColorHint">@color/purple_fantasy_text_tertiary_dark</item>
-        <item name="android:textCursorDrawable">@drawable/cursor_drawable</item>
+        <item name="android:textCursorDrawable">@drawable/cursor_drawable_purple_fantasy</item>
         <item name="android:textColor">@color/purple_fantasy_text_primary_dark</item>
     </style>
 
@@ -505,7 +505,7 @@
 
     <style name="EditTextStyleRainbow" parent="Widget.AppCompat.EditText">
         <item name="android:textColorHint">@color/rainbow_text_tertiary_dark</item>
-        <item name="android:textCursorDrawable">@drawable/cursor_drawable</item>
+        <item name="android:textCursorDrawable">@drawable/cursor_drawable_rainbow</item>
         <item name="android:textColor">@color/rainbow_text_primary_dark</item>
     </style>
 
@@ -621,7 +621,7 @@
 
     <style name="EditTextStyleClassicGray" parent="Widget.AppCompat.EditText">
         <item name="android:textColorHint">@color/classic_gray_text_tertiary_dark</item>
-        <item name="android:textCursorDrawable">@drawable/cursor_drawable</item>
+        <item name="android:textCursorDrawable">@drawable/cursor_drawable_classic_gray</item>
         <item name="android:textColor">@color/classic_gray_text_primary_dark</item>
     </style>
 
