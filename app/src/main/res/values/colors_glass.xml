@@ -4,6 +4,8 @@
      按钮 = 主色 20% 淡底 + 高亮色 60% 描边。经典终端只做微调。 -->
 <resources>
     <color name="glass_btn_bg_disabled">#14FFFFFF</color>
+    <!-- 次要按钮：中性白 12%，靠描边（主题高亮色）区分主题，与主按钮的主色淡底拉开层级 -->
+    <color name="glass_btn_secondary">#1FFFFFFF</color>
     <!-- B站粉 -->
     <color name="glass_card_pink">#C73B2F3D</color>
     <color name="glass_stroke_pink">#38FFB3CA</color>

@@ -25,6 +25,8 @@
 
     <!-- B站粉 -->
     <style name="GlassOverlay.Pink" parent="">
+        <item name="choiceCardColor">@color/glass_card_pink</item>
+        <item name="secondaryButtonTint">@color/glass_btn_secondary</item>
         <item name="materialCardViewStyle">@style/CardStyle.Glass</item>
         <item name="materialButtonStyle">@style/ButtonStyle.Glass</item>
     </style>
@@ -50,6 +52,8 @@
 
     <!-- 知乎蓝 -->
     <style name="GlassOverlay.Zhihu" parent="">
+        <item name="choiceCardColor">@color/glass_card_zhihu</item>
+        <item name="secondaryButtonTint">@color/glass_btn_secondary</item>
         <item name="materialCardViewStyle">@style/CardStyleZhihu.Glass</item>
         <item name="materialButtonStyle">@style/ButtonStyleZhihu.Glass</item>
     </style>
@@ -75,6 +79,8 @@
 
     <!-- 爱奇艺绿 -->
     <style name="GlassOverlay.IQIYI" parent="">
+        <item name="choiceCardColor">@color/glass_card_iqiyi</item>
+        <item name="secondaryButtonTint">@color/glass_btn_secondary</item>
         <item name="materialCardViewStyle">@style/CardStyleIQIYI.Glass</item>
         <item name="materialButtonStyle">@style/ButtonStyleIQIYI.Glass</item>
     </style>
@@ -100,6 +106,8 @@
 
     <!-- 紫色空灵 -->
     <style name="GlassOverlay.PurpleFantasy" parent="">
+        <item name="choiceCardColor">@color/glass_card_purple_fantasy</item>
+        <item name="secondaryButtonTint">@color/glass_btn_secondary</item>
         <item name="materialCardViewStyle">@style/CardStylePurpleFantasy.Glass</item>
         <item name="materialButtonStyle">@style/ButtonStylePurpleFantasy.Glass</item>
     </style>
@@ -125,6 +133,8 @@
 
     <!-- 五彩斑斓 -->
     <style name="GlassOverlay.Rainbow" parent="">
+        <item name="choiceCardColor">@color/glass_card_rainbow</item>
+        <item name="secondaryButtonTint">@color/glass_btn_secondary</item>
         <item name="materialCardViewStyle">@style/CardStyleRainbow.Glass</item>
         <item name="materialButtonStyle">@style/ButtonStyleRainbow.Glass</item>
     </style>
@@ -150,6 +160,8 @@
 
     <!-- 经典灰 -->
     <style name="GlassOverlay.ClassicGray" parent="">
+        <item name="choiceCardColor">@color/glass_card_classic_gray</item>
+        <item name="secondaryButtonTint">@color/glass_btn_secondary</item>
         <item name="materialCardViewStyle">@style/CardStyleClassicGray.Glass</item>
         <item name="materialButtonStyle">@style/ButtonStyleClassicGray.Glass</item>
     </style>
@@ -175,6 +187,8 @@
 
     <!-- 经典终端 -->
     <style name="GlassOverlay.Terminal" parent="">
+        <item name="choiceCardColor">@color/glass_card_terminal</item>
+        <item name="secondaryButtonTint">@color/glass_btn_secondary</item>
         <item name="materialCardViewStyle">@style/CardStyleTerminal.Glass</item>
         <item name="materialButtonStyle">@style/ButtonStyleTerminal.Glass</item>
     </style>
