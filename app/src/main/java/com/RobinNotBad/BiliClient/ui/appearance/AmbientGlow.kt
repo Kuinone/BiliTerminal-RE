@@ -61,7 +61,51 @@ object AmbientGlow {
      * 设计原则：顶部底色 = 背景色向主色偏 15% 左右；光晕色 = 主色压暗到不抢正文的亮度，
      * 对暖白 / 冷白正文保持足够对比度。
      */
-    fun specFor(themeKey: String): Spec = when (themeKey) {
+    fun specFor(themeKey: String, light: Boolean = false): Spec =
+        if (light) lightSpecFor(themeKey) else darkSpecFor(themeKey)
+
+    /**
+     * 亮色模式的光晕：浅底上「提亮」没有意义，改成**主色的淡彩晕染**（像晨光透过彩色玻璃）——
+     * 顶部底色是背景向主色偏 8% 左右的浅色，光晕用主题高亮色、alpha 0x40～0x66，正文仍是深色、对比度不受影响。
+     */
+    private fun lightSpecFor(themeKey: String): Spec = when (themeKey) {
+        ColorScheme.THEME_ZHIHU_BLUE -> Spec(
+            top = 0xFFDFEAF8.toInt(),
+            glows = arrayOf(Glow(0x5C6DB0FF, 0.5f, 0.04f, 0.62f))
+        )
+        ColorScheme.THEME_IQIYI_GREEN -> Spec(
+            top = 0xFFDDF2E5.toInt(),
+            glows = arrayOf(Glow(0x5266F0A3, 0.5f, 0.02f, 0.58f))
+        )
+        ColorScheme.THEME_PURPLE_FANTASY -> Spec(
+            top = 0xFFECE1F7.toInt(),
+            glows = arrayOf(
+                Glow(0x5CBA7FE8, 0.5f, 0.05f, 0.66f),
+                Glow(0x40C9A0F0, 0.88f, 0.42f, 0.42f)
+            )
+        )
+        ColorScheme.THEME_RAINBOW_FANTASY -> Spec(
+            top = 0xFFFFEDE3.toInt(),
+            glows = arrayOf(
+                Glow(0x5CFF8E8E, 0.22f, 0.03f, 0.55f),
+                Glow(0x4D4ECDC4, 0.80f, 0.06f, 0.52f)
+            )
+        )
+        ColorScheme.THEME_CLASSIC_GRAY -> Spec(
+            top = 0xFFE6E6F3.toInt(),
+            glows = arrayOf(Glow(0x52A3A3FD, 0.5f, 0.04f, 0.60f))
+        )
+        ColorScheme.THEME_CLASSIC_TERMINAL -> Spec(
+            top = 0xFFF6DDE5.toInt(),
+            glows = arrayOf(Glow(0x59FF8CB0, 0.5f, 0.04f, 0.60f))
+        )
+        else -> Spec(
+            top = 0xFFFBE3EC.toInt(),
+            glows = arrayOf(Glow(0x66FF8CB0, 0.5f, 0.04f, 0.62f))
+        )
+    }
+
+    private fun darkSpecFor(themeKey: String): Spec = when (themeKey) {
         // 知乎蓝：深海蓝，居中一团
         ColorScheme.THEME_ZHIHU_BLUE -> Spec(
             top = 0xFF142540.toInt(),
@@ -106,8 +150,8 @@ object AmbientGlow {
     }
 
     /** 为当前主题创建背景 drawable。每个 Activity 创建一次（冷路径），不缓存。 */
-    fun createDrawable(themeKey: String, background: Int): Drawable =
-        AmbientGlowDrawable(specFor(themeKey), background)
+    fun createDrawable(themeKey: String, background: Int, light: Boolean = false): Drawable =
+        AmbientGlowDrawable(specFor(themeKey, light), background)
 
     /** 保留 RGB、把 alpha 乘以 [factor]。渐变终点用「同色 alpha=0」而不是透明黑，避免边缘发灰。 */
     internal fun scaleAlpha(color: Int, factor: Float): Int {

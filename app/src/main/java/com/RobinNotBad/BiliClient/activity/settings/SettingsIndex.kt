@@ -118,6 +118,7 @@ object SettingsIndex {
         list += Entry("界面边距（纵向）", "单位百分比，用于圆屏适配") { a -> openGroup(a, "ui", "界面与外观", "界面边距（纵向）") }
         list += Entry("设置Density", "手动指定屏幕密度") { a -> openGroup(a, "ui", "界面与外观", "设置Density") }
         list += Entry("外观设置", "主题配色、卡片圆角、自定义字体") { a -> openGroup(a, GROUP_APPEARANCE, "外观设置") }
+        list += Entry("颜色模式", "暗色 / 亮色模式切换") { a -> openGroup(a, GROUP_APPEARANCE, "外观设置", "颜色模式") }
         list += Entry("主题配色", "选择应用的主题配色方案") { a -> openGroup(a, GROUP_APPEARANCE, "外观设置", "主题配色") }
         list += Entry("弥散光晕", "页面顶部的主题色光晕背景") { a -> openGroup(a, GROUP_APPEARANCE, "外观设置", "弥散光晕") }
         list += Entry("玻璃质感", "卡片与按钮半透明，让光晕透进来") { a -> openGroup(a, GROUP_APPEARANCE, "外观设置", "玻璃质感") }
