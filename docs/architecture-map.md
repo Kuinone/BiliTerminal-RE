@@ -1531,6 +1531,8 @@ setOnLoadMoreListener { page -> load(page) } // 4. page 已由基类自增，别
 | `ColorScheme.kt` | 配色：7 套主题（**只读模块**，原 `ui/theme/ThemeManager.kt`） | `theme_selector` | 7 套 |
 | `CornerStyle.kt` | 卡片圆角 | `ui_corner_radius` | `square`（默认）/ `rounded` |
 | `FontStyle.kt` | 自定义字体（用户从文件管理器选字体文件） | `ui_font_path` | 有 / 无（默认无） |
+| `AmbientGlow.kt` | 弥散光晕：7 套主题各一份 `Spec`（顶部底色 + 1～2 团径向光晕），`ColorScheme.applyWindowTheme` 开启时把它设为**窗口背景**、content 背景置空；关闭时走原纯色路径，零开销。无 blur / 噪点层，draw 内零分配 | `ui_ambient_glow` | 开 / 关（默认关） |
+| `ThemeTint.kt` | 给 XML 里只能写死颜色的 drawable（API 19 不能用 `?attr/`）在设置图片时按 `ColorScheme` 着色：点赞/投币/收藏激活态、私信发送按钮、投票选中框等 | — | — |
 | `AppearanceApplier.kt` | 把外观（自定义字体等）落到视图树上：`applyToContentView`，由 `BaseActivity.kt:388` 调用 | — | — |
 
 **分层约定（别打破）**
