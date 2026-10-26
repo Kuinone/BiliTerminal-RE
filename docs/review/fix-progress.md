@@ -6,8 +6,9 @@
 
 ## 1. 当前版本状态
 
-- **版本号**：`26.10.24`（`app/build.gradle` 的 `versionName`），`versionCode 2610240`（26.10.24 远端发版时从 `2610200` 抬上来，`update_log_current` 锚点同期换成了「【26.10.24 本次更新】」，`:app:verifyVersionConsistency` 已复验通过）。tag `26.10.24` 已占用，上一版 tag 是 `26.10.19`。
-- **上一版**：`26.10.19` / tag `26.10.19`。
+- **版本号**：`26.10.26`（`app/build.gradle` 的 `versionName`），`versionCode 2610260`（26.10.24 是 `2610240`，26.10.26 抬到 `2610260`；`strings.xml` 的 `update_log_current` 锚点同期换成「【26.10.26 本次更新】」，`:app:verifyVersionConsistency` 以该锚点校验，本机未复跑）。tag `26.10.26` 已占用，上一版 tag 是 `26.10.24`。
+- **上一版**：`26.10.24` / tag `26.10.24`。
+- **本轮改动（26.10.26）**：搜索结果支持排序（综合 / 播放量 / 最新 / 收藏，视频与专栏）；收藏夹接口升级 B 站新版；播放器新增「无极调音」，音量可在 0~100% 之间任意调；发布动态支持「仅自己可见」「关闭评论」；图片默认存进应用专属目录；下载修掉卡在 20% 不动、1080P+ 缓存下载完成后合并成单文件；断网启动进缓存页；短视频横滑重做；关于页 RE 开发者独立成一列；菜单级页面顶栏箭头统一朝下；发现新版本自动跳更新页；修复 ColorOS Watch 弹窗只剩空方块。明细见 `strings.xml` 的 `update_log_current`（12 条编号条目，另 1 条为版本锚点）。
 - **下次递增**：先看 `app/build.gradle:23-24`；release immutability 下被 Release 用过的 tag **永久不可复用**，同版本名补丁版只能用 `26.10.24.1` 这种后缀形式，`versionCode` 递增、`versionName` 可不变。改了版本号还要同步 `strings.xml` 里 `update_log_current` 的「【YY.MM.DD 本次更新】」锚点，否则 `:app:verifyVersionConsistency` 会失败。
 - **构建命令**（单测任务名**带 flavor 前缀**，`testDebugUnitTest` 自 26.10.11 引入 flavor 后已不存在）：
 

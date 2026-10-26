@@ -4,8 +4,8 @@
 
 轻量的第三方 B 站 Android 客户端，基于哔哩终端 BiliClient 2.7.0 的改版分支
 
-[![Version](https://img.shields.io/badge/version-26.10.19-blue)](https://github.com/zisekongling/BiliTerminal-RE)
-[![Android](https://img.shields.io/badge/android-7.0%2B-green)]()
+[![Version](https://img.shields.io/badge/version-26.10.26-blue)](https://github.com/zisekongling/BiliTerminal-RE)
+[![Android](https://img.shields.io/badge/android-4.4%2B-green)]()
 [![Language](https://img.shields.io/badge/language-Kotlin%20%2F%20Java-orange)]()
 [![License](https://img.shields.io/badge/license-GPL%20v3-red)]()
 
@@ -186,8 +186,8 @@
 
 **RE:哔哩终端是 [哔哩终端 BiliClient](https://gitee.com/RobinNotBad/BiliClient) 的改版分支（fork），不是原项目，也并非官方续作。**
 
-- 原版哔哩终端已经**宣布停更**，最后一个官方正式版为 2.7.0。本分支在 2.7.0 的基础上继续开发。
-- 本项目由社区/个人维护，**与 RobinNotBad 及原开发团队没有任何关系**，遇到任何问题请**不要**向原开发组反馈。
+- 原版哔哩终端已经**宣布停更**，本分支在 2.7.0 的基础上继续开发。
+- 本项目由社区/个人维护，**与 RobinNotBad 及原开发团队没有任何关系**，遇到任何问题请**不要**向原项目团队反馈。
 - 原版项目版权归 RobinNotBad 及原开发团队所有；本项目沿用原版开源协议（代码 GPL v3、界面 CC BY-NC-SA）。
 
 ---
@@ -196,7 +196,7 @@
 
 `clone` 本项目，导入到你的 IDE 中进行开发、构建。
 
-./gradlew.bat :app:assembleRelease   # 编译正式包（R8 + 资源压缩，ABI 分包 arm64-v8a / armeabi-v7a）
+./gradlew.bat :app:assembleRelease   # 编译正式包（R8 + 资源压缩，ABI 分包 arm64-v8a / armeabi-v7a / x86 + universal 通用包）
 ./gradlew.bat :app:testStandardDebugUnitTest   # 单元测试（普通版；共存版用 testCoexistDebugUnitTest）
 
 > 所有改动**直接提交到 `main`**（26.10.22 起不再按类型分 `feat/*`、`fix/*` 分支），需要评审或合并上游时从 `main` 开 PR。欢迎提交 pr。
