@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 「玻璃质感」组件配色（由 GlassStyle 叠加的主题覆盖层使用）。
+     卡片 = 主题卡片色向主色偏 8%、78% 不透明；描边 / 涟漪 = 主题高亮色低透明度；
+     按钮 = 主色 20% 淡底 + 高亮色 60% 描边。经典终端只做微调。 -->
+<resources>
+    <color name="glass_btn_bg_disabled">#14FFFFFF</color>
+    <!-- B站粉 -->
+    <color name="glass_card_pink">#C73B2F3D</color>
+    <color name="glass_stroke_pink">#38FFB3CA</color>
+    <color name="glass_ripple_pink">#33FFB3CA</color>
+    <color name="glass_btn_bg_fill_pink">#33FF6699</color>
+    <color name="glass_btn_stroke_pink">#99FFB3CA</color>
+    <color name="glass_btn_text_pink">#FFF0E8EC</color>
+    <!-- 知乎蓝 -->
+    <color name="glass_card_zhihu">#C7272F43</color>
+    <color name="glass_stroke_zhihu">#386DB0FF</color>
+    <color name="glass_ripple_zhihu">#336DB0FF</color>
+    <color name="glass_btn_bg_fill_zhihu">#33056DE8</color>
+    <color name="glass_btn_stroke_zhihu">#996DB0FF</color>
+    <color name="glass_btn_text_zhihu">#FFF0F7FF</color>
+    <!-- 爱奇艺绿 -->
+    <color name="glass_card_iqiyi">#C7273838</color>
+    <color name="glass_stroke_iqiyi">#3866F0A3</color>
+    <color name="glass_ripple_iqiyi">#3366F0A3</color>
+    <color name="glass_btn_bg_fill_iqiyi">#3300DC5A</color>
+    <color name="glass_btn_stroke_iqiyi">#9966F0A3</color>
+    <color name="glass_btn_text_iqiyi">#FFE6FDF0</color>
+    <!-- 紫色空灵 -->
+    <color name="glass_card_purple_fantasy">#C7332E41</color>
+    <color name="glass_stroke_purple_fantasy">#38BA7FE8</color>
+    <color name="glass_ripple_purple_fantasy">#33BA7FE8</color>
+    <color name="glass_btn_bg_fill_purple_fantasy">#339B59D0</color>
+    <color name="glass_btn_stroke_purple_fantasy">#99BA7FE8</color>
+    <color name="glass_btn_text_purple_fantasy">#FFF5EBFC</color>
+    <!-- 五彩斑斓 -->
+    <color name="glass_card_rainbow">#C73B2F39</color>
+    <color name="glass_stroke_rainbow">#38FF8E8E</color>
+    <color name="glass_ripple_rainbow">#33FF8E8E</color>
+    <color name="glass_btn_bg_fill_rainbow">#33FF6B6B</color>
+    <color name="glass_btn_stroke_rainbow">#99FF8E8E</color>
+    <color name="glass_btn_text_rainbow">#FFFFF5F5</color>
+    <!-- 经典灰 -->
+    <color name="glass_card_classic_gray">#C7313145</color>
+    <color name="glass_stroke_classic_gray">#38C8C8FF</color>
+    <color name="glass_ripple_classic_gray">#33C8C8FF</color>
+    <color name="glass_btn_bg_fill_classic_gray">#338787FB</color>
+    <color name="glass_btn_stroke_classic_gray">#99C8C8FF</color>
+    <color name="glass_btn_text_classic_gray">#FFEBE0E2</color>
+    <!-- 经典终端（微调：保留黑底灰卡的老版观感） -->
+    <color name="glass_card_terminal">#B8262626</color>
+    <color name="glass_stroke_terminal">#26FFB3CA</color>
+    <color name="glass_ripple_terminal">#40FEFEFE</color>
+    <color name="glass_btn_bg_fill_terminal">#29FF6699</color>
+    <color name="glass_btn_stroke_terminal">#73FFB3CA</color>
+    <color name="glass_btn_text_terminal">#FFEBE0E2</color>
+</resources>

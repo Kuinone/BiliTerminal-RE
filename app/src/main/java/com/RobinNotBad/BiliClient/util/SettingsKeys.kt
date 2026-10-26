@@ -31,6 +31,8 @@ object SettingsKeys {
     const val UI_FONT_PATH = "ui_font_path"
     /** 弥散光晕（页面背景的主题色光晕）开关，见 `ui/appearance/AmbientGlow`。 */
     const val UI_AMBIENT_GLOW = "ui_ambient_glow"
+    /** 玻璃质感组件（卡片 / 按钮半透明化）开关，见 `ui/appearance/GlassStyle`。 */
+    const val UI_GLASS_COMPONENTS = "ui_glass_components"
 
     // ==================== 详情页设置 ====================
     const val FAV_SINGLE = "fav_single"

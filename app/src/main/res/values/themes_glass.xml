@@ -1,0 +1,181 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 「玻璃质感」主题覆盖层：GlassStyle.applyTo 在 BaseActivity.onCreate 里 theme.applyStyle(…, force=true)。
+     只替换卡片 / 按钮两个组件样式引用（具体样式，不走 ?attr 间接层），关闭时不叠加、零开销。
+     卡片 / 按钮的 elevation 必须为 0：半透明底下面的阴影会透出来，形成脏边。 -->
+<resources xmlns:tools="http://schemas.android.com/tools">
+
+    <style name="CardStyle.Glass" parent="CardStyle">
+        <item name="cardBackgroundColor">@color/glass_card_pink</item>
+        <item name="cardElevation">0dp</item>
+        <item name="strokeColor">@color/glass_stroke_pink</item>
+        <item name="strokeWidth">1dp</item>
+        <item name="rippleColor" tools:ignore="PrivateResource">@color/glass_ripple_pink</item>
+    </style>
+
+    <style name="ButtonStyle.Glass" parent="ButtonStyle">
+        <item name="backgroundTint">@color/glass_btn_bg_pink</item>
+        <item name="strokeColor">@color/glass_btn_stroke_pink</item>
+        <item name="strokeWidth">1dp</item>
+        <item name="rippleColor">@color/glass_ripple_pink</item>
+        <item name="android:textColor">@color/glass_btn_text_pink</item>
+        <item name="elevation">0dp</item>
+        <item name="android:elevation" tools:ignore="NewApi">0dp</item>
+        <item name="android:stateListAnimator" tools:ignore="NewApi">@null</item>
+    </style>
+
+    <!-- B站粉 -->
+    <style name="GlassOverlay.Pink" parent="">
+        <item name="materialCardViewStyle">@style/CardStyle.Glass</item>
+        <item name="materialButtonStyle">@style/ButtonStyle.Glass</item>
+    </style>
+
+    <style name="CardStyleZhihu.Glass" parent="CardStyleZhihu">
+        <item name="cardBackgroundColor">@color/glass_card_zhihu</item>
+        <item name="cardElevation">0dp</item>
+        <item name="strokeColor">@color/glass_stroke_zhihu</item>
+        <item name="strokeWidth">1dp</item>
+        <item name="rippleColor" tools:ignore="PrivateResource">@color/glass_ripple_zhihu</item>
+    </style>
+
+    <style name="ButtonStyleZhihu.Glass" parent="ButtonStyleZhihu">
+        <item name="backgroundTint">@color/glass_btn_bg_zhihu</item>
+        <item name="strokeColor">@color/glass_btn_stroke_zhihu</item>
+        <item name="strokeWidth">1dp</item>
+        <item name="rippleColor">@color/glass_ripple_zhihu</item>
+        <item name="android:textColor">@color/glass_btn_text_zhihu</item>
+        <item name="elevation">0dp</item>
+        <item name="android:elevation" tools:ignore="NewApi">0dp</item>
+        <item name="android:stateListAnimator" tools:ignore="NewApi">@null</item>
+    </style>
+
+    <!-- 知乎蓝 -->
+    <style name="GlassOverlay.Zhihu" parent="">
+        <item name="materialCardViewStyle">@style/CardStyleZhihu.Glass</item>
+        <item name="materialButtonStyle">@style/ButtonStyleZhihu.Glass</item>
+    </style>
+
+    <style name="CardStyleIQIYI.Glass" parent="CardStyleIQIYI">
+        <item name="cardBackgroundColor">@color/glass_card_iqiyi</item>
+        <item name="cardElevation">0dp</item>
+        <item name="strokeColor">@color/glass_stroke_iqiyi</item>
+        <item name="strokeWidth">1dp</item>
+        <item name="rippleColor" tools:ignore="PrivateResource">@color/glass_ripple_iqiyi</item>
+    </style>
+
+    <style name="ButtonStyleIQIYI.Glass" parent="ButtonStyleIQIYI">
+        <item name="backgroundTint">@color/glass_btn_bg_iqiyi</item>
+        <item name="strokeColor">@color/glass_btn_stroke_iqiyi</item>
+        <item name="strokeWidth">1dp</item>
+        <item name="rippleColor">@color/glass_ripple_iqiyi</item>
+        <item name="android:textColor">@color/glass_btn_text_iqiyi</item>
+        <item name="elevation">0dp</item>
+        <item name="android:elevation" tools:ignore="NewApi">0dp</item>
+        <item name="android:stateListAnimator" tools:ignore="NewApi">@null</item>
+    </style>
+
+    <!-- 爱奇艺绿 -->
+    <style name="GlassOverlay.IQIYI" parent="">
+        <item name="materialCardViewStyle">@style/CardStyleIQIYI.Glass</item>
+        <item name="materialButtonStyle">@style/ButtonStyleIQIYI.Glass</item>
+    </style>
+
+    <style name="CardStylePurpleFantasy.Glass" parent="CardStylePurpleFantasy">
+        <item name="cardBackgroundColor">@color/glass_card_purple_fantasy</item>
+        <item name="cardElevation">0dp</item>
+        <item name="strokeColor">@color/glass_stroke_purple_fantasy</item>
+        <item name="strokeWidth">1dp</item>
+        <item name="rippleColor" tools:ignore="PrivateResource">@color/glass_ripple_purple_fantasy</item>
+    </style>
+
+    <style name="ButtonStylePurpleFantasy.Glass" parent="ButtonStylePurpleFantasy">
+        <item name="backgroundTint">@color/glass_btn_bg_purple_fantasy</item>
+        <item name="strokeColor">@color/glass_btn_stroke_purple_fantasy</item>
+        <item name="strokeWidth">1dp</item>
+        <item name="rippleColor">@color/glass_ripple_purple_fantasy</item>
+        <item name="android:textColor">@color/glass_btn_text_purple_fantasy</item>
+        <item name="elevation">0dp</item>
+        <item name="android:elevation" tools:ignore="NewApi">0dp</item>
+        <item name="android:stateListAnimator" tools:ignore="NewApi">@null</item>
+    </style>
+
+    <!-- 紫色空灵 -->
+    <style name="GlassOverlay.PurpleFantasy" parent="">
+        <item name="materialCardViewStyle">@style/CardStylePurpleFantasy.Glass</item>
+        <item name="materialButtonStyle">@style/ButtonStylePurpleFantasy.Glass</item>
+    </style>
+
+    <style name="CardStyleRainbow.Glass" parent="CardStyleRainbow">
+        <item name="cardBackgroundColor">@color/glass_card_rainbow</item>
+        <item name="cardElevation">0dp</item>
+        <item name="strokeColor">@color/glass_stroke_rainbow</item>
+        <item name="strokeWidth">1dp</item>
+        <item name="rippleColor" tools:ignore="PrivateResource">@color/glass_ripple_rainbow</item>
+    </style>
+
+    <style name="ButtonStyleRainbow.Glass" parent="ButtonStyleRainbow">
+        <item name="backgroundTint">@color/glass_btn_bg_rainbow</item>
+        <item name="strokeColor">@color/glass_btn_stroke_rainbow</item>
+        <item name="strokeWidth">1dp</item>
+        <item name="rippleColor">@color/glass_ripple_rainbow</item>
+        <item name="android:textColor">@color/glass_btn_text_rainbow</item>
+        <item name="elevation">0dp</item>
+        <item name="android:elevation" tools:ignore="NewApi">0dp</item>
+        <item name="android:stateListAnimator" tools:ignore="NewApi">@null</item>
+    </style>
+
+    <!-- 五彩斑斓 -->
+    <style name="GlassOverlay.Rainbow" parent="">
+        <item name="materialCardViewStyle">@style/CardStyleRainbow.Glass</item>
+        <item name="materialButtonStyle">@style/ButtonStyleRainbow.Glass</item>
+    </style>
+
+    <style name="CardStyleClassicGray.Glass" parent="CardStyleClassicGray">
+        <item name="cardBackgroundColor">@color/glass_card_classic_gray</item>
+        <item name="cardElevation">0dp</item>
+        <item name="strokeColor">@color/glass_stroke_classic_gray</item>
+        <item name="strokeWidth">1dp</item>
+        <item name="rippleColor" tools:ignore="PrivateResource">@color/glass_ripple_classic_gray</item>
+    </style>
+
+    <style name="ButtonStyleClassicGray.Glass" parent="ButtonStyleClassicGray">
+        <item name="backgroundTint">@color/glass_btn_bg_classic_gray</item>
+        <item name="strokeColor">@color/glass_btn_stroke_classic_gray</item>
+        <item name="strokeWidth">1dp</item>
+        <item name="rippleColor">@color/glass_ripple_classic_gray</item>
+        <item name="android:textColor">@color/glass_btn_text_classic_gray</item>
+        <item name="elevation">0dp</item>
+        <item name="android:elevation" tools:ignore="NewApi">0dp</item>
+        <item name="android:stateListAnimator" tools:ignore="NewApi">@null</item>
+    </style>
+
+    <!-- 经典灰 -->
+    <style name="GlassOverlay.ClassicGray" parent="">
+        <item name="materialCardViewStyle">@style/CardStyleClassicGray.Glass</item>
+        <item name="materialButtonStyle">@style/ButtonStyleClassicGray.Glass</item>
+    </style>
+
+    <style name="CardStyleTerminal.Glass" parent="CardStyleTerminal">
+        <item name="cardBackgroundColor">@color/glass_card_terminal</item>
+        <item name="cardElevation">0dp</item>
+        <item name="strokeColor">@color/glass_stroke_terminal</item>
+        <item name="strokeWidth">1dp</item>
+        <item name="rippleColor" tools:ignore="PrivateResource">@color/glass_ripple_terminal</item>
+    </style>
+
+    <style name="ButtonStyleTerminal.Glass" parent="ButtonStyleTerminal">
+        <item name="backgroundTint">@color/glass_btn_bg_terminal</item>
+        <item name="strokeColor">@color/glass_btn_stroke_terminal</item>
+        <item name="strokeWidth">1dp</item>
+        <item name="rippleColor">@color/glass_ripple_terminal</item>
+        <item name="android:textColor">@color/glass_btn_text_terminal</item>
+        <item name="elevation">0dp</item>
+        <item name="android:elevation" tools:ignore="NewApi">0dp</item>
+        <item name="android:stateListAnimator" tools:ignore="NewApi">@null</item>
+    </style>
+
+    <!-- 经典终端 -->
+    <style name="GlassOverlay.Terminal" parent="">
+        <item name="materialCardViewStyle">@style/CardStyleTerminal.Glass</item>
+        <item name="materialButtonStyle">@style/ButtonStyleTerminal.Glass</item>
+    </style>
+</resources>

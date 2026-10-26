@@ -312,7 +312,7 @@ class OpusContentAdapter(
                                     article.stats.favoured = false
                                     article.stats.favorite--
                                     context.runOnUiThread {
-                                        fav.setImageResource(R.drawable.icon_fav_0)
+                                        ThemeTint.setInactiveIcon(fav, R.drawable.icon_fav_0)
                                         favLabel.text = StringUtil.toWan(article.stats.favorite.toLong())
                                         MsgUtil.showMsg(UiText.of("已取消收藏~"))
                                     }

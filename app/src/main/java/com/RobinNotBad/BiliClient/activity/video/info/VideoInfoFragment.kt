@@ -84,7 +84,7 @@ class VideoInfoFragment : BaseFragment() {
         if (code == RESULT_ADDED) {
             ThemeTint.setActiveIcon(fav, R.drawable.icon_fav_1)
         } else if (code == RESULT_DELETED) {
-            fav.setImageResource(R.drawable.icon_fav_0)
+            ThemeTint.setInactiveIcon(fav, R.drawable.icon_fav_0)
         }
     }
 

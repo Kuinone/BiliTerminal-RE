@@ -1,6 +1,13 @@
 package com.RobinNotBad.BiliClient.ui.appearance
 
 import android.content.Context
+import android.graphics.Canvas
+import android.graphics.ColorFilter
+import android.graphics.Paint
+import android.graphics.PixelFormat
+import android.graphics.RadialGradient
+import android.graphics.Rect
+import android.graphics.Shader
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.view.View
@@ -40,16 +47,66 @@ object ThemeTint {
     fun tinted(context: Context, @DrawableRes resId: Int, @ColorInt color: Int): Drawable? =
         tinted(AppCompatResources.getDrawable(context, resId), color)
 
-    /** 用主题主色着色后设为 [view] 的图片（点赞 / 投币 / 收藏的「已激活」态）。 */
+    /**
+     * 用主题主色着色后设为 [view] 的图片（点赞 / 投币 / 收藏的「已激活」态）。
+     * 开启「玻璃质感」时，图标背后再垫一团主色小光晕（[GlowDotDrawable]）。
+     *
+     * 只用于背景本来就是透明（`#0000`）的图标按钮——这里会直接替换背景。
+     */
     @JvmStatic
     fun setActiveIcon(view: ImageView, @DrawableRes resId: Int) {
         view.setImageDrawable(tinted(view.context, resId, ColorScheme.PRIMARY))
+        if (GlassStyle.isEnabled()) ViewCompat.setBackground(view, GlowDotDrawable(ColorScheme.PRIMARY))
     }
 
-    /** 激活态走 [setActiveIcon]，未激活态原样设置（未激活图标本就是中性暖白）。 */
+    /** 未激活态：原样设置图标（本就是中性暖白），并撤掉 [setActiveIcon] 垫的光晕。 */
+    @JvmStatic
+    fun setInactiveIcon(view: ImageView, @DrawableRes resId: Int) {
+        view.setImageResource(resId)
+        if (view.background is GlowDotDrawable) ViewCompat.setBackground(view, null)
+    }
+
+    /** 按状态分派到 [setActiveIcon] / [setInactiveIcon]。 */
     @JvmStatic
     fun setToggleIcon(view: ImageView, active: Boolean, @DrawableRes activeRes: Int, @DrawableRes inactiveRes: Int) {
-        if (active) setActiveIcon(view, activeRes) else view.setImageResource(inactiveRes)
+        if (active) setActiveIcon(view, activeRes) else setInactiveIcon(view, inactiveRes)
+    }
+
+    /**
+     * 激活图标背后的小光晕：主色从中心 40% → 透明的径向渐变，铺满 view 的内切圆。
+     * 静态绘制，Shader 只在尺寸变化时建；一个页面最多三个（点赞 / 投币 / 收藏）。
+     */
+    private class GlowDotDrawable(private val color: Int) : Drawable() {
+        private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { isDither = true }
+        private var cx = 0f
+        private var cy = 0f
+        private var r = 0f
+
+        override fun onBoundsChange(bounds: Rect) {
+            super.onBoundsChange(bounds)
+            cx = bounds.exactCenterX()
+            cy = bounds.exactCenterY()
+            r = minOf(bounds.width(), bounds.height()) / 2f
+            paint.shader = if (r > 0f) RadialGradient(
+                cx, cy, r,
+                intArrayOf(withAlpha(0x66), withAlpha(0x2E), withAlpha(0)),
+                floatArrayOf(0f, 0.55f, 1f),
+                Shader.TileMode.CLAMP
+            ) else null
+        }
+
+        private fun withAlpha(a: Int) = (color and 0x00FFFFFF) or (a shl 24)
+
+        override fun draw(canvas: Canvas) {
+            if (r > 0f) canvas.drawCircle(cx, cy, r, paint)
+        }
+
+        override fun setAlpha(alpha: Int) {}
+
+        override fun setColorFilter(colorFilter: ColorFilter?) {}
+
+        @Deprecated("Deprecated in Java")
+        override fun getOpacity(): Int = PixelFormat.TRANSLUCENT
     }
 
     /** 把 [view] 现有背景整体着色为 [color]（保留背景自身的形状与 alpha）。 */
