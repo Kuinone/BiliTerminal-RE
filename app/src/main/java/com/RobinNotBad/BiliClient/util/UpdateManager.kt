@@ -34,8 +34,13 @@ private const val BETA_TEXT_MAX_BYTES = 2L * 1024 * 1024
     @Volatile
     private var downloadCanceled = false
 
+    /**
+     * 更新专用客户端。信任「系统根证书 + 内置 ISRG 根证书」（见 [ExtraTrust]）：
+     * 内测分享站用 Let's Encrypt 证书，Android 7.1 及以下的系统证书库里没有它的根，
+     * 不加这一步会报 `Trust anchor for certification path not found`。
+     */
     private val okHttpClient: OkHttpClient by lazy {
-        OkHttpClient.Builder()
+        ExtraTrust.apply(OkHttpClient.Builder(), BiliTerminal.context)
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(60, TimeUnit.SECONDS)
             .followRedirects(true)

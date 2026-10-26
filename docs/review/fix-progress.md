@@ -1549,6 +1549,17 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
 - **遗留**：①**启动期若恰好有新公告**（`TerminalApi.checkAnnouncement` 把服务端返回的未读公告逐条 `MsgUtil.showText`，只记最大 id），公告页会叠在更新页之上，按返回逐层退出后才能看到更新页——这是既有启动公告行为，本次不改（用延迟/重排去抢时序太脆弱）；用户已读过最新公告（常态）时不出现。②真手表未验证，只有 SDK AVD。
 - **文档**：`docs/FEATURES.md` §14.15 与「后台检查更新」、`docs/copy-inventory/02-update-log.md` L-032、`docs/architecture-map.md`（启动链路 + 改功能注意）。
 
+### 3.70 部分设备内测码更新报 `Trust anchor for certification path not found`（26.10.26，待真机）
+
+- **症状**：部分设备长按「检查更新」输入内测码后报 `java.security.cert.CertPathValidatorException: Trust anchor for certification path not found`；同一台设备走 Gitee / GitHub 的普通更新正常。
+- **根因（推断，本机沙箱连不上两个分享站，没能直接看到证书链）**：内测分享站（`file.zsapp.asia` / `share.lanol.cn`，自建 FileCodeBox）用的是 Let's Encrypt 证书，它的根 **ISRG Root X1 直到 Android 7.1.1（API 25）才进系统证书库**。以前老系统靠「DST Root CA X3 交叉签名」兜底，2024 年 Let's Encrypt 已停发这条链，于是 Android 7.1 及以下（手表大量停在 4.4~7.1）找不到信任锚；Gitee / GitHub 用 DigiCert / Sectigo 的老根，不受影响。正好对上「部分设备」。
+- **改法**：
+  - 新增 `res/raw/extra_ca_roots.pem`：ISRG Root X1（至 2035-06-04）+ ISRG Root X2（至 2040-09-17），两张的 SHA-256 已与 Let's Encrypt 公布的值核对过，指纹写在 `ExtraTrust.java` 类注释里。PEM 里故意不写注释，老系统的证书解析器不一定容忍 PEM 块外的文字。
+  - 新增 `util/ExtraTrust.java`：系统 TrustManager 的全部 `acceptedIssuers` + 内置根，一起放进内存 `KeyStore`，再用 `TrustManagerFactory.init(ks)` 生成**平台标准**的 `X509TrustManager`。链、有效期、主机名照常校验，**不是 trust-all**。没写成「先系统、失败再内置」的组合 TrustManager：API 24+ 的系统 TrustManager 是网络安全配置的 RootTrustManager，有 domain-config 时只接受带主机名的 `X509ExtendedTrustManager` 调用，而那个类 API 24 才有，minSdk 19 上继承会类加载失败。任何一步出错都回落系统默认。
+  - `util/UpdateManager.kt` 的 `okHttpClient` 套上 `ExtraTrust.apply(...)`，所以更新检查、内测解析、内测 txt、APK 下载都走合并后的信任。**带登录 Cookie 的主客户端 `NetWorkUtil` 没动**，不扩大信任面。
+- **验证**：本机沙箱没有 Android SDK，**`assembleDebug` / 单测没跑成**。把 `ExtraTrust` 的纯逻辑部分（`readCertificates` / `systemTrustManager` / `build`）剥出来在 JDK 25 上测过：PEM 读出 2 张证书（ISRG Root X1 / X2）；keytool 自签 CA 签发的叶子证书，系统 TM 拒绝、合并 TM（不含该 CA）**仍然拒绝**、合并 TM（含该 CA）通过。
+- **未验证 / 残留**：①Android 编译与单测待跑；②要在 Android 7.1 及以下的真机或 AVD 上跑通内测码下载才算真修好；③如果分享站换成别家证书（比如根也不在老系统里），往 `extra_ca_roots.pem` 追加对应根证书即可，代码不用改；④如果其实是服务器漏发了中间证书，所有设备都会报错，那就不属于这次修的问题，要改服务器配置。
+
 ## 4. 历史章节索引
 
 > 完整正文在 `docs/archive/review/fix-progress-history.md`。**编号在历史上有重复**（`## 二十二` / `## 二十九` 各出现两次、`## 30.` 是阿拉伯数字写法，原为不打断既有交叉引用而保持不动），下表**以归档文件的物理行序为准**。
