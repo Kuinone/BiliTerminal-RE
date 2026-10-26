@@ -20,10 +20,12 @@ import com.RobinNotBad.BiliClient.activity.settings.login.SpecialLoginActivity
 import com.RobinNotBad.BiliClient.adapter.SettingsAdapter
 import com.RobinNotBad.BiliClient.api.TerminalApi
 import com.RobinNotBad.BiliClient.model.SettingSection
+import com.RobinNotBad.BiliClient.ui.appearance.AmbientGlow
 import com.RobinNotBad.BiliClient.ui.appearance.AppearanceManager
 import com.RobinNotBad.BiliClient.ui.appearance.ColorScheme
 import com.RobinNotBad.BiliClient.ui.appearance.CornerStyle
 import com.RobinNotBad.BiliClient.ui.appearance.FontStyle
+import com.RobinNotBad.BiliClient.ui.appearance.GlassStyle
 import com.RobinNotBad.BiliClient.util.Aria2Util
 import com.RobinNotBad.BiliClient.util.BetaUpdate
 import com.RobinNotBad.BiliClient.util.CenterThreadPool
@@ -345,6 +347,16 @@ class SettingGroupActivity : RefreshListActivity() {
                 AppearanceManager.setTheme(newValue)
                 recreate()
             }
+        }
+        // 开关本身由 SettingsAdapter 落盘；这里再走门面写一次，为的是递增外观版本号，
+        // 让返回栈里的其它页面在 onResume 时一起重建
+        switch("弥散光晕", getString(R.string.desc_setting_ambient_glow), SettingsKeys.UI_AMBIENT_GLOW, AmbientGlow.DEFAULT) { isChecked ->
+            AppearanceManager.setAmbientGlow(isChecked)
+            recreate()
+        }
+        switch("玻璃质感", getString(R.string.desc_setting_glass_components), SettingsKeys.UI_GLASS_COMPONENTS, GlassStyle.DEFAULT) { isChecked ->
+            AppearanceManager.setGlassComponents(isChecked)
+            recreate()
         }
 
         title("圆角")

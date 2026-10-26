@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.activity.message
 
+import com.RobinNotBad.BiliClient.ui.appearance.ThemeTint
+import com.RobinNotBad.BiliClient.ui.appearance.ColorScheme
 import com.RobinNotBad.BiliClient.util.UiText
 
 import android.annotation.SuppressLint
@@ -75,6 +77,9 @@ class PrivateMsgActivity : BaseActivity() {
         contentEt = findViewById(R.id.msg_input_et)
         sendBtn = findViewById(R.id.send_btn)
         imageBtn = findViewById(R.id.image_btn)
+        // background_privatemsg_send 写死老版粉 #fb8799，这里按主题主色着色（形状/圆角不变）
+        ThemeTint.tintBackground(sendBtn, ColorScheme.PRIMARY)
+        ThemeTint.tintBackground(imageBtn, ColorScheme.PRIMARY)
         layout_input = findViewById(R.id.layout_input)
 
         val intent = intent

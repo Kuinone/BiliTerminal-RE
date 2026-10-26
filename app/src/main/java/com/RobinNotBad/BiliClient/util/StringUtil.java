@@ -515,7 +515,7 @@ public class StringUtil {
         public void updateDrawState(@NonNull TextPaint ds) {
             super.updateDrawState(ds);
             ds.setUnderlineText(false);
-            ds.setColor(Color.rgb(0x66, 0xcc, 0xff));
+            ds.setColor(ColorScheme.INSTANCE.getLINK()); // 原写死 #66ccff，现按主题取链接色
         }
     }
 

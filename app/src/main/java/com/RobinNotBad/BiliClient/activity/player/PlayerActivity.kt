@@ -1,5 +1,6 @@
 package com.RobinNotBad.BiliClient.activity.player
 
+import com.RobinNotBad.BiliClient.ui.appearance.GlassStyle
 import com.RobinNotBad.BiliClient.util.UiText
 
 import android.annotation.SuppressLint
@@ -4430,6 +4431,10 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
     private fun createChoiceView(choice: InteractionVideoData.InteractionChoice): TextView {
         val choiceView = LayoutInflater.from(this).inflate(R.layout.cell_interaction_choice, null) as TextView
         choiceView.text = choice.option
+        // 玻璃质感：互动选项原是写死粉色按下态的 background_interaction_choice，换成玻璃选项（圆角沿用原件 12dp）
+        if (GlassStyle.isEnabled()) {
+            choiceView.background = GlassStyle.choiceBackground(this, false, 12f * resources.displayMetrics.density)
+        }
         val fontSize = SharedPreferencesUtil.getFloat(
             SettingsKeys.PLAYER_INTERACTION_CHOICE_SIZE,
             SettingsKeys.PLAYER_INTERACTION_CHOICE_SIZE_DEFAULT

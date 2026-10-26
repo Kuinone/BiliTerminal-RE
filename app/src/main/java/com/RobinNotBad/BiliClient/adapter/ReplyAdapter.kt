@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.adapter
 
+import com.RobinNotBad.BiliClient.ui.appearance.GlassStyle
+import com.RobinNotBad.BiliClient.ui.appearance.ThemeTint
 import com.RobinNotBad.BiliClient.util.UiText
 
 import android.annotation.SuppressLint
@@ -57,6 +59,12 @@ import java.util.Collections
 import java.util.HashSet
 import org.json.JSONException
 
+/**
+ * 评论区「UP」身份标签底色：**刻意写死红色、不跟主题**（产品要求：UP 身份在任何主题下都一眼可辨）。
+ * 别当作漏改的硬编码去「顺手主题化」。
+ */
+private const val UP_BADGE_COLOR = 0xFFF44336.toInt()
+
 @SuppressLint("ClickableViewAccessibility")
 class ReplyAdapter(
     val context: Context,
@@ -76,7 +84,8 @@ class ReplyAdapter(
 
     private val roundSmallPx = context.resources.getDimension(R.dimen.round_small).toInt()
     private val likeDrawable0 = ContextCompat.getDrawable(context, R.drawable.icon_reply_like0)
-    private val likeDrawable1 = ContextCompat.getDrawable(context, R.drawable.icon_reply_like1)
+    // 已赞图标原写死 #fb6789；与同一行「已赞」数字（ColorScheme.LIKE_COLOR）同色
+    private val likeDrawable1 = ThemeTint.tinted(context, R.drawable.icon_reply_like1, ColorScheme.LIKE_COLOR)
 
     // 点赞去重：记录正在请求中的评论 rpid。
     // 不加这个的话用户连点会连发好几次点赞/取消请求，服务端按最后一次算而界面按每次算，
@@ -207,7 +216,7 @@ class ReplyAdapter(
                 name_str.append(reply.sender!!.name)
                 name_str.setSpan(
                         RadiusBackgroundSpan(2, roundSmallPx,
-                                Color.WHITE, ColorScheme.PRIMARY),
+                                Color.WHITE, UP_BADGE_COLOR),
                         0, 4, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
                 name_str.setSpan(RelativeSizeSpan(0.8f), 0, 4, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             } else
@@ -225,7 +234,7 @@ class ReplyAdapter(
                         .append(" ")
                 name_str.setSpan(
                         RadiusBackgroundSpan(2, roundSmallPx,
-                                Color.WHITE, Color.argb(140, 158, 186, 232)),
+                                Color.WHITE, ColorScheme.withPrimaryAlpha(140)),
                         last_length + 1, name_str.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
                 name_str.setSpan(RelativeSizeSpan(0.8f), last_length + 1, name_str.length,
                         Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
@@ -305,7 +314,7 @@ class ReplyAdapter(
                             childMsg.append(child.sender!!.name)
                             childMsg.setSpan(RadiusBackgroundSpan(2,
                                     roundSmallPx, Color.WHITE,
-                                    ColorScheme.PRIMARY), 0, 4, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                                    UP_BADGE_COLOR), 0, 4, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
                             childMsg.setSpan(RelativeSizeSpan(0.8f), 0, 4, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
                         } else
                             childMsg.append(child.sender!!.name)
@@ -847,6 +856,14 @@ class ReplyAdapter(
         val imageCard: ImageView = itemView.findViewById(R.id.imageCard)
         var lastAvatarUrl: String? = null
         var lastImageUrl: String? = null
+
+        init {
+            // 玻璃质感：楼中楼预览框与「UP主觉得很赞」标签原是写死 #dd262626 的 shape，换成玻璃面板（只在建 holder 时做一次）
+            if (GlassStyle.isEnabled()) {
+                childReplyCard.background = GlassStyle.panelBackground(itemView.context)
+                upLiked.background = GlassStyle.panelBackground(itemView.context)
+            }
+        }
     }
 
     class WriteReply(@NonNull itemView: View) : RecyclerView.ViewHolder(itemView) {

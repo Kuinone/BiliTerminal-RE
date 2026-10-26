@@ -1,5 +1,6 @@
 package com.RobinNotBad.BiliClient.adapter.dynamic
 
+import com.RobinNotBad.BiliClient.ui.appearance.ThemeTint
 import com.RobinNotBad.BiliClient.util.UiText
 
 import android.annotation.SuppressLint
@@ -635,7 +636,8 @@ class DynamicHolder(itemView: View, val mActivity: BaseActivity, val isChild: Bo
         val isSelected = voteInfo.my_votes.contains(option.opt_idx)
 
         if (isSelected) {
-            optionView.setBackgroundResource(R.drawable.bg_vote_option_selected)
+            // 原 bg_vote_option_selected 写死 #FE679A，这里按主题主色现建（0.5dp 描边 + 12% 淡底 + 6dp 圆角，与原件一致）
+            optionView.background = ThemeTint.outlinedBox(context, ColorScheme.PRIMARY, 6f, 0.5f, 0x20)
             optionIndicator.text = "✓"
             optionIndicator.setTextColor(ColorScheme.PRIMARY)
         } else {
@@ -730,7 +732,7 @@ class DynamicHolder(itemView: View, val mActivity: BaseActivity, val isChild: Bo
         if (!dynamic.userInfo.vip_nickname_color.isEmpty()) {
             username.setTextColor(Color.parseColor(dynamic.userInfo.vip_nickname_color))
         } else {
-            username.setTextColor(0xFFFFFFFF.toInt())
+            username.setTextColor(ColorScheme.TEXT_PRIMARY)
         }
         if (pubdate != null)
             pubdate!!.text = dynamic.pubTime
@@ -936,7 +938,7 @@ class DynamicHolder(itemView: View, val mActivity: BaseActivity, val isChild: Bo
                 if (dynamic.stats.liked) {
                     likeCount!!.setTextColor(ColorScheme.LIKE_COLOR)
                     likeCount!!.setCompoundDrawablesWithIntrinsicBounds(
-                        ContextCompat.getDrawable(context, R.drawable.icon_reply_like1), null, null, null
+                        ThemeTint.tinted(context, R.drawable.icon_reply_like1, ColorScheme.LIKE_COLOR), null, null, null
                     )
                 } else {
                     likeCount!!.setTextColor(ColorScheme.TEXT_PRIMARY)
@@ -967,7 +969,7 @@ class DynamicHolder(itemView: View, val mActivity: BaseActivity, val isChild: Bo
                                         likeCount!!.text = StringUtil.toWan((++dynamic.stats.like).toLong())
                                         likeCount!!.setTextColor(ColorScheme.LIKE_COLOR)
                                         likeCount!!.setCompoundDrawablesWithIntrinsicBounds(
-                                            ContextCompat.getDrawable(context, R.drawable.icon_reply_like1), null, null,
+                                            ThemeTint.tinted(context, R.drawable.icon_reply_like1, ColorScheme.LIKE_COLOR), null, null,
                                             null
                                         )
                                     }

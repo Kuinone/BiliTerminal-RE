@@ -1,5 +1,6 @@
 package com.RobinNotBad.BiliClient.adapter.article
 
+import com.RobinNotBad.BiliClient.ui.appearance.ThemeTint
 import com.RobinNotBad.BiliClient.util.UiText
 
 import android.annotation.SuppressLint
@@ -217,9 +218,9 @@ class OpusContentAdapter(
                 likeLabel.text = StringUtil.toWan(article.stats.like.toLong())
                 coinLabel.text = StringUtil.toWan(article.stats.coin.toLong())
                 favLabel.text = StringUtil.toWan(article.stats.favorite.toLong())
-                like.setImageResource(if (article.stats.liked) R.drawable.icon_like_1 else R.drawable.icon_like_0)
-                coin.setImageResource(if (article.stats.coined > 0) R.drawable.icon_coin_1 else R.drawable.icon_coin_0)
-                fav.setImageResource(if (article.stats.favoured) R.drawable.icon_fav_1 else R.drawable.icon_fav_0)
+                ThemeTint.setToggleIcon(like, article.stats.liked, R.drawable.icon_like_1, R.drawable.icon_like_0)
+                ThemeTint.setToggleIcon(coin, article.stats.coined > 0, R.drawable.icon_coin_1, R.drawable.icon_coin_0)
+                ThemeTint.setToggleIcon(fav, article.stats.favoured, R.drawable.icon_fav_1, R.drawable.icon_fav_0)
 
                 holder.itemView.findViewById<View>(R.id.layout_like).visibility =
                     if (article.stats.like_disabled) View.GONE else View.VISIBLE
@@ -251,9 +252,7 @@ class OpusContentAdapter(
                                         likeLabel.text = StringUtil.toWan((++article.stats.like).toLong())
                                     else
                                         likeLabel.text = StringUtil.toWan((--article.stats.like).toLong())
-                                    like.setImageResource(
-                                        if (article.stats.liked) R.drawable.icon_like_1 else R.drawable.icon_like_0
-                                    )
+                                    ThemeTint.setToggleIcon(like, article.stats.liked, R.drawable.icon_like_1, R.drawable.icon_like_0)
                                 }
                             } else {
                                 context.runOnUiThread { MsgUtil.showMsg(ApiErrorText.opFailedWithDetail(result)) }
@@ -281,7 +280,7 @@ class OpusContentAdapter(
                                     context.runOnUiThread {
                                         MsgUtil.showMsg(UiText.of("投币成功！"))
                                         coinLabel.text = StringUtil.toWan((++article.stats.coin).toLong())
-                                        coin.setImageResource(R.drawable.icon_coin_1)
+                                        ThemeTint.setActiveIcon(coin, R.drawable.icon_coin_1)
                                     }
                                 } else {
                                     var msg = UiText.of("投币失败：") + result
@@ -313,7 +312,7 @@ class OpusContentAdapter(
                                     article.stats.favoured = false
                                     article.stats.favorite--
                                     context.runOnUiThread {
-                                        fav.setImageResource(R.drawable.icon_fav_0)
+                                        ThemeTint.setInactiveIcon(fav, R.drawable.icon_fav_0)
                                         favLabel.text = StringUtil.toWan(article.stats.favorite.toLong())
                                         MsgUtil.showMsg(UiText.of("已取消收藏~"))
                                     }
@@ -325,7 +324,7 @@ class OpusContentAdapter(
                                     article.stats.favoured = true
                                     article.stats.favorite++
                                     context.runOnUiThread {
-                                        fav.setImageResource(R.drawable.icon_fav_1)
+                                        ThemeTint.setActiveIcon(fav, R.drawable.icon_fav_1)
                                         favLabel.text = StringUtil.toWan(article.stats.favorite.toLong())
                                         MsgUtil.showMsg(UiText.of("收藏成功~"))
                                     }

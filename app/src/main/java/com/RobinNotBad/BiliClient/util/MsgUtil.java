@@ -1,5 +1,6 @@
 package com.RobinNotBad.BiliClient.util;
 
+import com.RobinNotBad.BiliClient.ui.appearance.ColorScheme;
 import android.annotation.SuppressLint;
 import android.content.Context;
 import android.content.Intent;
@@ -164,7 +165,7 @@ public class MsgUtil {
         Snackbar snackbar;
         snackbar = Snackbar.make(view, text, duration);
         snackbar.setBackgroundTint(Color.argb(0x85, 0x80, 0x80, 0x80));
-        snackbar.setTextColor(Color.rgb(0xeb, 0xe0, 0xe2));
+        snackbar.setTextColor(ColorScheme.INSTANCE.getTEXT_PRIMARY()); // 原写死 #ebe0e2（经典终端的暖白）
         View snackBarView = snackbar.getView();
         snackBarView.setOnTouchListener((v, event) -> false);
         try {

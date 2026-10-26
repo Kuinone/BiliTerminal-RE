@@ -87,7 +87,13 @@ object ColorScheme {
         val VIP_COLOR: Int,
         val STATUS_BAR_COLOR: Int,
         val NAV_BAR_COLOR: Int,
-        val CORNER_RADIUS: Float
+        val CORNER_RADIUS: Float,
+        /**
+         * 正文链接色（URL / BV 号 / @ 等可点文字）。此前 `StringUtil` 写死老版的 #66CCFF，
+         * 在绿 / 紫 / 粉等主题下是唯一一抹不相干的青蓝。各主题取「主色调的高亮档」，
+         * 保证对深色底 ≥ 4.5:1；经典终端 / 经典灰 / B站粉 沿用 #66CCFF（与原观感一致）。
+         */
+        val LINK: Int = 0xFF66CCFF.toInt()
     )
 
     object BilibiliPink : ThemeColors(
@@ -165,7 +171,8 @@ object ColorScheme {
         VIP_COLOR = 0xFF056DE8.toInt(),
         STATUS_BAR_COLOR = 0xFF056DE8.toInt(),
         NAV_BAR_COLOR = 0xFF1B1B24.toInt(),
-        CORNER_RADIUS = 12f
+        CORNER_RADIUS = 12f,
+        LINK = 0xFF6DB0FF.toInt()
     )
 
     object IQIYIGreen : ThemeColors(
@@ -204,7 +211,8 @@ object ColorScheme {
         VIP_COLOR = 0xFF00DC5A.toInt(),
         STATUS_BAR_COLOR = 0xFF00DC5A.toInt(),
         NAV_BAR_COLOR = 0xFF1B1B24.toInt(),
-        CORNER_RADIUS = 12f
+        CORNER_RADIUS = 12f,
+        LINK = 0xFF66F0A3.toInt()
     )
 
     object PurpleFantasy : ThemeColors(
@@ -243,7 +251,8 @@ object ColorScheme {
         VIP_COLOR = 0xFF7B2CBF.toInt(),
         STATUS_BAR_COLOR = 0xFF7B2CBF.toInt(),
         NAV_BAR_COLOR = 0xFF1B1B24.toInt(),
-        CORNER_RADIUS = 12f
+        CORNER_RADIUS = 12f,
+        LINK = 0xFFC9A0F0.toInt()
     )
 
     object RainbowFantasy : ThemeColors(
@@ -284,7 +293,8 @@ object ColorScheme {
         VIP_COLOR = 0xFFFF6B6B.toInt(),
         STATUS_BAR_COLOR = 0xFFFF6B6B.toInt(),
         NAV_BAR_COLOR = 0xFF1B1B24.toInt(),
-        CORNER_RADIUS = 12f
+        CORNER_RADIUS = 12f,
+        LINK = 0xFF45B7D1.toInt()
     )
 
     object ClassicGray : ThemeColors(
@@ -437,6 +447,7 @@ object ColorScheme {
     val STATUS_BAR_COLOR get() = getCurrentTheme().STATUS_BAR_COLOR
     val NAV_BAR_COLOR get() = getCurrentTheme().NAV_BAR_COLOR
     val CORNER_RADIUS get() = getCurrentTheme().CORNER_RADIUS
+    val LINK get() = getCurrentTheme().LINK
 
     fun applyWindowTheme(activity: Activity) {
         val window: Window = activity.window
@@ -467,7 +478,14 @@ object ColorScheme {
         window.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
 
         val rootView = activity.window.decorView.findViewById<android.view.View>(android.R.id.content)
-        rootView?.setBackgroundColor(BACKGROUND)
+        if (AmbientGlow.isEnabled()) {
+            // 弥散光晕画在窗口背景上（DecorView 整屏，含「界面边距」留出的外圈，不会在边距处断层），
+            // content 自己不再铺纯色，否则会把光晕整块盖住。关闭时走下面的原路径，零额外开销。
+            window.setBackgroundDrawable(AmbientGlow.createDrawable(getCurrentThemeName(), BACKGROUND))
+            rootView?.background = null
+        } else {
+            rootView?.setBackgroundColor(BACKGROUND)
+        }
     }
 
     fun getPrimary(context: Context): Int = PRIMARY

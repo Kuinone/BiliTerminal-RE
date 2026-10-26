@@ -1,5 +1,6 @@
 package com.RobinNotBad.BiliClient.adapter.user
 
+import com.RobinNotBad.BiliClient.ui.appearance.ColorScheme
 import com.RobinNotBad.BiliClient.util.UiText
 
 import android.animation.ObjectAnimator
@@ -268,7 +269,7 @@ class FollowGroupAdapter(
                     try {
                         holder.name.setTextColor(Color.parseColor(user.vip_nickname_color))
                     } catch (e: IllegalArgumentException) {
-                        holder.name.setTextColor(Color.WHITE)
+                        holder.name.setTextColor(ColorScheme.TEXT_PRIMARY)
                     }
                 }
                 holder.desc.text = user.sign

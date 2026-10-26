@@ -42,6 +42,7 @@ import com.RobinNotBad.BiliClient.ui.widget.recycler.CustomLinearManager
 import com.RobinNotBad.BiliClient.ui.appearance.AppearanceApplier
 import com.RobinNotBad.BiliClient.ui.appearance.AppearanceManager
 import com.RobinNotBad.BiliClient.ui.appearance.ColorScheme
+import com.RobinNotBad.BiliClient.ui.appearance.GlassStyle
 import com.RobinNotBad.BiliClient.util.AsyncLayoutInflaterX
 import com.RobinNotBad.BiliClient.util.DisguiseGesture
 import com.RobinNotBad.BiliClient.util.DisguisePrefs
@@ -130,6 +131,8 @@ open class BaseActivity : AppCompatActivity() {
         appliedAppearanceVersion = AppearanceManager.version()
 
         ColorScheme.applyWindowTheme(this)
+        // 玻璃质感：给主题叠卡片 / 按钮的覆盖层，必须早于子类的 setContentView（关闭时直接 return）
+        GlassStyle.applyTo(this)
 
         val paddingH_percent = SharedPreferencesUtil.getInt("paddingH_percent", 0)
         val paddingV_percent = SharedPreferencesUtil.getInt("paddingV_percent", 0)

@@ -1,5 +1,7 @@
 package com.RobinNotBad.BiliClient.adapter.dynamic
 
+import com.RobinNotBad.BiliClient.ui.appearance.ThemeTint
+import com.RobinNotBad.BiliClient.ui.appearance.ColorScheme
 import android.content.Context
 import android.view.LayoutInflater
 import android.view.View
@@ -57,6 +59,8 @@ class RecentUpAdapter(
             avatar = itemView.findViewById(R.id.avatar)
             name = itemView.findViewById(R.id.name)
             updateIndicator = itemView.findViewById(R.id.updateIndicator)
+            // 「有更新」小圆点（ic_circle）写死 @color/pink，按主题主色着色；只在建 holder 时做一次
+            ThemeTint.tintBackground(updateIndicator, ColorScheme.PRIMARY)
         }
     }
 }

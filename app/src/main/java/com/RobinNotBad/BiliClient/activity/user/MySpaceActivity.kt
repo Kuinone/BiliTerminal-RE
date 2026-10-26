@@ -1,5 +1,6 @@
 package com.RobinNotBad.BiliClient.activity.user
 
+import com.RobinNotBad.BiliClient.ui.appearance.ColorScheme
 import com.RobinNotBad.BiliClient.util.UiText
 
 import android.annotation.SuppressLint
@@ -97,7 +98,7 @@ class MySpaceActivity : InstanceActivity() {
             MySpaceConfig.KEY_LOGOUT -> {
                 icon.setImageResource(R.drawable.icon_logout)
                 label.text = UiText.of("退出登录")
-                label.setTextColor(0xFFF44336.toInt())
+                label.setTextColor(ColorScheme.ERROR) // 危险操作色随主题（与弹窗 colorError 一致），原写死 Material 红
                 cell.setOnClickListener { handleLogout() }
             }
 

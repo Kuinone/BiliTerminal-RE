@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 「玻璃质感」能接管的两个颜色槽位。
+     7 套主主题（及 Light / Disguise）里的默认值 = 各自的 colorSurface，关闭玻璃质感时观感与改动前一致；
+     GlassOverlay.<X> 覆盖为半透明玻璃色。
+     为什么不直接覆盖 colorSurface：短视频详情页根布局、弹窗等依赖它保持不透明。
+     ⚠️ 布局里引用这两个属性时，所有会 inflate 布局的主题都必须定义它们，否则 inflate 直接崩。 -->
+<resources>
+    <!-- 选择类卡片底色（清晰度 / 分P / 收藏夹选择、详情页三连卡片） -->
+    <attr name="choiceCardColor" format="color|reference" />
+    <!-- 次要按钮底色（原 android:backgroundTint="?attr/colorSurface" 的那类按钮） -->
+    <attr name="secondaryButtonTint" format="color|reference" />
+</resources>
