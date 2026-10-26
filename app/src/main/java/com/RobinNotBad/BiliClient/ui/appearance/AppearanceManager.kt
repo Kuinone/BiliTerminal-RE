@@ -50,6 +50,7 @@ object AppearanceManager {
         val themeKey: String,
         val cornerRadius: String,
         val fontPath: String,
+        val ambientGlow: Boolean,
         val version: Int
     )
 
@@ -71,6 +72,7 @@ object AppearanceManager {
         themeKey = ColorScheme.getCurrentThemeName(),
         cornerRadius = CornerStyle.current(),
         fontPath = FontStyle.currentPath(),
+        ambientGlow = AmbientGlow.isEnabled(),
         version = version()
     )
 
@@ -93,6 +95,12 @@ object AppearanceManager {
     fun setFontPath(path: String) {
         SharedPreferencesUtil.putStringSync(FontStyle.KEY_PATH, path)
         FontStyle.invalidateCache()
+        bumpVersion()
+    }
+
+    /** 写入弥散光晕开关。下次创建 / 重建的页面按新值画背景。 */
+    fun setAmbientGlow(enabled: Boolean) {
+        SharedPreferencesUtil.putBooleanSync(AmbientGlow.KEY, enabled)
         bumpVersion()
     }
 

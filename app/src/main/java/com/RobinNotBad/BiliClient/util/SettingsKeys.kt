@@ -29,6 +29,8 @@ object SettingsKeys {
     const val UI_CORNER_RADIUS = "ui_corner_radius"
     /** 自定义字体（用户从文件管理器选的字体文件路径），见 `ui/appearance/FontStyle`。 */
     const val UI_FONT_PATH = "ui_font_path"
+    /** 弥散光晕（页面背景的主题色光晕）开关，见 `ui/appearance/AmbientGlow`。 */
+    const val UI_AMBIENT_GLOW = "ui_ambient_glow"
 
     // ==================== 详情页设置 ====================
     const val FAV_SINGLE = "fav_single"

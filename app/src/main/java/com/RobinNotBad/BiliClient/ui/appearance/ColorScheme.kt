@@ -478,7 +478,14 @@ object ColorScheme {
         window.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
 
         val rootView = activity.window.decorView.findViewById<android.view.View>(android.R.id.content)
-        rootView?.setBackgroundColor(BACKGROUND)
+        if (AmbientGlow.isEnabled()) {
+            // 弥散光晕画在窗口背景上（DecorView 整屏，含「界面边距」留出的外圈，不会在边距处断层），
+            // content 自己不再铺纯色，否则会把光晕整块盖住。关闭时走下面的原路径，零额外开销。
+            window.setBackgroundDrawable(AmbientGlow.createDrawable(getCurrentThemeName(), BACKGROUND))
+            rootView?.background = null
+        } else {
+            rootView?.setBackgroundColor(BACKGROUND)
+        }
     }
 
     fun getPrimary(context: Context): Int = PRIMARY
