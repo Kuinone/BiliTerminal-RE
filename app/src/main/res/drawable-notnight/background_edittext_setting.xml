@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 亮色模式版本：原 #262626 系深灰底在浅色页面上是一块黑斑，改为极淡的黑色叠加（自动吸收主题底色）。 -->
+<!-- 亮色模式版本（tools/appearance/gen_light_mode.py 生成）：原 #262626 系深灰底在浅色页面上是一块黑斑，改为极淡的黑色叠加（自动吸收主题底色）或米白卡片色。 -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android">
-    <solid android:color="#CCFFFFFF" />
+    <solid android:color="#CCFDF8F0" />
     <stroke
         android:width="@dimen/card_stroke"
         android:color="#1A000000" />

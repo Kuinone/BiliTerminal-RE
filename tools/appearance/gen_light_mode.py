@@ -10,42 +10,93 @@ os.makedirs(ROOT + "values-notnight", exist_ok=True)
 os.makedirs(ROOT + "drawable-notnight", exist_ok=True)
 
 # ---------------------------------------------------------------- 亮色色表（XML 与 Kotlin 同源）
-# 字段：primary deep plight secondary | bg surface card cardA card2 | t1 t2 t3 | border divider ripple | link info share [success gold]
+# 字段：primary deep plight secondary | t1 t2 t3 | ripple link info share [success gold]
+# bg / surface / card / cardA / card2 / border / divider 不在这里写死，由下方「米白基底」统一计算。
+# plight = 弹窗按钮等「浅底上的强调文字」用色，对卡片底 ≥ 3:1（原各主题的浅强调色在白底上只有 2:1 左右）。
 L = {
-    # 亮色不用纯白：与暗色「bg < surface < card、带一点主题色相」对称（L* 约 92 / 95 / 97），卡片也不是 #FFFFFF。
-    # accent = 弹窗按钮等「白底上的强调文字」用色，对卡片底 ≥ 3:1（原各主题的浅强调色在白底上只有 2:1 左右）。
     "pink": dict(primary=0xFFFF6699, deep=0xFFE84B85, plight=0xFFE84B85, secondary=0xFFFFB3CA,
-                 bg=0xFFEFE7EB, surface=0xFFF5EFF2, card=0xFFFAF6F8, cardA=0xE6FAF6F8, card2=0xFFF2E8ED,
-                 t1=0xFF2B2026, t2=0xFF6B5862, t3=0xFF9A8892, border=0xFFE0D2D9, divider=0xFFE7DCE1,
+                 t1=0xFF2B2026, t2=0xFF6B5862, t3=0xFF9A8892,
                  ripple=0x30FF6699, link=0xFF1A8FD8, info=0xFF1890FF, share=0xFFE84B85),
     "zhihu": dict(primary=0xFF056DE8, deep=0xFF0354B5, plight=0xFF2F7FE6, secondary=0xFF6DB0FF,
-                  bg=0xFFE7EDF5, surface=0xFFEEF3F9, card=0xFFF6F9FC, cardA=0xE6F6F9FC, card2=0xFFE9F0F9,
-                  t1=0xFF15202E, t2=0xFF4F5F73, t3=0xFF8090A3, border=0xFFD2DEEC, divider=0xFFDCE5F0,
+                  t1=0xFF15202E, t2=0xFF4F5F73, t3=0xFF8090A3,
                   ripple=0x30056DE8, link=0xFF0A63C9, info=0xFF056DE8, share=0xFF0354B5),
-    # 爱奇艺绿在白底上对比度只有 1.9:1，亮色模式下主色整体压深一档
+    # 爱奇艺绿在浅底上对比度只有 1.9:1，亮色模式下主色整体压深一档
     "iqiyi": dict(primary=0xFF00A84E, deep=0xFF008A3F, plight=0xFF00873E, secondary=0xFF33D47A,
-                  bg=0xFFE6F0EA, surface=0xFFEDF5F0, card=0xFFF5FAF7, cardA=0xE6F5FAF7, card2=0xFFE5F1EA,
-                  t1=0xFF13241A, t2=0xFF4A6656, t3=0xFF7C9686, border=0xFFCFE3D7, divider=0xFFD9EADF,
+                  t1=0xFF13241A, t2=0xFF4A6656, t3=0xFF7C9686,
                   ripple=0x3000A84E, link=0xFF008A3F, info=0xFF00A84E, share=0xFF008A3F),
     "purple_fantasy": dict(primary=0xFF7B2CBF, deep=0xFF5A1F8F, plight=0xFF8A45C8, secondary=0xFFBA7FE8,
-                           bg=0xFFEDE7F4, surface=0xFFF3EEF8, card=0xFFF9F6FC, cardA=0xE6F9F6FC, card2=0xFFEEE6F6,
-                           t1=0xFF231A2E, t2=0xFF5D4D70, t3=0xFF8E80A0, border=0xFFDDD1EB, divider=0xFFE5DCF0,
+                           t1=0xFF231A2E, t2=0xFF5D4D70, t3=0xFF8E80A0,
                            ripple=0x307B2CBF, link=0xFF6A22AD, info=0xFF7B2CBF, share=0xFF5A1F8F),
-    # 五彩斑斓：强调色黄 #FFE66D 在白底上看不见（弹窗按钮文字就用它），换成深琥珀
+    # 五彩斑斓：强调色黄 #FFE66D 在浅底上看不见（弹窗按钮文字就用它），换成深琥珀
     "rainbow": dict(primary=0xFFF25C5C, deep=0xFFC94444, plight=0xFFB87D00, secondary=0xFFFF8E8E,
-                    bg=0xFFF5EDE7, surface=0xFFF9F2EE, card=0xFFFCF8F5, cardA=0xE6FCF8F5, card2=0xFFF6EBE4,
-                    t1=0xFF2D1D1D, t2=0xFF6D5454, t3=0xFFA08787, border=0xFFECDAD0, divider=0xFFF0E2DA,
+                    t1=0xFF2D1D1D, t2=0xFF6D5454, t3=0xFFA08787,
                     ripple=0x30F25C5C, link=0xFF1F8FB0, info=0xFFF25C5C, share=0xFFE07B1F, gold=0xFFE6A800),
     "classic_gray": dict(primary=0xFF6E6EE6, deep=0xFF5555C8, plight=0xFF6464DC, secondary=0xFFA3A3FD,
-                         bg=0xFFE9E9EF, surface=0xFFF0F0F5, card=0xFFF7F7FA, cardA=0xE6F7F7FA, card2=0xFFEBEBF2,
-                         t1=0xFF1E1E2A, t2=0xFF595968, t3=0xFF8A8A9A, border=0xFFD8D8E3, divider=0xFFE1E1EA,
+                         t1=0xFF1E1E2A, t2=0xFF595968, t3=0xFF8A8A9A,
                          ripple=0x306E6EE6, link=0xFF1E88C8, info=0xFF1E88C8, share=0xFF1E88C8),
-    # 经典终端·亮：「纸质终端」——暖灰纸底 + 半透明暖白卡，延续暗色版「半透明卡片」的骨架
+    # 经典终端·亮：「纸质终端」——旧纸底 + 半透明米白卡，延续暗色版「半透明卡片」的骨架；
+    # 分隔线 / 描边沿用暗色版的思路，用半透明黑叠在纸上
     "terminal": dict(primary=0xFFFF6699, deep=0xFFE84B85, plight=0xFFD9437A, secondary=0xFFFFB3CA,
-                     bg=0xFFEAE4E5, surface=0xFFF2EDEE, card=0xCCFBF8F8, cardA=0xCCFBF8F8, card2=0xFFF4EFF0,
                      t1=0xFF2A2326, t2=0xFF6B6266, t3=0xFF958B90, border=0x33000000, divider=0x26000000,
                      ripple=0x26000000, link=0xFF1E88C8, info=0xFF1E88C8, share=0xFF1E88C8, success=0xFF2E9E44),
 }
+
+# ---------------------------------------------------------------- 米白基底
+# 亮色的背景 / 表面 / 卡片统一用「米白」：暖调浅色（CIELAB b* ≈ +4～+7），不是纯白。
+# 与暗色对称：暗色 6 套主题共用 #1B1B24 / #24242E / #2A2A35，亮色 6 套主题也共用同一套米白，
+# 只按主题色相微偏一点（偏完仍是米白，主题感主要靠主色、光晕、玻璃质感、正文色）；
+# 经典终端是更深、更暖一档的「旧纸」（对应暗色版比其它主题更深的纯黑）。
+# 想整体调暖 / 调冷：改 CREAM 的 b*；想加强 / 减弱主题偏色：改 TINT。
+CREAM = {  # 层级 → (L*, a*, b*)
+    "bg": (92.5, 0.8, 6.5), "surface": (95.3, 0.6, 5.5), "card": (97.6, 0.4, 4.2),
+    "card2": (94.2, 0.7, 6.0), "border": (88.0, 1.0, 7.0), "divider": (90.5, 0.9, 6.5),
+}
+TINT_SCALE = {"bg": 1.0, "surface": 0.6, "card": 0.35, "card2": 0.6, "border": 0.8, "divider": 0.8}
+TINT = {  # 主题 → 在背景层上的 (Δa*, Δb*)；越往上的层（卡片）偏得越少
+    "pink": (2.2, -1.0), "zhihu": (-0.6, -2.2), "iqiyi": (-2.2, 0.6),
+    "purple_fantasy": (1.6, -2.2), "rainbow": (1.6, 1.6), "classic_gray": (0.6, -2.0),
+}
+OLD_PAPER = {"bg": (89.5, 1.4, 9.5), "surface": (94.0, 1.0, 7.5), "card": (97.2, 0.6, 5.5), "card2": (95.0, 0.9, 7.0)}
+
+
+def lab_to_rgb(L_, a, b):
+    """CIELAB（D65）→ sRGB 0xRRGGBB。"""
+    fy = (L_ + 16) / 116
+    fx, fz = fy + a / 500, fy - b / 200
+
+    def finv(t):
+        return t ** 3 if t ** 3 > 0.008856 else (t - 16 / 116) / 7.787
+
+    X, Y, Z = 0.95047 * finv(fx), finv(fy), 1.08883 * finv(fz)
+    lin = (3.2406 * X - 1.5372 * Y - 0.4986 * Z,
+           -0.9689 * X + 1.8758 * Y + 0.0415 * Z,
+           0.0557 * X - 0.2040 * Y + 1.0570 * Z)
+
+    def gam(v):
+        v = max(0.0, min(1.0, v))
+        v = 12.92 * v if v <= 0.0031308 else 1.055 * v ** (1 / 2.4) - 0.055
+        return round(v * 255)
+
+    r, g, b_ = (gam(v) for v in lin)
+    return (r << 16) | (g << 8) | b_
+
+
+for k, p in L.items():
+    if k == "terminal":
+        for layer, lab in OLD_PAPER.items():
+            p[layer] = 0xFF000000 | lab_to_rgb(*lab)
+        p["card"] = 0xCC000000 | (p["card"] & 0xFFFFFF)   # 半透明卡片（暗色版 #CC262626 的对应）
+        p["cardA"] = p["card"]
+    else:
+        da, db = TINT[k]
+        for layer, (l_, a, b) in CREAM.items():
+            s_ = TINT_SCALE[layer]
+            p[layer] = 0xFF000000 | lab_to_rgb(l_, a + da * s_, b + db * s_)
+        p["cardA"] = 0xE6000000 | (p["card"] & 0xFFFFFF)
+
+# 所有主题共用的浅色件（设置开关行底、搜索历史下拉、进度条槽）用不偏色的米白
+NEUTRAL_CARD = lab_to_rgb(*CREAM["card"])
+SURFACE_DARKER = 0xFF000000 | lab_to_rgb(*CREAM["border"])
 
 def c(v):
     return "#%08X" % v
@@ -94,7 +145,7 @@ blocks = [
         ("terminal_accent", L["terminal"]["plight"])]),
     ("通用（图标 / 分隔线 / 进度槽 / 叠加层）", [
         ("text_primary", 0xFF3A3438), ("text_secondary", 0xFF6B5F66),
-        ("list_divider", 0x1F000000), ("surface_darker", 0xFFE6E2E5), ("text_transparent", 0x30000000),
+        ("list_divider", 0x1F000000), ("surface_darker", SURFACE_DARKER), ("text_transparent", 0x30000000),
         ("hint_on_bg", 0x61000000), ("overlay_fill_weak", 0x0A000000),
         ("overlay_stroke_weak", 0x26000000), ("overlay_text_weak", 0x8A000000)]),
 ]
@@ -160,7 +211,7 @@ def mix(a, b, t):
     return sum(round(x + (y - x) * t) << s for x, y, s in zip(ca, cb, (16, 8, 0)))
 
 g = ['<?xml version="1.0" encoding="utf-8"?>',
-     '<!-- 亮色模式的「玻璃质感」：以亮色卡片色（非纯白）为底的磨砂（72% 不透明、向主色偏 4%）+ 主色亮边；按钮 = 主色 14% 淡底 + 主色 60% 描边。 -->',
+     '<!-- 亮色模式的「玻璃质感」：以米白卡片色为底的磨砂（72% 不透明、向主色偏 4%）+ 主色亮边；按钮 = 主色 14% 淡底 + 主色 60% 描边。 -->',
      '<resources>',
      '    <color name="glass_btn_bg_disabled">#0F000000</color>',
      '    <color name="glass_btn_secondary">#0F000000</color>']
@@ -230,9 +281,9 @@ SHAPES = {
     "background_grey_cardview": ("#0F000000", None, None),
     "background_edittext": ("#08000000", "2dp", "#1F000000"),
     "background_edittext_privatemsg": ("#0A000000", "2dp", "#24000000"),
-    "background_edittext_setting": ("#CCFFFFFF", "@dimen/card_stroke", "#1A000000"),
+    "background_edittext_setting": (f"#CC{NEUTRAL_CARD:06X}", "@dimen/card_stroke", "#1A000000"),
     "background_searchbar": ("#0A000000", "2dp", "#33000000"),
-    "background_searchhistory": ("#F2F8F7F9", "2dp", "#26000000"),
+    "background_searchhistory": (f"#F2{NEUTRAL_CARD:06X}", "2dp", "#26000000"),
 }
 for name, (solid, sw, sc) in SHAPES.items():
     stroke = f'''
@@ -240,7 +291,7 @@ for name, (solid, sw, sc) in SHAPES.items():
         android:width="{sw}"
         android:color="{sc}" />''' if sw else ""
     open(ROOT + f"drawable-notnight/{name}.xml", "w").write(f'''<?xml version="1.0" encoding="utf-8"?>
-<!-- 亮色模式版本：原 #262626 系深灰底在浅色页面上是一块黑斑，改为极淡的黑色叠加（自动吸收主题底色）。 -->
+<!-- 亮色模式版本（tools/appearance/gen_light_mode.py 生成）：原 #262626 系深灰底在浅色页面上是一块黑斑，改为极淡的黑色叠加（自动吸收主题底色）或米白卡片色。 -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android">
     <solid android:color="{solid}" />{stroke}
     <corners android:radius="@dimen/card_round" />
