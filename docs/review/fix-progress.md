@@ -25,7 +25,7 @@
 - **依赖仓库**：`settings.gradle` 已把 aliyun 的 `google` / `public` / `gradle-plugin` 三个镜像前置，`google()`/`mavenCentral()`/jitpack 仅作兜底。
 - **改了 `res/` 文件集合时**：`:app:clean` 与后续命令**必须分两次 Gradle 调用**，且带 `--no-build-cache --no-configuration-cache`，否则会回放陈旧资源（症状是 `Unresolved reference 'R.layout.xxx'`）。
 - **版本一致性**：`:app:verifyVersionConsistency` 以 `strings.xml` 的 `update_log_current` 为锚点校验版本一致性；发版说明也由 CI 从它抽取（抽不到直接拒绝发版）。
-- **单测（静态计数，26.10.27 合并上游 26.10.27 发版（暗色/亮色模式 / 时间防呆 / 搜索排序入口改图标）后实测）**：**93 个测试类 / 1002 个用例**，两个 flavor 完全相同（同源码），0 失败 0 错误 0 跳过。计数方式：`app/src/test/` 下 `*Test.kt|java` 计数（另有共享假实现 `util/FakeSharedPreferences.kt`），`app/build/test-results/testStandardDebugUnitTest/TEST-*.xml` 的 `tests=` 求和。用例数一律以机器产出为准，队友口述数字不进入文档。
+- **单测（静态计数，26.10.27 加举报评论功能后实测）**：**94 个测试类 / 1022 个用例**，两个 flavor 完全相同（同源码），0 失败 0 错误 0 跳过。计数方式：`app/src/test/` 下 `*Test.kt|java` 计数（另有共享假实现 `util/FakeSharedPreferences.kt`），`app/build/test-results/testStandardDebugUnitTest/TEST-*.xml` 的 `tests=` 求和。用例数一律以机器产出为准，队友口述数字不进入文档。
 - **26.10.10 那一轮的构建记录（历史，留作「改 minSdk / 重跑 release 链路」时的验证口径）**：`minSdk 24 → 19` 全部改动（含 jsoup 1.16.1、7 个 `res/drawable-v21` 资源）落盘后，按「`clean` → `assembleRelease` → `lintRelease` → 单测」四步跑完（均带 `--no-configuration-cache`，`clean` 与 `assemble` 分两次调用），四步全 `BUILD SUCCESSFUL`（37s / 2m13s / 1m25s / 39s）。当时单测汇总 **49 suites / 460 tests / 0 failures**（任务名当时还是 `testDebugUnitTest`，现已带 flavor 前缀），最新 XML 时间 `2026-10-09T22:59:04`（晚于当轮 APK 出包时间 22:56:58，覆盖了当轮全部源码改动）。`:app:lintRelease` 的 **`NewApi` 从 22 条降到 2 条**，且这 2 条就是 `PlayerActivity.kt:1981` 的已知假阳性。发版前仍建议再跑一次确认。
 - **「自动跳过片头片尾」已恢复上线（26.10.22）**：26.10.10 的紧急撤回**已解除**，`SkipOpEdPrefs.FEATURE_ENABLED` 回到 `true`，设置入口与搜索索引均已恢复；口径按用户拍板改为**默认关闭**（`DEFAULT_ENABLED = false`，老用户存档里显式写的值仍然优先）。恢复细节见 §3.3「恢复记录」，乱跳的三个根因修复见 §3.55。
 - **本轮基建改动（26.10.10）**：**`minSdk 24 → 21 → 19（Android 4.4）`**，唯一落点是 `app/build.gradle:21`。两级下调的成本不同，分开记：
@@ -1595,6 +1595,29 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
   - `MsgUtil.reportCertTimeError`：先给通用提示，再后台取服务器时间，偏差过大时补一条 `err_cert_time_skew`（设备时间 / 实际时间约）。60 秒内只取一次（`elapsedRealtime` 节流，不受系统时间影响）；该条四行，Snackbar 时长 8 秒并自带「x」。服务器时间**只用于显示**，不参与任何校验。
   - 验证：`ClockSanityTest` 11 例、`ServerTimeApiTest` 2 例全过，双 flavor 单测与 `assembleDebug` 通过。MuMu 拨到 2031-06-01 与 2015-01-01 各测一次，logcat 均出现「设备时间：2031-06-01 12:00 / 2015-01-01 12:00，实际时间约：2026-10-27 18:36」；2031 那次启动后 5 秒截图，提示条四行完整、右侧有「x」✔。测完恢复自动对时。
 - **遗留**：①时间被拨到**未来**只在请求失败时提示，启动时不提示——本地没有可靠的「最晚日期」，用上次使用时间当上限会误报；时间只超前几天到几周、证书还没过期时网络本来正常，不影响使用；②系统浏览器 / WebView 的证书弹窗不归本应用管；③未在 XP5800 真机复测。
+
+### 3.73 新增「举报评论」（26.10.27，用户要求）
+
+- **缘起**：用户要求「加入举报功能，api 使用从 app 逆向的接口」。口径经确认收敛为 **只做评论举报 + 入口放在长按操作面板**（视频举报、弹幕举报本轮不做，原因见 `docs/bilibili-api-notes.md` §8）。
+- **改法**：
+  - 新增 `api/ReportApi.java`：理由码表 `COMMENT_REASON_CODES = {0..8}`（其他/垃圾广告/色情/刷屏/引战/剧透/政治/人身攻击/内容不相关）、纯函数 `buildReportForm(...)`（**不含 csrf**，csrf 由 `reportReply` 补，否则纯函数要读 `SharedPreferences`，JVM 单测必然空指针）、`reportReply(...)` 打 `POST https://api.bilibili.com/x/v2/reply/report`、`errorMsg(code)` 覆盖 -101/-111/-352/-412/-400/-404/-509/12002/12006/12026。
+  - `adapter/ReplyAdapter.kt`：`ManageAction.Kind` 加 `REPORT`；`showManageMenu` 里**只在「不是自己的、也管不了这条」且已登录时**列出该项（未登录不列 → 别人的评论仍是「复制文字」单项、长按直接进复制界面，老行为完全不变）；新增 `showReportDialog` / `askReportContent` / `submitReport`。`type` 传 `replyType` 而不是视频的 `type`（同点赞接口的约束：动态/专栏传 1 会被拒）。
+  - 「其他」理由先 `TerminalDialog.input` 收正文，`≥3 字` 走 `ReportApi.isContentAcceptable`（官方客户端原文「举报理由不能少于3个字」），不合格**只提示不提交**——服务端对短正文只回笼统的 -400，用户看不出是字数卡住的。
+  - `api/ApiErrorText.kt` 新增 `riskRejected()`：原来 `-352/-412` 复用 `searchRejected()`「搜索被风控」，放在举报提示里会让人以为是搜索坏了。
+  - 新文案 `text_reply_report` / `title_report_reason` / `title_report_content` / `hint_report_content` / `btn_report_submit` / `msg_report_login_first` / `msg_report_content_too_short` / `msg_report_submitted` 进 `strings.xml`。
+- **验证**：
+  - `assembleDebug` 双 flavor 成功；`testStandardDebugUnitTest` / `testCoexistDebugUnitTest` 各 **94 个测试类 / 1022 例 / 0 失败**（新增 `ReportApiTest` 20 例：码表 0~8 与文案一一对应、`needsContent` 只有 reason=0、`isContentAcceptable` 的 trim/下限/上限/非「其他」理由忽略正文、`buildReportForm` 的参数名与「content 只在 reason=0 时带上」、`errorMsg` 的登录/凭证/风控/冷却/兜底分支）。
+  - `ReportApiTest` 里踩到一个坑：`NetWorkUtil.FormData.toString()` 会对值做 `URLEncoder.encode`，中文断言必须 `URLDecoder.decode` 回来；`FormData` 底层是 `HashMap`，**顺序不确定**，只能拆成 map 比对，不能断言整串。
+  - **设备侧（MuMu Android 15 / x86_64 / coexist debug）实测通过**。这轮先卡在「截不了图」上：MuMu 每次启动都把包丢到一个**新建副屏**，而 `screencap -d <id>` 对任何 display 都回 `Status: -2`（root 也一样）。改用 **`uiautomator dump --display <id>` 读控件树 + `input -d <id> tap/motionevent` 驱动**，不截图也能断言文字与位置（配方已写进 `docs/review/agent-test-guide.md` §6、`docs/agents/workflow.md`）。
+    - **未登录**（正式口径）：视频详情 → 评论页长按别人评论 → 面板**只有「复制文字」**，选中后直接进复制片段页 —— 老行为完全没变，`举报评论` 按预期不出现 ✔
+    - **临时把 `isLoggedIn()` 改成 `true` 复测**（仅本地验证用，已回退，`git diff` 确认无残留）：
+      - 长按 → 面板两项：`复制文字` / `举报评论` ✔
+      - 点「举报评论」→ 标题「选择举报理由」，9 项齐全：其他 / 垃圾广告 / 色情 / 刷屏 / 引战 / 剧透 / 政治 / 人身攻击 / 内容不相关，底部「点空白处取消」✔
+      - 选「其他」→ 标题「补充举报理由」、提示「至少3个字，说清哪里违规」、按钮「取消 / 提交」✔
+      - 输入 2 个字符提交 → logcat `I MsgUtil>showMsg: 举报理由不能少于3个字`，**弹窗重开且把原文带回**（`ab` 仍在框里）✔
+      - 补成 3 个字符再提交 → `D NetWorkUtil>post: post-url>https://api.bilibili.com/x/v2/reply/report`，`http>POST ... -> 200 (61ms) | req=reason=0&csrf=***&oid=170001&type=1&rpid=1353715029&content=abc`，`res={"code":-352}` → `I MsgUtil>showMsg: 操作被风控拦下了，过一会儿再试` ✔
+      - 选「垃圾广告」（reason=1）→ `req=reason=1&csrf=***&oid=170001&type=1&rpid=1353715029`，**不含 `content`**，同样 `-352` → 同一句提示 ✔（`-352` 是模拟器未登录的预期风控，**不是缺陷**）
+- **遗留**：①**登录态下的成功提交（code=0）没验**——模拟器没有可用登录态，登录要扫码，只能等真机；已验证到「请求体正确、服务端确实在回业务码」这一步；②视频/弹幕举报未做（各有明确理由，见 api notes §8）；③举报后列表不会变（服务端审核结果不回写列表，也不打算轮询）。
 
 ## 4. 历史章节索引
 

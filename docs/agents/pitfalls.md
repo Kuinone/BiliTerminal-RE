@@ -10,6 +10,8 @@
 - **`model/Dynamic` 的 `stats` 可空，用前必须判空**（26.10.05 线上崩溃）：`DynamicApi.analyzeDynamic` 在 `DYNAMIC_TYPE_NONE`（动态已删除/被屏蔽）时会**在填充 `module_stat` 之前提前 return**，部分动态类型也没有 `module_stat`，所以 `stats` 会是 null（`userInfo` 则无条件赋值，非空）。渲染卡片时 `DynamicHolder` 自己判空，详情页这类「直接取字段」的消费点要调 `dynamic.ensureDetailFields()`（只补 null、不覆盖已有值）。**别在 `analyzeDynamic` 里统一补空 `Stats`**——`DynamicHolder` 正是靠 `stats == null` 来隐藏点赞区的。
 - **私信发图（`msg_type=2`）的 content 有硬格式**（26.10.04 批次 5 新增）：`url` 必须是 B 站图床地址（否则 21037「图片格式不合法，不要调戏接口啦」），`width`/`height` 必带（缺了接口不报错、客户端显示异常），`size` 单位是 **KB**。组装一律走纯函数 `PrivateMsgApi.buildImageContent(...)`，别手拼 JSON（详见 `docs/architecture-map.md` §7.14）。
 - **`model/` 里 `VideoFolder`/`VideoMeta`/`LocalVideo` 实现 `Parcelable`，且字段名就是磁盘 JSON 存储格式**：删改字段必须两端同步。
+- **评论写接口的 `type` 是「评论区类型」，不是稿件类型**（26.10.27 加举报时确认）：`ReplyAdapter` 里同时有 `oid`/`type`/`replyType` 三个字段，评论区的点赞、置顶、删除、举报**一律传 `replyType`**；传 `type`（视频类型）会让动态/专栏的评论被服务端拒。
+- **`NetWorkUtil.FormData.toString()` 会对值做 URL 编码，且底层是 `HashMap`（顺序不确定）**（26.10.27 写 `ReportApiTest` 时踩到）：纯函数单测里断言请求体必须①拆成 key→value、②用 `URLDecoder.decode` 还原中文，**不能断言整串**。另外 `FormData` 的 `autoAddAccessKey` 默认 **false**，只有显式打开才会在 `toString()` 里读 `SharedPreferences`——想让「拼请求体」保持纯函数可测，csrf / access_key 这类要在**调用方**补，别塞进被单测直接调的函数里。
 
 ## 基类与列表
 
