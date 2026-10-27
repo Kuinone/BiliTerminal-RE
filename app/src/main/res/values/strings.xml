@@ -1875,8 +1875,8 @@
     <string name="uitext_tutorials_021">经典终端风格</string>
     <string name="uitext_tutorials_022">，也就是黑色背景 + 粉色点缀的原始外观。</string>
     <string name="uitext_tutorials_023">想换回其它配色</string>
-    <string name="uitext_tutorials_024">进入「设置」→「界面与外观」→「主题配色」，可以自由切换任意主题（哔哩粉、知乎蓝、经典灰等）。</string>
-    <string name="uitext_tutorials_025">主题修改后会立即应用到全部页面。</string>
+    <string name="uitext_tutorials_024">「主题配色」里可以自由切换任意主题（哔哩粉、知乎蓝、经典灰等）。</string>
+    <string name="uitext_tutorials_025">以上都在「设置」→「界面与外观」→「外观设置」里，点下方按钮可直接跳过去。</string>
     <string name="uitext_tutorials_026">视频详情-主要教程</string>
     <string name="uitext_tutorials_027">欢迎来到视频详情页</string>
     <string name="uitext_tutorials_028">这个页面</string>
@@ -1972,6 +1972,11 @@
     <string name="uitext_tutorials_118">打开操作面板：更新弹幕、切换清晰度、移动文件夹、查看详情</string>
     <string name="uitext_tutorials_119">· 下载会自动合并音视频、自动下载封面/字幕/弹幕，同一个视频不会重复入队</string>
     <string name="uitext_tutorials_120">· 正在下载的任务在「下载列表」里查看进度</string>
+    <string name="uitext_tutorials_121">打开外观设置</string>
+    <string name="uitext_tutorials_122">亮色 / 暗色模式</string>
+    <string name="uitext_tutorials_123">每套主题都有暗色和亮色两版，在「颜色模式」里切换。亮色适合白天和室外强光；播放器始终是暗色。</string>
+    <string name="uitext_tutorials_124">弥散光晕 / 玻璃质感</string>
+    <string name="uitext_tutorials_125">弥散光晕会在页面顶部铺一层随主题变色的柔光；玻璃质感让卡片和按钮变成半透明。两个一起开效果最好，低端设备觉得卡可以关掉。</string>
     <string name="uitext_fontstyle_001">无法读取该文件</string>
     <string name="uitext_fontstyle_002">文件为空</string>
     <string name="uitext_fontstyle_003">无法覆盖旧字体文件</string>
