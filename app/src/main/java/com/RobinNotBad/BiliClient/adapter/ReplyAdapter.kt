@@ -39,6 +39,7 @@ import com.RobinNotBad.BiliClient.activity.reply.ReplyInfoActivity
 import com.RobinNotBad.BiliClient.activity.reply.WriteReplyActivity
 import com.RobinNotBad.BiliClient.api.ReplyApi
 import com.RobinNotBad.BiliClient.api.ReplyTranslateApi
+import com.RobinNotBad.BiliClient.api.ReportApi
 import com.RobinNotBad.BiliClient.api.VoteApi
 import com.RobinNotBad.BiliClient.model.Reply
 import com.RobinNotBad.BiliClient.model.UserInfo
@@ -543,6 +544,16 @@ class ReplyAdapter(
     }
 
     /**
+     * 当前用户是否已登录。
+     *
+     * 举报是写操作，必须登录（服务端对匿名请求回 -101 / -352）。判定放在**展示入口之前**
+     * 而不是等提交失败再提示：未登录时连「举报评论」这一项都不列出来，
+     * 别人的评论就还是老样子只有「复制文字」一项、长按直接进复制界面，行为不变。
+     */
+    private fun isLoggedIn(): Boolean =
+        SharedPreferencesUtil.getLong(SharedPreferencesUtil.mid, 0) != 0L
+
+    /**
      * 操作面板里的一项。
      *
      * [kind] 是本项的身份、[danger] 是「要不要用危险色」——两者都不能从 [label] 反推：
@@ -555,7 +566,7 @@ class ReplyAdapter(
         val danger: Boolean,
         val run: () -> Unit
     ) {
-        enum class Kind { COPY, TOP, UNTOP, DELETE }
+        enum class Kind { COPY, TOP, UNTOP, DELETE, REPORT }
     }
 
     /**
@@ -568,6 +579,9 @@ class ReplyAdapter(
      * 服务端对置顶的硬性要求是「本评论区的一级评论」（错误码 12030）且一个区只有一个
      * 置顶位（12029），最终以服务端判定为准；这里不展示必然失败的入口只是为了少打扰，
      * 评论区管理员（非 UP）的场景留给以后，判定逻辑与权限完全分开。
+     *
+     * <p>「举报评论」26.10.27 加入，只在「别人的评论 + 已登录」时出现，理由与提交见
+     * [showReportDialog]。接口来历见 [ReportApi] 的类注释。
      */
     private fun showManageMenu(reply: Reply) {
         val actions = ArrayList<ManageAction>()
@@ -592,6 +606,13 @@ class ReplyAdapter(
             confirmDeleteReply(reply)
         })
 
+        // 「举报评论」只对「不是自己、也管不了」的评论出现：自己的评论举报自己没意义，
+        // 管理员的处置手段是删除而不是举报。未登录时也不列（见 isLoggedIn 的说明）。
+        if (!canManage(reply) && isLoggedIn())
+            actions.add(ManageAction(ManageAction.Kind.REPORT, context.getString(R.string.text_reply_report), false) {
+                showReportDialog(reply)
+            })
+
         if (actions.isEmpty()) {
             MsgUtil.showMsg(UiText.of("没有可操作的项"))
             return
@@ -612,6 +633,80 @@ class ReplyAdapter(
             items = actions.map { it.label },
             danger = if (dangerIndex >= 0) setOf(dangerIndex) else emptySet()
         ) { which -> actions[which].run() }.show()
+    }
+
+    /**
+     * 举报面板：先选理由，理由选「其他」时再补一段正文。
+     *
+     * <p>两步弹窗是照官方客户端的流程来的（`comment_global_string_171`「举报理由不能少于3个字」
+     * 只在「其他」分支出现）。理由码与文案的对照表在 [ReportApi] 里，这里只负责展示与提交，
+     * 免得 UI 与协议各存一份码表。
+     *
+     * <p>`TerminalDialog.singleChoice` **不会自己 show、回调里也不自动 dismiss**，两者都得自己来。
+     */
+    private fun showReportDialog(reply: Reply) {
+        // 理论上入口已经被 isLoggedIn 挡过一道，这里再挡一次是因为登录态可能在面板开着的时候失效。
+        if (!isLoggedIn()) {
+            MsgUtil.showMsg(context.getString(R.string.msg_report_login_first))
+            return
+        }
+        val codes = ReportApi.commentReasonCodes()
+        val labels = ReportApi.commentReasonLabels()
+        TerminalDialog.singleChoice(
+            context = context,
+            title = context.getString(R.string.title_report_reason),
+            items = labels.toList()
+        ) { sheet, which ->
+            sheet.dialog.dismiss()
+            val reasonCode = codes[which]
+            if (ReportApi.needsContent(reasonCode)) askReportContent(reply, reasonCode)
+            else submitReport(reply, reasonCode, "")
+        }.show()
+    }
+
+    /**
+     * 「其他」理由的正文输入。
+     *
+     * <p>正文长度校验走 [ReportApi.isContentAcceptable]（与客户端「不能少于3个字」一致），
+     * 不合格时**只提示、不提交**——服务端对短正文只回一个笼统的 -400，
+     * 用户看不出是被字数卡住的。
+     *
+     * <p>[initialText] 只为「太短被退回」这条路径服务：`TerminalDialog.input` 的确认按钮是
+     * 「先关窗再回调」，校验失败时输入框已经不在了，不把原文带回来用户就得从「选理由」重来一遍。
+     */
+    private fun askReportContent(reply: Reply, reasonCode: Int, initialText: String = "") {
+        TerminalDialog.input(
+            context = context,
+            title = context.getString(R.string.title_report_content),
+            hint = context.getString(R.string.hint_report_content),
+            initialText = initialText,
+            maxLength = ReportApi.OTHER_CONTENT_MAX_LENGTH,
+            confirmText = context.getString(R.string.btn_report_submit),
+            onConfirm = { text ->
+                if (ReportApi.isContentAcceptable(reasonCode, text)) {
+                    submitReport(reply, reasonCode, text)
+                } else {
+                    MsgUtil.showMsg(context.getString(R.string.msg_report_content_too_short))
+                    askReportContent(reply, reasonCode, text)
+                }
+            }
+        ).show()
+    }
+
+    private fun submitReport(reply: Reply, reasonCode: Int, content: String) {
+        CenterThreadPool.run {
+            try {
+                // 评论区类型要用 replyType 而不是 type：动态/专栏的评论传 1 会被服务端拒绝，
+                // 这与点赞接口的约束是同一条（见上面 likeReply 的注释）。
+                val code = ReportApi.reportReply(oid, replyType, reply.rpid, reasonCode, content)
+                (context as Activity).runOnUiThread {
+                    if (code == 0) MsgUtil.showMsg(context.getString(R.string.msg_report_submitted))
+                    else MsgUtil.showMsg(ReportApi.errorMsg(code).ifEmpty { ApiErrorText.opFailedBrief(code) })
+                }
+            } catch (e: Exception) {
+                (context as Activity).runOnUiThread { MsgUtil.err(e) }
+            }
+        }
     }
 
     /**
