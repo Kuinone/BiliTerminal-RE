@@ -33,6 +33,8 @@ object SettingsKeys {
     const val UI_AMBIENT_GLOW = "ui_ambient_glow"
     /** 玻璃质感组件（卡片 / 按钮半透明化）开关，见 `ui/appearance/GlassStyle`。 */
     const val UI_GLASS_COMPONENTS = "ui_glass_components"
+    /** 暗色 / 亮色模式（"dark" / "light"），见 `ui/appearance/ColorMode`。 */
+    const val UI_COLOR_MODE = "ui_color_mode"
 
     // ==================== 详情页设置 ====================
     const val FAV_SINGLE = "fav_single"

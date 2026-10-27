@@ -1531,6 +1531,7 @@ setOnLoadMoreListener { page -> load(page) } // 4. page 已由基类自增，别
 | `ColorScheme.kt` | 配色：7 套主题（**只读模块**，原 `ui/theme/ThemeManager.kt`） | `theme_selector` | 7 套 |
 | `CornerStyle.kt` | 卡片圆角 | `ui_corner_radius` | `square`（默认）/ `rounded` |
 | `FontStyle.kt` | 自定义字体（用户从文件管理器选字体文件） | `ui_font_path` | 有 / 无（默认无） |
+| `ColorMode.kt` | 暗色 / 亮色模式：应用自己决定 `uiMode` 夜间位（暗色 `NIGHT_YES`、亮色 `NIGHT_NO`），由 `BiliTerminal.getFitDisplayContext`（Activity base context 与全局 context）和 `AppCompatDelegate.setDefaultNightMode` 两处落实；亮色资源只在 `values-notnight` / `drawable-notnight`。`PlayerActivity` / `SplashActivity` 用 `forceDark` 上下文。`ColorScheme` 亮色表 = 暗色表 + `LightPalette` 覆盖，与 `colors_light.xml` 同源（`tools/appearance/gen_light_mode.py`） | `ui_color_mode` | `dark`（默认）/ `light` |
 | `AmbientGlow.kt` | 弥散光晕：7 套主题各一份 `Spec`（顶部底色 + 1～2 团径向光晕），`ColorScheme.applyWindowTheme` 开启时把它设为**窗口背景**、content 背景置空；关闭时走原纯色路径，零开销。无 blur / 噪点层，draw 内零分配 | `ui_ambient_glow` | 开 / 关（默认关） |
 | `GlassStyle.kt` | 玻璃质感：7 份 `GlassOverlay.<X>`（`values/themes_glass.xml` + `colors_glass.xml`）只替换 `materialCardViewStyle` / `materialButtonStyle` 两个**具体样式引用**，`BaseActivity.onCreate` 在 `super.onCreate` 后 `theme.applyStyle(force=true)`；关闭零开销。卡片 / 按钮 elevation 必须为 0（半透明底下阴影会透出）。布局里内联写死底色的选择卡片 / 次要按钮改读 `?attr/choiceCardColor` / `?attr/secondaryButtonTint`（`values/attrs_glass.xml`，主主题默认值 = colorSurface）——**新增会 inflate 布局的主题必须定义这两个属性，否则 inflate 崩**。覆盖层够不着的写死 shape / 代码设色背景（播放器分P / 字幕 / 互动选项、楼中楼预览框、「UP主觉得很赞」）走 `GlassStyle.choiceBackground` / `panelBackground`，色值同源 `colors_glass.xml` | `ui_glass_components` | 开 / 关（默认关） |
 | `ThemeTint.kt` | 给 XML 里只能写死颜色的 drawable（API 19 不能用 `?attr/`）在设置图片时按 `ColorScheme` 着色：点赞/投币/收藏激活态、私信发送按钮、投票选中框等 | — | — |
@@ -1751,7 +1752,7 @@ TTF/OTF/TTC，应用把它**拷进私有目录**（`filesDir/custom_font/custom_
 这些地方**当前是正确的**，只是可能显得「旧」或「不统一」。别在顺手重构/统一化的过程中改坏它们：
 
 - `util/AnimationUtils.java:43-45` 的 `crossFade`（100ms）与各详情页的 `crossFade` 用法 —— 加载态到内容态的过渡，删了就是「内容突然砸出来」。
-- 搜索框滚动隐藏逻辑（`SearchActivity.applyTopChrome`，26.10.24 起搜索框与排序条共用一条高度动画）—— 这一层收起的机制是「动真实高度、结束才 GONE」，别改回 `translationY`：列表锚在它下面，translation 不参与布局，收起后不补位。
+- 搜索框滚动隐藏逻辑（`SearchActivity.onScrolled`，26.10.26 按用户要求逐字回退到加排序功能之前）—— 收起就是 `ObjectAnimator.ofFloat(searchBar, "translationY", 0f, -height)` 配 200ms 后置 `GONE`、展开反向，`animate_last` 节流 200ms、`dy < -1` 才展开。26.10.24 那套「动真实高度、结束才 GONE」的 `applyTopChrome` 已随排序入口挪进搜索框内部而整体删除，`ViewPager` 重新锚在 `@id/top` 下方（搜索框盖在列表上方的旧口径）。别再为了「让列表补位」改回高度动画。
 - 二维码三档缩放（`QRLoginFragment.kt:124-160`）—— 注意 `Guideline` 改 percent 后**必须 `requestLayout()`**（见 §8.5 第 8 条），这套缩放是踩坑后的产物。
 - 圆屏适配（`BaseActivity.kt:143-181`）与 `RotaryRecyclerView` / `RotaryScrollView` 的滚轮输入支持 —— 三件套的差异是刻意保留的（见 §8.4b 末注）。
 - `ThemeManager` 集中配色的**设计意图**：7 套主题 41 个字段的抽象是对的，问题只是「另有两套并行表」（见 §8.7）。

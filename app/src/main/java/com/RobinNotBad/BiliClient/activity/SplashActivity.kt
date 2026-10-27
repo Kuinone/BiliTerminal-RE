@@ -26,6 +26,7 @@ import com.RobinNotBad.BiliClient.api.CookiesApi
 import com.RobinNotBad.BiliClient.ui.appearance.ColorScheme
 import com.RobinNotBad.BiliClient.util.AccountManager
 import com.RobinNotBad.BiliClient.util.CenterThreadPool
+import com.RobinNotBad.BiliClient.util.ClockSanity
 import com.RobinNotBad.BiliClient.util.MenuConfig
 import com.RobinNotBad.BiliClient.util.MsgUtil
 import com.RobinNotBad.BiliClient.util.NetWorkUtil
@@ -75,7 +76,8 @@ class SplashActivity : Activity() {
     }
 
     override fun attachBaseContext(newBase: Context?) {
-        super.attachBaseContext(BiliTerminal.getFitDisplayContext(newBase))
+        // forceDark：闪屏底色是纯黑（冷启动窗口由系统画，没法跟随模式），文字也必须保持浅色
+        super.attachBaseContext(BiliTerminal.getFitDisplayContext(newBase, forceDark = true))
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -362,6 +364,11 @@ class SplashActivity : Activity() {
                         if (!online) {
                             MsgUtil.showMsg(getString(R.string.msg_splash_offline_to_cache))
                         }
+                        // 时间防呆：系统时间早于本包构建日期时，所有 HTTPS 证书都会被判成「尚未生效」，
+                        // 先提醒用户改时间，免得他们对着一屏「网络错误」干着急（见 ClockSanity）
+                        if (ClockSanity.isClockBehind(System.currentTimeMillis(), BuildConfig.VERSION_CODE)) {
+                            MsgUtil.showMsgLong(getString(R.string.msg_clock_behind))
+                        }
                         // F4：版本升级后的首次启动，自动展示当版更新日志。
                         // 排在这一句之后：日志页叠在首屏之上、返回即回到首屏，闪屏阶段既不阻塞
                         // UI 线程，也不插入登录 / Cookie 刷新流程中间。setup 尚未完成、要走
@@ -438,6 +445,10 @@ class SplashActivity : Activity() {
                 intent.setClass(this@SplashActivity, SetupUIActivity::class.java)
                 startActivity(intent)
                 finish()
+                // 首次安装更容易碰上（新机 / 刚恢复出厂），初始化向导之后就要登录，同样提醒一次
+                if (ClockSanity.isClockBehind(System.currentTimeMillis(), BuildConfig.VERSION_CODE)) {
+                    MsgUtil.showMsgLong(getString(R.string.msg_clock_behind))
+                }
             }
         }
     }

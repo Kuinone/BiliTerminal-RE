@@ -9,6 +9,7 @@
 - **版本号**：`26.10.26`（`app/build.gradle` 的 `versionName`），`versionCode 2610260`（26.10.24 是 `2610240`，26.10.26 抬到 `2610260`；`strings.xml` 的 `update_log_current` 锚点同期换成「【26.10.26 本次更新】」，`:app:verifyVersionConsistency` 以该锚点校验，本机未复跑）。tag `26.10.26` 已占用，上一版 tag 是 `26.10.24`。
 - **上一版**：`26.10.24` / tag `26.10.24`。
 - **本轮改动（26.10.26）**：搜索结果支持排序（综合 / 播放量 / 最新 / 收藏，视频与专栏）；收藏夹接口升级 B 站新版；播放器新增「无极调音」，音量可在 0~100% 之间任意调；发布动态支持「仅自己可见」「关闭评论」；图片默认存进应用专属目录；下载修掉卡在 20% 不动、1080P+ 缓存下载完成后合并成单文件；断网启动进缓存页；短视频横滑重做；关于页 RE 开发者独立成一列；菜单级页面顶栏箭头统一朝下；发现新版本自动跳更新页；修复 ColorOS Watch 弹窗只剩空方块。明细见 `strings.xml` 的 `update_log_current`（12 条编号条目，另 1 条为版本锚点）。
+- **26.10.26 发版后的未发版改动**：搜索排序入口从搜索框下方的全宽按钮改成搜索框内最左侧的图标按钮（点它仍是同一个单选弹窗），搜索框的滚动收起逻辑整体回退到「加排序功能之前」的 `translationY` 版本（见 §3.71）。下次发版时 `update_log_current` 要补这一条。
 - **下次递增**：先看 `app/build.gradle:23-24`；release immutability 下被 Release 用过的 tag **永久不可复用**，同版本名补丁版只能用 `26.10.24.1` 这种后缀形式，`versionCode` 递增、`versionName` 可不变。改了版本号还要同步 `strings.xml` 里 `update_log_current` 的「【YY.MM.DD 本次更新】」锚点，否则 `:app:verifyVersionConsistency` 会失败。
 - **构建命令**（单测任务名**带 flavor 前缀**，`testDebugUnitTest` 自 26.10.11 引入 flavor 后已不存在）：
 
@@ -1549,6 +1550,52 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
 - **遗留**：①**启动期若恰好有新公告**（`TerminalApi.checkAnnouncement` 把服务端返回的未读公告逐条 `MsgUtil.showText`，只记最大 id），公告页会叠在更新页之上，按返回逐层退出后才能看到更新页——这是既有启动公告行为，本次不改（用延迟/重排去抢时序太脆弱）；用户已读过最新公告（常态）时不出现。②真手表未验证，只有 SDK AVD。
 - **文档**：`docs/FEATURES.md` §14.15 与「后台检查更新」、`docs/copy-inventory/02-update-log.md` L-032、`docs/architecture-map.md`（启动链路 + 改功能注意）。
 
+### 3.70 部分设备内测码更新报 `Trust anchor for certification path not found`（26.10.26，待真机）
+
+- **症状**：部分设备长按「检查更新」输入内测码后报 `java.security.cert.CertPathValidatorException: Trust anchor for certification path not found`；同一台设备走 Gitee / GitHub 的普通更新正常。
+- **根因（推断，本机沙箱连不上两个分享站，没能直接看到证书链）**：内测分享站（`file.zsapp.asia` / `share.lanol.cn`，自建 FileCodeBox）用的是 Let's Encrypt 证书，它的根 **ISRG Root X1 直到 Android 7.1.1（API 25）才进系统证书库**。以前老系统靠「DST Root CA X3 交叉签名」兜底，2024 年 Let's Encrypt 已停发这条链，于是 Android 7.1 及以下（手表大量停在 4.4~7.1）找不到信任锚；Gitee / GitHub 用 DigiCert / Sectigo 的老根，不受影响。正好对上「部分设备」。
+- **改法**：
+  - 新增 `res/raw/extra_ca_roots.pem`：ISRG Root X1（至 2035-06-04）+ ISRG Root X2（至 2040-09-17），两张的 SHA-256 已与 Let's Encrypt 公布的值核对过，指纹写在 `ExtraTrust.java` 类注释里。PEM 里故意不写注释，老系统的证书解析器不一定容忍 PEM 块外的文字。
+  - 新增 `util/ExtraTrust.java`：系统 TrustManager 的全部 `acceptedIssuers` + 内置根，一起放进内存 `KeyStore`，再用 `TrustManagerFactory.init(ks)` 生成**平台标准**的 `X509TrustManager`。链、有效期、主机名照常校验，**不是 trust-all**。没写成「先系统、失败再内置」的组合 TrustManager：API 24+ 的系统 TrustManager 是网络安全配置的 RootTrustManager，有 domain-config 时只接受带主机名的 `X509ExtendedTrustManager` 调用，而那个类 API 24 才有，minSdk 19 上继承会类加载失败。任何一步出错都回落系统默认。
+  - `util/UpdateManager.kt` 的 `okHttpClient` 套上 `ExtraTrust.apply(...)`，所以更新检查、内测解析、内测 txt、APK 下载都走合并后的信任。**带登录 Cookie 的主客户端 `NetWorkUtil` 没动**，不扩大信任面。
+- **验证**：本机沙箱没有 Android SDK，**`assembleDebug` / 单测没跑成**。把 `ExtraTrust` 的纯逻辑部分（`readCertificates` / `systemTrustManager` / `build`）剥出来在 JDK 25 上测过：PEM 读出 2 张证书（ISRG Root X1 / X2）；keytool 自签 CA 签发的叶子证书，系统 TM 拒绝、合并 TM（不含该 CA）**仍然拒绝**、合并 TM（含该 CA）通过。
+- **未验证 / 残留**：①Android 编译与单测待跑；②要在 Android 7.1 及以下的真机或 AVD 上跑通内测码下载才算真修好；③如果分享站换成别家证书（比如根也不在老系统里），往 `extra_ca_roots.pem` 追加对应根证书即可，代码不用改；④如果其实是服务器漏发了中间证书，所有设备都会报错，那就不属于这次修的问题，要改服务器配置。
+
+### 3.71 搜索排序入口挪进搜索框内部 + 收起逻辑回退（26.10.26 发版后，用户要求）
+
+- **缘起**：用户要求「查看排序这个按钮加入之前搜索框的逻辑，现在删除搜索框，之后用这个图标（`filter_filters_funnel_list_navigation_sort_sorting_icon_123212.ico`）放在搜索框的最最左边来替代底部的排序功能入口，将搜索框的收起逻辑改为没加入排序功能之前的逻辑（一模一样最好）」。即：撤掉 26.10.24 加的那条全宽排序按钮与为它引入的整套高度动画，排序入口收敛成搜索框内左侧一个图标按钮。
+- **改法（2 个代码/布局文件 + 2 张新图 + 3 处文档）**：
+  - `app/src/main/res/layout/activity_search.xml`：删掉 `<Button @+id/searchSortButton>`（全宽、锚 `searchbar` 下方那条）；`ViewPager` 的 `layout_constraintTop_toBottomOf` 回 `@id/top`（旧版口径：搜索框盖在列表上方、列表从顶栏下方就开始走）；`searchbar` 内部最左边新增 `@+id/searchSortButton` 的 `ImageView`（30dp 宽、`marginStart 3dp`、`padding 5dp`、`scaleType=fitCenter`、`visibility=gone`、`contentDescription` 复用 `text_search_sort_title`，id 沿用旧名所以 `findViewById` 绑定方式不变）。
+  - `SearchActivity.kt`：删整套 `applyTopChrome` / `setViewHeight` / `resetViewHeight` / `naturalHeightOf` / `setDropdownVisible` 与 `chromeAnimator` / `naturalHeights` / `CHROME_ANIM_MS`；`onScrolled` 逐字回退到加排序之前（`ObjectAnimator.ofFloat(searchBar, "translationY", 0f, -height)` + `handler.postDelayed({ visibility = GONE }, 200)`，展开反向，`dy < -1` 才展开，`animate_last` 200ms 节流）；`refreshSortBar()` 只控制图标显隐与点击（`hasSearched` 且当前 fragment 有 `sortOptions()` 才显示，风控时 `alpha=0.4` + 点击 `MsgUtil.showMsg` 后 `retry()`）；新增 `applySortIconVisible()` 在 `keywordInput.setPaddingRelative` 上把 `paddingStart` 在 8dp 与 `SORT_ICON_SLOT_DP=38f`（3dp 边距 + 30dp 图标 + 5dp 间隙）之间切，给图标让位。`showSortDialog()` 与 `TerminalDialog.singleChoice` 未改。
+  - 图标：新建 `app/src/main/res/drawable-nodpi/icon_sort_filter.png`（仓库无密度分桶目录，图片一向放 `mipmap-nodpi`）。源 `.ico` 是 128×128 纯黑图形，黑色在 `#80242424` 的搜索框上看不见，用 Pillow 裁 alpha bbox（9,17,119,111）→ 6% 留白 → LANCZOS 缩到 128 → RGB 统一重着色成 `#EBE0E2`（与 `icon_search` 同色），alpha 原样保留。亮色模式另出一份 `app/src/main/res/drawable-notnight-nodpi/icon_sort_filter.png`（同图形、RGB 换成 `#3A3438`，与 `drawable-notnight/icon_search.xml` 的描边同色）：亮色模式的搜索框底是 `#0A000000`（浅底），`#EBE0E2` 那份会隐形，`drawable-notnight` 里既然已经给 `icon_search` 备了深色版，这个新图标也得同一套。以后改这个图标两份一起改（`tools/appearance/gen_light_mode.py` 的约定）。
+- **验证**：
+  - 构建/单测：`assembleDebug` 双 flavor 成功；`testStandardDebugUnitTest` + `testCoexistDebugUnitTest` 全绿。
+  - 设备侧（SDK AVD `wear5`，Android 14 / 466×466 圆屏，standard debug，headless 启动 + `adb emu power ac off` 否则 Wear 会盖一层 `ChargingActivity`）：未搜索时 `searchSortButton` 不在 `uiautomator` dump 里（GONE ✔）；输入 `linux` 回车后以 `ImageView` 出现，bounds `[41,91][101,175]`（= 3dp 边距 + 30dp 图标，密度 2.0）、`content-desc="排序：综合"`、`clickable=true`；像素测量（screencap + Pillow 统计亮列）图标描边占 x=53..88、文字从 x=112 起，互不重叠，`paddingStart` 让位生效；点图标弹出 `TerminalDialog` 单选（标题「搜索结果排序」，项「综合 ✓ / 播放量 / 最新」，第四档「收藏」在滚动区外，底部「点空白处取消」），点「播放量」后 `content-desc` 变「排序：播放量」、列表 798.2万 → 502.0万 降序、弹窗消失，选档 → `selectSort("click")` 链路通。
+  - 收起/展开（旧版口径）：上滑 `input swipe 233 350 233 120 300` 后 dump 里 `searchbar` 整个 GONE、卡片从 y=87（`@id/top` 下方）开始铺 ✔；下滑 `input swipe 233 130 233 400 400` 后 `searchbar` 回到 `[23,91][443,175]`、`content-desc` 仍是「排序：播放量」✔。
+  - 亮色模式：把 `shared_prefs/default.xml` 的 `ui_color_mode` 临时改成 `light` 复测（测完改回 `dark`）——列表底色平均亮度 237 确认亮色生效，图标区最小亮度 4.0、958 个暗像素，说明 `#3A3438` 那份可见；列扫描图标描边到 x≈103、文字仍从 x=112 起，与暗色一致。
+  - `logcat -b crash` 无本应用崩溃（只有模拟器自身 sensor HAL 的 `unexpected sensor type: 26`）。
+- **遗留**：①真手表未测，只在 SDK AVD 上验证；②亮色版图标是手工另存的一份 PNG，`tools/appearance/gen_light_mode.py` 目前不覆盖 `drawable-nodpi`，下次重跑该脚本不会自动生成它（不影响运行，只是别以为它是脚本产物）。
+- **文档**：`docs/FEATURES.md` §4.2 搜索排序条目、`docs/agents/pitfalls.md` 三条（搜索框盖住 fragment / 收起走 `translationY` / 图标靠 `paddingStart` 让位）、`docs/architecture-map.md` §8.7.3 搜索框滚动隐藏逻辑、`docs/review/fix-progress.md` §1「发版后的未发版改动」与本节。
+
+### 3.72 系统时间错误防呆（26.10.27，用户反馈）
+
+- **缘起**：用户（Sonim XP5800 三防机，非触屏）反馈 B 站与 Gitee 同时报证书错误，系统浏览器弹「Security warning」，要求「无视风险直接信任证书」。用 openssl 查过两条链：B 站是 GlobalSign R1、Gitee 是 TrustAsia → Certum，都是老根，不缺。两家 CA 不同却同时失败，最后确认是**设备时间不对**（没电重启回到出厂时间），所有证书都被判「尚未生效」。trust-all 违反 `docs/agents/security.md` 红线，没做；改成提示用户改时间。
+- **改法**：
+  - 新增 `util/ClockSanity.kt`（纯函数，不读资源）：`buildDateMillis(versionCode)` 由 YYMMDD0 反推构建日期；`isClockBehind(now, versionCode)` 判当前时间早于构建日期（放宽 1 天抵消时区）；`isCertTimeError(e)` 沿 cause 链找 `CertificateNotYetValidException` / `CertificateExpiredException`，并按消息兜底。
+  - `SplashActivity`：进首屏 / 初始化向导后，若 `isClockBehind` 为真，`showMsgLong(msg_clock_behind)`（与断网提示同一套 sticky Snackbar）。
+  - `MsgUtil.err`：`IOException` 分支先判 `isCertTimeError`，命中则显示 `err_cert_time`，替代笼统的「网络错误」。
+  - 新文案 `err_cert_time` / `msg_clock_behind` 进 `strings.xml`。
+- **验证**：
+  - `ClockSanityTest` 9 例全过；`assembleDebug` 双 flavor 成功。
+  - MuMu（Android 15 / x86_64，root）：`settings put global auto_time 0` + `date 010112002015.00` 把时间拨到 2015-01-01。共存版（未完成初始化）冷启动进 `SetupUIActivity`，截图底部 Snackbar 显示「设备时间似乎不对……请到系统设置里改正日期和时间」✔。普通版 `am start` 推荐页，logcat 原文：`SSLHandshakeException: Unacceptable certificate: CN=GlobalSign RSA OV SSL CA 2018` → `Caused by: CertificateNotYetValidException: Certificate not valid until Wed Nov 21 ... 2018 (compared to Thu Jan 01 12:19:46 GMT+08:00 2015)`，随后 `MsgUtil>showMsgLong: 网络连接被拒：证书时间校验失败 / 请检查设备的日期和时间是否正确` ✔。测完 `auto_time 1` 恢复。
+  - 未来时间（同一台 MuMu，`date 060112002031.00`）：推荐页 logcat 原文 `Caused by: CertificateExpiredException: Certificate expired at Tue Nov 21 08:00:00 GMT+08:00 2028 (compared to Sun Jun 01 12:00:01 GMT+08:00 2031)`，随后同样显示 `err_cert_time` ✔（12 秒后的截图里 Snackbar 已按时长消失，以日志为准）。
+- **追加：明文取服务器时间，提示里给出具体日期**（同日，用户同意方案）：
+  - 新增 `api/ServerTimeApi.kt`：`http://api.bilibili.com/x/report/click/now`（`bilibili.com` 本在明文白名单，不加域名）。**独立 OkHttpClient，不带 Cookie、无拦截器、不跟随跳转**，4 秒超时；`parseNowMillis` 纯解析。
+  - `ClockSanity.isSkewed`：本机与服务器时间差 > 1 小时（早晚都算）。
+  - `MsgUtil.reportCertTimeError`：先给通用提示，再后台取服务器时间，偏差过大时补一条 `err_cert_time_skew`（设备时间 / 实际时间约）。60 秒内只取一次（`elapsedRealtime` 节流，不受系统时间影响）；该条四行，Snackbar 时长 8 秒并自带「x」。服务器时间**只用于显示**，不参与任何校验。
+  - 验证：`ClockSanityTest` 11 例、`ServerTimeApiTest` 2 例全过，双 flavor 单测与 `assembleDebug` 通过。MuMu 拨到 2031-06-01 与 2015-01-01 各测一次，logcat 均出现「设备时间：2031-06-01 12:00 / 2015-01-01 12:00，实际时间约：2026-10-27 18:36」；2031 那次启动后 5 秒截图，提示条四行完整、右侧有「x」✔。测完恢复自动对时。
+- **遗留**：①时间被拨到**未来**只在请求失败时提示，启动时不提示——本地没有可靠的「最晚日期」，用上次使用时间当上限会误报；时间只超前几天到几周、证书还没过期时网络本来正常，不影响使用；②系统浏览器 / WebView 的证书弹窗不归本应用管；③未在 XP5800 真机复测。
+
 ## 4. 历史章节索引
 
 > 完整正文在 `docs/archive/review/fix-progress-history.md`。**编号在历史上有重复**（`## 二十二` / `## 二十九` 各出现两次、`## 30.` 是阿拉伯数字写法，原为不打断既有交叉引用而保持不动），下表**以归档文件的物理行序为准**。
@@ -1623,6 +1670,8 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
 | 五十六 | 26.10.26：评论区翻译目标语言固定中文 + 入口暂时隐藏 | `api/ReplyTranslateApi.java`：新增 `UI_ENABLED = false`（带开关说明，恢复改成 `true`）与 `TARGET_LOCALE = Locale.SIMPLIFIED_CHINESE`，javadoc 从「跟随系统语言」改为「固定简体中文」；`adapter/ReplyAdapter.kt` 的 `bindTranslation` 开头按 `UI_ENABLED` 提前返回，隐藏 `item_reply_translate`/`replyTranslation` 并清掉点击监听（`buildLocaleHeader(TARGET_LOCALE)`，不再 `Locale.getDefault()`）；`ReplyTranslateApiTest` +1 例（目标语言固定中文断言，共 22 例）；文档 `FEATURES.md` §9.5/§9.6、`architecture-map.md` §7.55、`bilibili-api-notes.md` §7 标注「入口隐藏」 | 部分遗留（`assembleDebug` 双 flavor 通过；`testStandardDebugUnitTest` / `testCoexistDebugUnitTest` 各 91 suites / 989 tests / 0 failures；模拟器 sdk_gwear_x86_64（Android 14，466×466）装 coexist 包实测：视频 80433022 列表页评论行只剩「点赞/踩/回复」，uiautomator dump 列表页与详情页均无 `item_reply_translate`/`replyTranslation` 节点（此前列表页有「文A」）；目标语言为中文时同一条中文评论请求 gRPC 200、服务端返回空 map、界面不显示译文也不卡死；**外语评论→中文仍无样本可验**（上游扫描 25 个视频、多组关键词均未找到英文评论，这也是暂隐藏入口的原因）；本轮 `ReplyInfoActivity` 打开后 `getReply` 回调抛异常自动关闭，详情页未单独复测（与列表页共用 `bindTranslation`）；真手表未验） |
 
 | 五十七 | 26.10.26：发版 26.10.26（2610260）与官网同步 | 版本号 `26.10.24`→`26.10.26`（versionCode `2610242`→`2610260`）、把 26.10.24 的 20 条日志归档进 `update_history_log`、`update_log_current` 按用户口径精简为 12 条；提交 `055eaad`（版本号 + 日志归档）+ `8388d56`（日志精简）并推送 `main` 与 tag `26.10.26`；CI「构建发行版并创建 Release」#15 全部步骤 success，GitHub Release 10 个资产（8 个 APK + `md5sums.txt` + `release-links.txt`，正文 12 条 + MD5 表 + `versionCode` 标记），Gitee 发行版已同步 26.10.26；站点仓库 `bili-terminal-site` 用 `tools/sync-release.py` 重新生成 `data/releases.json` / `index.html` / `changelog.html` 等静态页，提交 `bdc9e37` 推送 `main` | 部分遗留（**官网静态页仍未更新**：线上 `data/releases.json` 最新 tag 仍是 26.10.14、`sitemap.xml` lastmod 仍是 2026-10-14、`changelog.html` 仍写「当前最新版 26.10.14」，且 `rebiterminal.netlify.app` 已返回 404「site-not-found」（站点被改名或反代目标失效），而 `/api/release` 运行时接口已返回 26.10.26 → 判断 Netlify 自 26.10.14 之后没再部署该仓库（`26.10.19`、`26.10.24` 两次同步提交同样未上线），需要在 Netlify 后台检查站点是否仍绑定 `PurpleEthereality/BiliTerminal-RE_web` 的 `main` 分支，或手动触发一次 Deploy；站点仓库内容与本地生成结果均已就绪，恢复部署即自动生效） |
+
+| 五十八 | 26.10.27：发版 26.10.27（2610270）与官网同步 | 版本号 `26.10.26`→`26.10.27`（versionCode `2610260`→`2610270`）、把 26.10.26 的 12 条日志归档进 `update_history_log` 的 `## 2026-10-26` 组、`update_log_current` 按用户口径改成 5 条（暗色 / 亮色 + 弥散光晕 + 玻璃质感、设置改版、搜索排序图标、字幕下沉、Android 7.1 及以下更新失败）；提交 `4cf93c6` 推送 `main` 与 tag `26.10.27`；CI「构建发行版并创建 Release」`40449814197` 全部 success，GitHub Release 10 个资产（8 个 APK + `md5sums.txt` + `release-links.txt`，正文 5 条 + MD5 表 + `versionCode` 标记），Gitee 发行版同步出 11 个资产（8 个 APK + `md5sums.txt` + 源码归档 zip/tar.gz）；站点仓库 `bili-terminal-site` 用 `tools/sync-release.py` 重新生成 `data/releases.json` / `index.html` / `changelog.html` 等静态页，提交 `ac21dde` 推送 `main`；构建过程中 `:app:minifyCoexistReleaseWithR8` 因本地 Gradle 构建缓存里的坏产物（`DynamicApi$UpInfo.class` 为 532 字节全零）失败，删坏 class + `:app:clean` + `--no-build-cache --no-configuration-cache` 重建成功 | 部分遗留（**官网静态页仍未更新**：`changelog.html` 仍写「当前最新版 26.10.14」，Netlify 依旧未从 `PurpleEthereality/BiliTerminal-RE_web` 的 `main` 重新部署，需在 Netlify 后台检查站点绑定或手动 Deploy；`/api/release` 运行时接口已返回 26.10.27 + 5 条日志，动态部分正常；站点仓库内容与本地生成结果均已就绪，恢复部署即自动生效。另：发版提交落地时本地 HEAD 已被人为切到 `refactor/layout-as-subpage`（非本代理所为），已用 `git branch -f main 4cf93c6` 把 `main` 快进并推送，该分支未删，等待用户决定） |
 
 ## 5. 仍待回迁 / 仅见于归档的长期结论
 

@@ -1,0 +1,10 @@
+<!-- 压在视频 / 图片上的固定浅色版本：两种颜色模式都不变（没有 -notnight 覆盖）。原件见 drawable/arrow_back.xml。 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="11dp"
+    android:height="11dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="@color/overlay_icon"
+        android:pathData="M11.67,3.87L9.9,2.1 0,12l9.9,9.9 1.77,-1.77L3.54,12z" />
+</vector>

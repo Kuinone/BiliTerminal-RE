@@ -63,15 +63,17 @@ class SubtitleAdapter : RecyclerView.Adapter<SubtitleAdapter.Holder>() {
             if (currentIndex < 0 || list == null || currentIndex >= list!!.size)
                 return
             button.text = list!![currentIndex].lang
+            // 播放器永远暗色：取暗色表，亮色模式下全局 getter 会给出深色文字 / 浅色卡片
+            val dark = ColorScheme.darkColors()
             if (GlassStyle.isEnabled()) {
-                button.setTextColor(if (isSelected) ColorScheme.SECONDARY else ColorScheme.TEXT_PRIMARY)
+                button.setTextColor(if (isSelected) dark.SECONDARY else dark.TEXT_PRIMARY)
                 button.background = GlassStyle.choiceBackground(button.context, isSelected)
             } else if (isSelected) {
-                button.setTextColor(com.RobinNotBad.BiliClient.ui.appearance.ColorScheme.getOnPrimary(context!!))
-                button.setBackgroundColor(com.RobinNotBad.BiliClient.ui.appearance.ColorScheme.getPrimary(context!!))
+                button.setTextColor(dark.ON_PRIMARY)
+                button.setBackgroundColor(dark.PRIMARY)
             } else {
-                button.setTextColor(com.RobinNotBad.BiliClient.ui.appearance.ColorScheme.getTextPrimary(context!!))
-                button.setBackgroundColor(com.RobinNotBad.BiliClient.ui.appearance.ColorScheme.getCard(context!!))
+                button.setTextColor(dark.TEXT_PRIMARY)
+                button.setBackgroundColor(dark.CARD)
             }
             button.setOnClickListener {
                 selectedItemIndex = currentIndex

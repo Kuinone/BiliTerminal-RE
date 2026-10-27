@@ -75,6 +75,7 @@ class TutorialPagerActivity : BaseActivity() {
     private lateinit var titleView: TextView
     private lateinit var progressView: TextView
     private lateinit var closeBtn: MaterialButton
+    private lateinit var actionBtn: MaterialButton
 
     private var queue: List<String> = emptyList()
     private var queueIndex = 0
@@ -103,6 +104,7 @@ class TutorialPagerActivity : BaseActivity() {
         titleView = findViewById(R.id.text_title)
         progressView = findViewById(R.id.text_progress)
         closeBtn = findViewById(R.id.close_btn)
+        actionBtn = findViewById(R.id.action_btn)
         pager = findViewById(R.id.tutorial_pager)
 
         queue = intent.getStringArrayListExtra(EXTRA_IDS).orEmpty()
@@ -121,6 +123,7 @@ class TutorialPagerActivity : BaseActivity() {
             markRead()
             goNext()
         }
+        actionBtn.setOnClickListener { openAction() }
 
         if (queue.isEmpty()) {
             finish()
@@ -151,6 +154,14 @@ class TutorialPagerActivity : BaseActivity() {
         updateProgress()
         updateCloseButton()
 
+        val action = target.action
+        if (action != null) {
+            actionBtn.text = action.label
+            actionBtn.visibility = View.VISIBLE
+        } else {
+            actionBtn.visibility = View.GONE
+        }
+
         if (target.isMandatory) {
             handler.postDelayed(ticker, 1000L)
         }
@@ -169,6 +180,22 @@ class TutorialPagerActivity : BaseActivity() {
     private fun markRead() {
         val target = tutorial ?: return
         TutorialStore.markRead(target)
+    }
+
+    /**
+     * 点附加按钮：先记已读，再打开目标页。
+     * 只对 NOTICE 生效——GUIDE 必须读完，不能借按钮跳过。
+     * 关闭整个队列（finish），免得用户从设置页返回时又被下一篇教程挡住。
+     */
+    private fun openAction() {
+        val target = tutorial ?: return
+        val action = target.action ?: return
+        if (target.isMandatory) return
+        markRead()
+        val intent = android.content.Intent(this, action.target)
+        action.extras.forEach { (k, v) -> intent.putExtra(k, v) }
+        startActivity(intent)
+        finish()
     }
 
     private fun updateProgress() {

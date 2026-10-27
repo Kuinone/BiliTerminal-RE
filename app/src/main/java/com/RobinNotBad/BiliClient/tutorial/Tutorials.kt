@@ -9,6 +9,8 @@ import com.RobinNotBad.BiliClient.activity.dynamic.DynamicActivity
 import com.RobinNotBad.BiliClient.activity.dynamic.DynamicInfoActivity
 import com.RobinNotBad.BiliClient.activity.message.MessageActivity
 import com.RobinNotBad.BiliClient.activity.search.SearchActivity
+import com.RobinNotBad.BiliClient.activity.settings.GROUP_APPEARANCE
+import com.RobinNotBad.BiliClient.activity.settings.SettingGroupActivity
 import com.RobinNotBad.BiliClient.activity.user.info.UserInfoActivity
 import com.RobinNotBad.BiliClient.activity.video.RecommendActivity
 import com.RobinNotBad.BiliClient.activity.video.ShortVideoPlayerActivity
@@ -31,7 +33,7 @@ import com.RobinNotBad.BiliClient.activity.video.local.LocalListActivity
  *   只加粗在黑色背景上不够醒目，必须带色；
  * - **列表项**：以 `"· "` 开头，项之间一个 `newline()`，段落之间两个；
  * - **注意事项**：`italic()`；
- * - 正文默认白色，一页里强调色不超过两处小标题。
+ * - 正文不写颜色，跟随主题文字色（亮色主题下自动变深），一页里强调色不超过两处小标题。
  */
 object Tutorials {
 
@@ -83,14 +85,25 @@ object Tutorials {
         }
     }
 
-    /** 推荐页 - 主题变更说明（版本说明类，可跳过）。 */
+    /**
+     * 推荐页 - 主题变更说明（版本说明类，可跳过）。
+     * v2：补亮色/暗色模式、弥散光晕、玻璃质感说明，底部加「打开外观设置」按钮。
+     */
     val themeNotice = tutorial(
         id = "theme_notice",
         title = UiText.of("主题说明"),
-        version = 1,
+        version = 2,
         descriptionRes = R.string.tutorial_desc_theme_notice,
         target = RecommendActivity::class.java,
         kind = TutorialKind.NOTICE,
+        action = TutorialAction(
+            label = UiText.of("打开外观设置"),
+            target = SettingGroupActivity::class.java,
+            extras = mapOf(
+                "group_type" to GROUP_APPEARANCE,
+                "group_title" to "外观设置",
+            ),
+        ),
     ) {
         page {
             text(UiText.of("本次更新说明")).bold().color(HIGHLIGHT)
@@ -103,10 +116,20 @@ object Tutorials {
             newline()
             text(UiText.of("想换回其它配色")).bold().color(ACCENT)
             newline()
-            text(UiText.of("进入「设置」→「界面与外观」→「主题配色」，可以自由切换任意主题（哔哩粉、知乎蓝、经典灰等）。"))
+            text(UiText.of("「主题配色」里可以自由切换任意主题（哔哩粉、知乎蓝、经典灰等）。"))
             newline()
             newline()
-            text(UiText.of("主题修改后会立即应用到全部页面。"))
+            text(UiText.of("亮色 / 暗色模式")).bold().color(ACCENT)
+            newline()
+            text(UiText.of("每套主题都有暗色和亮色两版，在「颜色模式」里切换。亮色适合白天和室外强光；播放器始终是暗色。"))
+            newline()
+            newline()
+            text(UiText.of("弥散光晕 / 玻璃质感")).bold().color(ACCENT)
+            newline()
+            text(UiText.of("弥散光晕会在页面顶部铺一层随主题变色的柔光；玻璃质感让卡片和按钮变成半透明。两个一起开效果最好，低端设备觉得卡可以关掉。"))
+            newline()
+            newline()
+            text(UiText.of("以上都在「设置」→「界面与外观」→「外观设置」里，点下方按钮可直接跳过去。")).italic()
         }
     }
 

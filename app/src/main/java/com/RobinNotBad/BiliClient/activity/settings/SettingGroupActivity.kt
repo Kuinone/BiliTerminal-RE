@@ -1,5 +1,6 @@
 package com.RobinNotBad.BiliClient.activity.settings
 
+import com.RobinNotBad.BiliClient.ui.appearance.ColorMode
 import com.RobinNotBad.BiliClient.util.UiText
 
 import android.app.Activity
@@ -127,6 +128,7 @@ class SettingGroupActivity : RefreshListActivity() {
         when (groupType) {
             "account" -> buildAccountGroup()
             "ui" -> buildUIGroup()
+            "layout" -> buildLayoutGroup()
             GROUP_APPEARANCE -> buildAppearanceGroup()
             GROUP_NOTIFY -> buildNotifyGroup()
             GROUP_DISGUISE -> buildDisguiseGroup()
@@ -248,6 +250,35 @@ class SettingGroupActivity : RefreshListActivity() {
     }
 
     private fun buildUIGroup() {
+        // 两个二级页：「外观设置」管配色/字体，「布局适配」管尺寸/边距/圆屏/横屏
+        nav(R.drawable.icon_ui, "外观设置", "主题配色、卡片圆角、自定义字体") {
+            startActivity(Intent(this, SettingGroupActivity::class.java).apply {
+                putExtra("group_type", GROUP_APPEARANCE)
+                putExtra("group_title", "外观设置")
+            })
+        }
+        nav(
+            R.drawable.icon_ui,
+            getString(R.string.settingtext_setting_layout_group),
+            getString(R.string.settingtext_setting_layout_group_desc)
+        ) {
+            startActivity(Intent(this, SettingGroupActivity::class.java).apply {
+                putExtra("group_type", "layout")
+                putExtra("group_title", getString(R.string.settingtext_setting_layout_group))
+            })
+        }
+        input("开屏文字", getString(R.string.setting_lab_splashtext), SettingsKeys.SPLASH_TEXT, "input_string", "欢迎使用\nRE:哔哩终端")
+        switch("文字跑马灯", getString(R.string.setting_lab_marquee), SettingsKeys.MARQUEE_ENABLE, true)
+        switch("加载渐入渐出动画", getString(R.string.desc_load_transition), SharedPreferencesUtil.LOAD_TRANSITION, true)
+    }
+
+    /**
+     * 「布局适配」二级页（入口在「界面与外观」里）：界面大小、边距、圆屏、密度、横屏等「屏幕如何排布」相关项。
+     *
+     * 由「界面与外观」拆出（原 `buildUIGroup` 中非外观的那一半），不在设置主页单列。首次启动引导页
+     * `SetupUIActivity` 本就是纯布局项（界面大小 / 边距 / 圆屏），语义与本分组一致，无需改动。
+     */
+    private fun buildLayoutGroup() {
         button("恢复默认") {
             SharedPreferencesUtil.putInt(SettingsKeys.PADDING_H, 0)
             SharedPreferencesUtil.putInt(SettingsKeys.PADDING_V, 0)
@@ -261,7 +292,6 @@ class SettingGroupActivity : RefreshListActivity() {
             startActivity(Intent(this, UIPreviewActivity::class.java))
         }
 
-        title("布局适配")
         switch("圆屏适配", getString(R.string.desc_setting_ui_round), SettingsKeys.UI_ROUND, false) { isChecked ->
             SharedPreferencesUtil.putInt(SettingsKeys.PADDING_H, if (isChecked) 5 else 0)
             SharedPreferencesUtil.putInt(SettingsKeys.PADDING_V, if (isChecked) 3 else 0)
@@ -299,18 +329,7 @@ class SettingGroupActivity : RefreshListActivity() {
             } catch (ignored: Throwable) {
             }
         }
-
-        // 配色与圆角已迁到独立的「外观设置」页（本页的另一个 group_type 分组）
-        nav(R.drawable.icon_ui, "外观设置", "主题配色、卡片圆角、自定义字体") {
-            startActivity(Intent(this, SettingGroupActivity::class.java).apply {
-                putExtra("group_type", GROUP_APPEARANCE)
-                putExtra("group_title", "外观设置")
-            })
-        }
         switch("横屏模式", getString(R.string.setting_lab_ui_landscape), SettingsKeys.UI_LANDSCAPE, false)
-        input("开屏文字", getString(R.string.setting_lab_splashtext), SettingsKeys.SPLASH_TEXT, "input_string", "欢迎使用\nRE:哔哩终端")
-        switch("文字跑马灯", getString(R.string.setting_lab_marquee), SettingsKeys.MARQUEE_ENABLE, true)
-        switch("加载渐入渐出动画", getString(R.string.desc_load_transition), SharedPreferencesUtil.LOAD_TRANSITION, true)
     }
 
     /**
@@ -326,6 +345,22 @@ class SettingGroupActivity : RefreshListActivity() {
      */
     private fun buildAppearanceGroup() {
         title("配色")
+        listChoose(
+            "颜色模式",
+            getString(R.string.desc_setting_color_mode),
+            ColorMode.KEY,
+            ColorMode.DEFAULT,
+            ColorMode.DISPLAY_NAMES,
+            ColorMode.VALUES
+        ) { oldValue, newValue ->
+            if (oldValue != newValue) {
+                AppearanceManager.setColorMode(newValue)
+                // 全局 context（Toast / Glide 占位图等用它取资源）按新模式重建
+                BiliTerminal.context = BiliTerminal.getFitDisplayContext(applicationContext)
+                // 通知 AppCompat 切换夜间位：所有 AppCompat 页面（含本页）会被它自动重建，这里不再手动 recreate
+                ColorMode.applyGlobal()
+            }
+        }
         listChoose(
             "主题配色",
             "选择应用的主题配色方案",

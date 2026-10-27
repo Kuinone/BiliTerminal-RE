@@ -1,5 +1,6 @@
 package com.RobinNotBad.BiliClient
 
+import com.RobinNotBad.BiliClient.ui.appearance.ColorMode
 import com.RobinNotBad.BiliClient.util.UiText
 
 import android.annotation.SuppressLint
@@ -177,16 +178,24 @@ class BiliTerminal : Application() {
          * @param old The origin context.
          */
         @JvmStatic
-        fun getFitDisplayContext(old: Context?): Context? {
+        @JvmOverloads
+        fun getFitDisplayContext(old: Context?, forceDark: Boolean = false): Context? {
             val dpiTimes = SharedPreferencesUtil.getFloat("dpi", 1.0F)
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.JELLY_BEAN_MR1) return old
-            if (!DPI_FORCE_CHANGE && dpiTimes == 1.0F) return old
+            if (old == null) return null
+            val dpiChanged = DPI_FORCE_CHANGE || dpiTimes != 1.0F
+            // 暗色 / 亮色模式：由我们决定 uiMode 的夜间位（亮色命中 -notnight 资源），见 ColorMode。
+            // 手表系统普遍报 NIGHT_NO，所以暗色模式也必须显式写 NIGHT_YES。
+            val night = ColorMode.nightBits(forceDark)
+            val nightMatches = (old.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == night
+            if (!dpiChanged && nightMatches) return old
             return try {
-                val ctx = old!!
-                val displayMetrics = ctx.resources.displayMetrics
-                val configuration = ctx.resources.configuration
-                configuration.densityDpi = (displayMetrics.densityDpi * dpiTimes).toInt()
-                ctx.createConfigurationContext(configuration)
+                val displayMetrics = old.resources.displayMetrics
+                // 拷贝一份再改：此前直接改 resources.configuration（宿主 Resources 的活配置对象）
+                val configuration = Configuration(old.resources.configuration)
+                if (dpiChanged) configuration.densityDpi = (displayMetrics.densityDpi * dpiTimes).toInt()
+                configuration.uiMode = (configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK.inv()) or night
+                old.createConfigurationContext(configuration)
             } catch (e: Exception) {
                 //MsgUtil.err(e,old);
                 old
@@ -376,6 +385,8 @@ class BiliTerminal : Application() {
 
         if (context == null) {
             SharedPreferencesUtil.sharedPreferences = getSharedPreferences("default", MODE_PRIVATE)
+            // 暗色 / 亮色模式：在任何 Activity 创建前告诉 AppCompat（否则它会按系统夜间位重写）
+            ColorMode.applyGlobal()
             context = getFitDisplayContext(this)
 
             // 教程系统重构：一次性把旧键迁移到新 id（旧系统拿数组下标当 tag 且错位，详见 docs/tutorial-system-redesign.md）

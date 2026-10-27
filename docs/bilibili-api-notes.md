@@ -86,6 +86,7 @@
 | `s.search.bilibili.com/main/suggest` | 搜索建议（**根字段是 `result.tag[]`，不是 `data`**） | 否 | 否 | 否 |
 | `live.bilibili.com/room/v1/Room/get_status_info_by_uids` | 按 uid 查开播状态（开播提醒首选） | 否 | 否 | 否 |
 | `live.bilibili.com/xlive/web-room/v1/index/getDanmuInfo` | 直播弹幕 WS 地址 + token | 否 | 否 | 否 |
+| `x/report/click/now` | 服务器时间（`data.now` 秒）；**明文 http 可用**（26.10.27 实测 200），给「设备时间不对」提示用，请求不带 Cookie | 否 | 否 | 否 |
 
 ## 3. 必须知道的硬约束
 

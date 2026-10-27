@@ -79,4 +79,6 @@
     <dimen name="dialog_title_padding_bottom">9dp</dimen>
     <!-- 引导符列宽（终端列表方案的 › / ▸） -->
     <dimen name="dialog_glyph_width">11dp</dimen>
+    <!-- 经典终端按钮描边：暗色 0dp（无描边，与改动前一致），亮色 1dp，见 values-notnight/dimens.xml -->
+    <dimen name="terminal_btn_stroke_width">0dp</dimen>
 </resources>

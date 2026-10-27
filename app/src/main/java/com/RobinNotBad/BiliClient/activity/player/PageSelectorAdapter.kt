@@ -57,16 +57,18 @@ class PageSelectorAdapter : RecyclerView.Adapter<PageSelectorAdapter.Holder>() {
                 return
 
             pageName.text = "P" + (currentIndex + 1) + " " + pagenames!![currentIndex]
+            // 播放器永远暗色：取暗色表，亮色模式下全局 getter 会给出深色文字
+            val dark = ColorScheme.darkColors()
 
             if (GlassStyle.isEnabled()) {
                 // 玻璃质感：选中 = 主色淡底 + 高亮描边；选中文字用高亮色（深主色压在半透明底上对比度不足）
-                pageName.setTextColor(if (isSelected) ColorScheme.SECONDARY else ColorScheme.TEXT_PRIMARY)
+                pageName.setTextColor(if (isSelected) dark.SECONDARY else dark.TEXT_PRIMARY)
                 itemView.background = GlassStyle.choiceBackground(itemView.context, isSelected)
             } else if (isSelected) {
-                pageName.setTextColor(ColorScheme.PRIMARY)
+                pageName.setTextColor(dark.PRIMARY)
                 itemView.setBackgroundResource(R.drawable.background_card)
             } else {
-                pageName.setTextColor(ColorScheme.TEXT_PRIMARY)
+                pageName.setTextColor(dark.TEXT_PRIMARY)
                 itemView.setBackgroundResource(R.drawable.background_card_borderless)
             }
 

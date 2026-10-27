@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 亮色模式的主题父类，见 values/themes_base.xml。 -->
+<resources>
+    <style name="Base.Theme.BiliTerminal" parent="Theme.MaterialComponents.Light.NoActionBar" />
+</resources>

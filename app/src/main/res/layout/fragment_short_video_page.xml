@@ -53,9 +53,9 @@
             android:id="@+id/text_title"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:drawableStart="@drawable/arrow_back"
+            android:drawableStart="@drawable/arrow_back_overlay"
             android:text="@string/uitext_menuactivity_001"
-            android:textColor="?android:attr/textColorPrimary"
+            android:textColor="@color/overlay_text"
             android:textSize="12sp" />
     </RelativeLayout>
 
@@ -74,7 +74,7 @@
         android:shadowDx="2.0"
         android:shadowDy="0.0"
         android:shadowRadius="3.0"
-        android:textColor="?android:attr/textColorPrimary"
+        android:textColor="@color/overlay_text"
         android:textSize="12sp"
         android:visibility="gone" />
 
@@ -110,7 +110,8 @@
             android:text="00:00/00:00"
             android:alpha="0.8"
             android:textSize="11sp"
-            android:layout_marginTop="2dp" />
+            android:layout_marginTop="2dp"
+            android:textColor="@color/overlay_text" />
 
         <RelativeLayout
             android:id="@+id/bottom_buttons"
@@ -134,7 +135,7 @@
                     android:adjustViewBounds="true"
                     android:background="?android:attr/selectableItemBackground"
                     android:scaleType="fitCenter"
-                    android:src="@drawable/icon_menu"
+                    android:src="@drawable/icon_menu_overlay"
                     android:visibility="gone" />
 
                 <ImageButton
@@ -177,7 +178,7 @@
                     android:paddingStart="8dp"
                     android:paddingEnd="8dp"
                     android:text="1.0x"
-                    android:textColor="?android:attr/textColorPrimary"
+                    android:textColor="@color/overlay_text"
                     android:textSize="14sp" />
 
                 <ImageButton
@@ -198,7 +199,7 @@
                     android:adjustViewBounds="true"
                     android:background="?android:attr/selectableItemBackground"
                     android:scaleType="fitCenter"
-                    android:src="@drawable/icon_folder"
+                    android:src="@drawable/icon_folder_overlay"
                     android:visibility="gone" />
             </LinearLayout>
 
@@ -216,7 +217,7 @@
         android:shadowDy="0.0"
         android:shadowRadius="3.0"
         android:text="@string/text_activityplayer_06"
-        android:textColor="?android:attr/textColorPrimary"
+        android:textColor="@color/overlay_text"
         android:textSize="13sp"
         android:visibility="gone" />
 

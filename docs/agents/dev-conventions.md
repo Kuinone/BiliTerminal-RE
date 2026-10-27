@@ -31,6 +31,20 @@
 
 - 外观设置（配色 / 卡片圆角 / 字体）走 `ui/appearance/` 三模块：**模块只放候选值与纯函数，写入一律走 `AppearanceManager`**（它负责递增外观版本号）；模块里别做几何计算，也别在热路径上缓存。细则见 `docs/architecture-map.md` §8.7。
 
+## 暗色 / 亮色模式（26.10.26 起，写界面必读）
+
+- `values/`、`drawable/` 是**暗色**；亮色只放 `values-notnight/`、`drawable-notnight/`。同名资源两份一起改。
+- **布局里别再写死浅色字面量**（`#80ffffff`、`#ebe0e2` 之类）：要么用主题属性（`?android:attr/textColorPrimary`、`?attr/colorSurface`），
+  要么在 `values/colors_mode.xml` 加语义色、并在 `values-notnight/colors_light.xml` 给亮色值。
+- **亮色用米白，不用纯白**：背景 / 表面 / 卡片是暖调米白（CIELAB L\* 约 92 / 95 / 97、b\* 约 +4～+7）。与暗色 6 套主题共用 `#1B1B24` 系对称，亮色 6 套主题共用同一套米白、只按主题色相微偏；经典终端是更深一档的「旧纸」。数值只在 `tools/appearance/gen_light_mode.py` 的 `CREAM` / `TINT` / `OLD_PAPER` 里改，改完重跑脚本并重算 `AmbientGlow.lightSpecFor` 的 `top`。新增亮色颜色别写 `#FFFFFF`（二维码底板 `qr_plate`、主色按钮上的白字例外）。
+- **改亮色光晕先量色差**：浅底上同样的色差人眼更难察觉，亮色光晕按 CIELAB ΔE 对齐暗色（中心 ≈ 32～42、顶部 ≈ 10～16），见 `AmbientGlow.lightSpecFor` 注释。
+- **新增浅色图标**：跑 `python tools/appearance/gen_light_mode.py` 生成亮色版（`drawable-notnight/` 中性深灰 + `drawable-notnight-v21/` 按主题正文色着色）；压在主色 / 视频 / 通知上、两种模式都必须是白色的图标加进脚本的 `EXCLUDE`。
+- **压在视频 / 图片上的图标与文字**用 `*_overlay` 图标与 `@color/overlay_icon` / `overlay_text`（没有亮色覆盖，永远浅色）。
+- 代码设色用 `ColorScheme` 的 getter（已按模式切换）；**播放器里**（`PlayerActivity` 是 `forceDark` 上下文）用 `ColorScheme.darkColors()`。
+- 不要在 `values-notnight` 覆盖 `terminal_bgblack` / `bgblack`：冷启动窗口按**系统** uiMode 绘制，覆盖会让暗色用户在手表上闪白。
+- **只做手动切换，不做「跟随系统」**（产品决定）：手表系统几乎固定报非夜间，跟随系统在手表上等于永远亮色。别加 `MODE_NIGHT_FOLLOW_SYSTEM` 或按时间自动切换。
+- 切换模式只走设置页的「颜色模式」：`AppearanceManager.setColorMode` → 刷新 `BiliTerminal.context` → `ColorMode.applyGlobal()`（AppCompat 自动重建页面）。
+
 ## 弹窗
 
 **统一走 `util/TerminalDialog.kt`，禁止在业务代码里裸写 `AlertDialog.Builder`。**（26.10.05 起完成迁移，见 `docs/archive/review/dialog-redesign-progress.md`；技术结论已并进 `docs/architecture-map.md` §8.7.0）

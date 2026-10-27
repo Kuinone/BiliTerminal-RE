@@ -34,10 +34,13 @@ data class TutorialSpan(
     val text: String? = null,
     val imageRes: Int? = null,
     val style: TutorialStyle = TutorialStyle.NORMAL,
-    val color: String = DEFAULT_TEXT_COLOR,
+    /**
+     * 文字颜色（`#rrggbb`）。`null` = 不挂颜色，跟随 TextView 的主题文字色。
+     * 以前默认写死 `#ffffff`，亮色主题下普通正文就成了白底白字。
+     */
+    val color: String? = null,
 ) {
     companion object {
-        const val DEFAULT_TEXT_COLOR = "#ffffff"
 
         /** 换行片段。 */
         val NEWLINE = TutorialSpan(text = "\n")
@@ -46,6 +49,17 @@ data class TutorialSpan(
         fun image(resId: Int) = TutorialSpan(imageRes = resId)
     }
 }
+
+/**
+ * 教程底部的附加按钮（显示在「已阅」上方），点了先记已读、再打开 [target]。
+ *
+ * 只存纯数据（类 + 字符串 extras），不放 lambda，保证注册表仍可单测。
+ */
+data class TutorialAction(
+    val label: String,
+    val target: Class<out Activity>,
+    val extras: Map<String, String> = emptyMap(),
+)
 
 /** 教程内的一页。 */
 data class TutorialPage(
@@ -76,6 +90,8 @@ data class Tutorial(
     val descriptionRes: Int? = null,
     val hintText: String? = null,
     val hintViewId: Int? = null,
+    /** 底部附加按钮；`null` = 只有「已阅」。 */
+    val action: TutorialAction? = null,
 ) {
     /** 是否需要全屏分页展示（GUIDE / NOTICE）。 */
     val isFullScreen: Boolean

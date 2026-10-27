@@ -16,30 +16,7 @@
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@+id/searchSortButton" />
-
-    <!-- 搜索结果排序按钮：只有支持 order 参数分类（视频 / 专栏）且已经搜过一次时才显示。
-         必须放在这里而不是 fragment 里——fragment 的 ViewPager 只对齐到顶栏下方，
-         搜索框是压在 fragment 上方的，控件放进 fragment 会被搜索框盖住（26.10.24 实测）。
-
-         为什么是裸 `<Button>` 而不是手写 background：MaterialComponents 主题会把 `<Button>`
-         inflate 成 MaterialButton 并套用主题里声明的 `materialButtonStyle`——默认主题（经典终端）
-         对应 `ButtonStyleTerminal`（#cc262626 半透明卡底 + 暖白字 + 圆角），换其它主题时自动
-         跟随各自的按钮样式。**不要**在这里写死 `@color/terminal_*`，那会在浅色主题下变成暗块。 -->
-    <Button
-        android:id="@+id/searchSortButton"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:layout_marginHorizontal="@dimen/activity_padding_horizontal"
-        android:gravity="center"
-        android:minHeight="38dp"
-        android:textSize="13sp"
-        android:visibility="gone"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/searchbar"
-        tools:text="排序：综合"
-        tools:visibility="visible" />
+        app:layout_constraintTop_toBottomOf="@id/top" />
 
     <com.RobinNotBad.BiliClient.ui.widget.RotaryRecyclerView
         android:id="@+id/history_recyclerview"
@@ -102,6 +79,29 @@
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toTopOf="parent" />
+
+        <!-- 搜索结果排序入口：搜索框最左边的图标按钮，只有支持 order 参数分类（视频 / 专栏）
+             且已经搜过一次时才显示。它是搜索框的一部分（压在输入框左侧），不再单独占一行——
+             26.10.24 那一版是搜索框下面一条全宽「排序：综合」按钮，26.10.26 改成本图标。
+
+             图标来自用户给的 .ico，重新着色成暖白 #ebe0e2 后存成 `drawable-nodpi/icon_sort_filter.png`
+             （搜索框底是 #80242424 半透明深色，原图标是纯黑，直接放上去几乎看不见）。
+             左边留给它的内边距由 `SearchActivity.applySortIconVisible` 动态改输入框的 paddingStart，
+             收起时输入框恢复 XML 里的 8dp。 -->
+        <ImageView
+            android:id="@+id/searchSortButton"
+            android:layout_width="30dp"
+            android:layout_height="0dp"
+            android:layout_marginStart="3dp"
+            android:contentDescription="@string/text_search_sort_title"
+            android:padding="5dp"
+            android:scaleType="fitCenter"
+            android:src="@drawable/icon_sort_filter"
+            android:visibility="gone"
+            app:layout_constraintBottom_toBottomOf="@+id/keywordInput"
+            app:layout_constraintStart_toStartOf="@+id/keywordInput"
+            app:layout_constraintTop_toTopOf="@+id/keywordInput"
+            tools:visibility="visible" />
 
         <View
             android:id="@+id/search"

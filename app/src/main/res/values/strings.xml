@@ -24,6 +24,7 @@
     <string name="desc_setting_ui">有效范围为0.25~5.00（倍），建议每次仅进行轻微调节，调节后请预览页面，确认显示正常后完成修改，打开新页面后将会生效。\n注意：尽量不要调到两个最值处，否则你可能会后悔！若乱调此选项，导致应用无法正常使用的，请清除应用数据或卸载重装！</string>
     <string name="desc_setting_ui_density">最低72，建议每次仅进行轻微调节，调节后请预览页面，确认显示正常后完成修改，打开新页面后将会生效。\n若乱调此选项，导致应用无法正常使用的，请清除应用数据或卸载重装！\n注：此选项可能有其他问题，没有必要请不要修改。</string>
     <string name="desc_setting_ui_round">开启选项后，页面将会修改为圆屏布局。\n由于纯靠代码实现，有部分页面可能未适配，但这是目前最好且工作量最小的办法了。</string>
+    <string name="desc_setting_color_mode">7 套主题都有暗色与亮色两个版本。亮色适合白天和室外强光；播放器始终保持暗色。</string>
     <string name="desc_setting_ambient_glow">在页面顶部铺一层随主题配色变化的柔和光晕。只用静态渐变绘制（无模糊、无动画），开销很小；低端设备如觉得卡顿可关闭。\n推荐同时开启下方的「玻璃质感」，光晕才能透过卡片。</string>
     <string name="desc_setting_glass_components">卡片和按钮改为半透明玻璃质感，边缘带一道主题色亮边，已点亮的点赞 / 投币 / 收藏背后多一团小光晕。可单独开启，与弥散光晕同开效果最好。</string>
     <string name="desc_setting_player">*你也可以通过长按“播放”按钮快速进入此页面。若无法跳转播放，请确保你已经安装对应播放器且播放器和哔哩终端都是最新版本。\n*播放器和哔哩终端在洋葱商店、hankmi商店、唯趣均可下载（洋葱上架最快，唯趣上架较慢），适配安卓4的小电视请加群后从群文件中获取。\n*如果使用的是内置播放器，则此处的清晰度为开始播放时的默认清晰度。</string>
@@ -190,6 +191,9 @@
     <string name="text_ui_padding_vertical">纵向</string>
 
     <string name="err_network">网络错误(＃°Д°)</string>
+    <string name="err_cert_time">网络连接被拒：证书时间校验失败\n请检查设备的日期和时间是否正确</string>
+    <string name="err_cert_time_skew">设备时间不对，网络连不上\n设备时间：%1$s\n实际时间约：%2$s\n请到系统设置里改正</string>
+    <string name="msg_clock_behind">设备时间似乎不对（早于本应用的发布日期），网络会连不上\n请到系统设置里改正日期和时间</string>
     <string name="err_json">数据解析错误</string>
     <string name="err_sql">数据库读写错误\n请清理空间或清除软件数据</string>
     <string name="err_login_first">\n建议登陆后再尝试</string>
@@ -359,23 +363,29 @@
 
     #本次版本更新日志（展示在关于页，与历史日志区分）
     <string-array name="update_log_current">
-        <item>【26.10.26 本次更新】</item>
-        <item>1、搜索结果支持排序：综合 / 播放量 / 最新 / 收藏，视频和专栏都能用。</item>
-        <item>2、收藏夹接口升级到 B 站新版。</item>
-        <item>3、播放器新增「无极调音」：音量可以在 0~100% 之间任意调。</item>
-        <item>4、发布动态支持「仅自己可见」和「关闭评论」。</item>
-        <item>5、图片保存更省心：默认存进应用专属目录。</item>
-        <item>6、下载更稳：修掉卡在 20% 不动；1080P+ 缓存下载完成后合并成单文件（可能需要重新下载旧版本 1080P 视频，请注意）。</item>
-        <item>7、断网启动进缓存页。</item>
-        <item>8、短视频横滑重做。</item>
-        <item>9、关于页：RE 开发者独立成一列「RE：哔哩终端主要开发者」。</item>
-        <item>10、菜单级页面顶栏箭头统一朝下。</item>
-        <item>11、发现新版本时会自动跳到更新页。</item>
-        <item>12、修了 ColorOS Watch 上弹窗只剩空方块的问题。</item>
+        <item>【26.10.27 本次更新】</item>
+        <item>1、新增暗色 / 亮色模式、新增弥散光晕背景、新增玻璃质感（默认关闭）</item>
+        <item>2、设置改版：新增「布局适配」二级页，和「外观设置」一起收在「界面与外观」下。</item>
+        <item>3、搜索排序入口收进搜索框左侧的图标，去掉原来那条占位置的排序按钮。</item>
+        <item>4、修了播放器控制栏收起后字幕停在原地、没有跟着下沉的问题。</item>
+        <item>5、修了在 Android 7.1 及以下无法更新的问题。</item>
     </string-array>
 
     #历史更新日志（按日期分组，## 开头为日期标题，之后为当日日志条目）
     <string-array name="update_history_log">
+        <item>## 2026-10-26</item>
+        <item>1. 搜索结果支持排序：综合 / 播放量 / 最新 / 收藏，视频和专栏都能用。</item>
+        <item>2. 收藏夹接口升级到 B 站新版。</item>
+        <item>3. 播放器新增「无极调音」：音量可以在 0~100% 之间任意调。</item>
+        <item>4. 发布动态支持「仅自己可见」和「关闭评论」。</item>
+        <item>5. 图片保存更省心：默认存进应用专属目录。</item>
+        <item>6. 下载更稳：修掉卡在 20% 不动；1080P+ 缓存下载完成后合并成单文件（可能需要重新下载旧版本 1080P 视频，请注意）。</item>
+        <item>7. 断网启动进缓存页。</item>
+        <item>8. 短视频横滑重做。</item>
+        <item>9. 关于页：RE 开发者独立成一列「RE：哔哩终端主要开发者」。</item>
+        <item>10. 菜单级页面顶栏箭头统一朝下。</item>
+        <item>11. 发现新版本时会自动跳到更新页。</item>
+        <item>12. 修了 ColorOS Watch 上弹窗只剩空方块的问题。</item>
         <item>## 2026-10-24</item>
         <item>1. 播放页加了「触摸锁定」，防止误触。</item>
         <item>2. 短视频改成横向四页一条线：短视频 → 视频详情 → 评论 → 相关推荐，左右滑切换（相关推荐关掉时没有第四页）；播放体验重做：长按画面改成按住期间 3 倍速，松手恢复原倍速，不再长按开详情；一条播完自动接下一条。</item>
@@ -1032,7 +1042,9 @@
     <string name="settingtext_settingmainactivity_003">账号与登录</string>
     <string name="settingtext_settingmainactivity_004">登录、切换账号与查看登录信息</string>
     <string name="settingtext_settingmainactivity_005">界面与外观</string>
-    <string name="settingtext_settingmainactivity_006">界面大小、主题与动画效果</string>
+    <string name="settingtext_settingmainactivity_006">主题配色、字体与布局适配</string>
+    <string name="settingtext_setting_layout_group">布局适配</string>
+    <string name="settingtext_setting_layout_group_desc">界面大小、边距、圆屏与横屏等屏幕适配</string>
     <string name="settingtext_settingmainactivity_007">内容与浏览</string>
     <string name="settingtext_settingmainactivity_008">菜单、搜索、详情页、评论区与偏好</string>
     <string name="settingtext_settingmainactivity_009">通知设置</string>
@@ -1872,8 +1884,8 @@
     <string name="uitext_tutorials_021">经典终端风格</string>
     <string name="uitext_tutorials_022">，也就是黑色背景 + 粉色点缀的原始外观。</string>
     <string name="uitext_tutorials_023">想换回其它配色</string>
-    <string name="uitext_tutorials_024">进入「设置」→「界面与外观」→「主题配色」，可以自由切换任意主题（哔哩粉、知乎蓝、经典灰等）。</string>
-    <string name="uitext_tutorials_025">主题修改后会立即应用到全部页面。</string>
+    <string name="uitext_tutorials_024">「主题配色」里可以自由切换任意主题（哔哩粉、知乎蓝、经典灰等）。</string>
+    <string name="uitext_tutorials_025">以上都在「设置」→「界面与外观」→「外观设置」里，点下方按钮可直接跳过去。</string>
     <string name="uitext_tutorials_026">视频详情-主要教程</string>
     <string name="uitext_tutorials_027">欢迎来到视频详情页</string>
     <string name="uitext_tutorials_028">这个页面</string>
@@ -1969,6 +1981,11 @@
     <string name="uitext_tutorials_118">打开操作面板：更新弹幕、切换清晰度、移动文件夹、查看详情</string>
     <string name="uitext_tutorials_119">· 下载会自动合并音视频、自动下载封面/字幕/弹幕，同一个视频不会重复入队</string>
     <string name="uitext_tutorials_120">· 正在下载的任务在「下载列表」里查看进度</string>
+    <string name="uitext_tutorials_121">打开外观设置</string>
+    <string name="uitext_tutorials_122">亮色 / 暗色模式</string>
+    <string name="uitext_tutorials_123">每套主题都有暗色和亮色两版，在「颜色模式」里切换。亮色适合白天和室外强光；播放器始终是暗色。</string>
+    <string name="uitext_tutorials_124">弥散光晕 / 玻璃质感</string>
+    <string name="uitext_tutorials_125">弥散光晕会在页面顶部铺一层随主题变色的柔光；玻璃质感让卡片和按钮变成半透明。两个一起开效果最好，低端设备觉得卡可以关掉。</string>
     <string name="uitext_fontstyle_001">无法读取该文件</string>
     <string name="uitext_fontstyle_002">文件为空</string>
     <string name="uitext_fontstyle_003">无法覆盖旧字体文件</string>
