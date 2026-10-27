@@ -1589,6 +1589,11 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
   - `ClockSanityTest` 9 例全过；`assembleDebug` 双 flavor 成功。
   - MuMu（Android 15 / x86_64，root）：`settings put global auto_time 0` + `date 010112002015.00` 把时间拨到 2015-01-01。共存版（未完成初始化）冷启动进 `SetupUIActivity`，截图底部 Snackbar 显示「设备时间似乎不对……请到系统设置里改正日期和时间」✔。普通版 `am start` 推荐页，logcat 原文：`SSLHandshakeException: Unacceptable certificate: CN=GlobalSign RSA OV SSL CA 2018` → `Caused by: CertificateNotYetValidException: Certificate not valid until Wed Nov 21 ... 2018 (compared to Thu Jan 01 12:19:46 GMT+08:00 2015)`，随后 `MsgUtil>showMsgLong: 网络连接被拒：证书时间校验失败 / 请检查设备的日期和时间是否正确` ✔。测完 `auto_time 1` 恢复。
   - 未来时间（同一台 MuMu，`date 060112002031.00`）：推荐页 logcat 原文 `Caused by: CertificateExpiredException: Certificate expired at Tue Nov 21 08:00:00 GMT+08:00 2028 (compared to Sun Jun 01 12:00:01 GMT+08:00 2031)`，随后同样显示 `err_cert_time` ✔（12 秒后的截图里 Snackbar 已按时长消失，以日志为准）。
+- **追加：明文取服务器时间，提示里给出具体日期**（同日，用户同意方案）：
+  - 新增 `api/ServerTimeApi.kt`：`http://api.bilibili.com/x/report/click/now`（`bilibili.com` 本在明文白名单，不加域名）。**独立 OkHttpClient，不带 Cookie、无拦截器、不跟随跳转**，4 秒超时；`parseNowMillis` 纯解析。
+  - `ClockSanity.isSkewed`：本机与服务器时间差 > 1 小时（早晚都算）。
+  - `MsgUtil.reportCertTimeError`：先给通用提示，再后台取服务器时间，偏差过大时补一条 `err_cert_time_skew`（设备时间 / 实际时间约）。60 秒内只取一次（`elapsedRealtime` 节流，不受系统时间影响）；该条四行，Snackbar 时长 8 秒并自带「x」。服务器时间**只用于显示**，不参与任何校验。
+  - 验证：`ClockSanityTest` 11 例、`ServerTimeApiTest` 2 例全过，双 flavor 单测与 `assembleDebug` 通过。MuMu 拨到 2031-06-01 与 2015-01-01 各测一次，logcat 均出现「设备时间：2031-06-01 12:00 / 2015-01-01 12:00，实际时间约：2026-10-27 18:36」；2031 那次启动后 5 秒截图，提示条四行完整、右侧有「x」✔。测完恢复自动对时。
 - **遗留**：①时间被拨到**未来**只在请求失败时提示，启动时不提示——本地没有可靠的「最晚日期」，用上次使用时间当上限会误报；时间只超前几天到几周、证书还没过期时网络本来正常，不影响使用；②系统浏览器 / WebView 的证书弹窗不归本应用管；③未在 XP5800 真机复测。
 
 ## 4. 历史章节索引

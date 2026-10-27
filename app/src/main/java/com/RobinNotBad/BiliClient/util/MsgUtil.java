@@ -220,7 +220,7 @@ public class MsgUtil {
             if (e instanceof IOException) {
                 // 证书「尚未生效 / 已过期」几乎都是设备时间错了，单说「网络错误」用户无从下手
                 if (ClockSanity.isCertTimeError(e)) {
-                    showMsgLong(context.getString(R.string.err_cert_time));
+                    reportCertTimeError(context);
                     return;
                 }
                 showMsg(context.getString(R.string.err_network));
@@ -262,6 +262,41 @@ public class MsgUtil {
         }
 
         showMsgLong(output.toString());
+    }
+
+    /** 上次去问服务器时间的时刻（elapsedRealtime，不受系统时间影响）。 */
+    private static final long SERVER_TIME_CHECK_INTERVAL_MS = 60_000L;
+    private static long lastServerTimeCheck = -SERVER_TIME_CHECK_INTERVAL_MS;
+
+    /**
+     * 证书时间错误的提示：先立即给通用提示，再去后台走明文 http 问一次服务器时间
+     * （{@link com.RobinNotBad.BiliClient.api.ServerTimeApi}），差得离谱就补一条带具体日期的提示。
+     *
+     * <p>一个页面常常并发好几个请求、同时失败，60 秒内只问一次，免得刷屏和白跑流量。
+     * 服务器时间只用于显示，不参与任何校验。
+     */
+    private static void reportCertTimeError(Context context) {
+        showMsgLong(context.getString(R.string.err_cert_time));
+        synchronized (MsgUtil.class) {
+            long now = android.os.SystemClock.elapsedRealtime();
+            if (now - lastServerTimeCheck < SERVER_TIME_CHECK_INTERVAL_MS) return;
+            lastServerTimeCheck = now;
+        }
+        CenterThreadPool.run(() -> {
+            Long server = com.RobinNotBad.BiliClient.api.ServerTimeApi.fetchServerMillis();
+            long device = System.currentTimeMillis();
+            if (server == null || !ClockSanity.isSkewed(device, server)) return;
+            java.text.DateFormat fmt = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.getDefault());
+            String msg = context.getString(R.string.err_cert_time_skew,
+                    fmt.format(new java.util.Date(device)), fmt.format(new java.util.Date(server)));
+            // 四行带两个日期，LENGTH_LONG（2.75 秒）在手表上读不完；8 秒并自带「x」关闭（见 createSnack）
+            if (SharedPreferencesUtil.getBoolean(SharedPreferencesUtil.SNACKBAR_ENABLE, true)) {
+                Logu.i("long", msg);
+                CenterThreadPool.runOnUiThread(() -> EventBus.getDefault().postSticky(new SnackEvent(msg, 8000)));
+            } else {
+                toastLong(msg);
+            }
+        });
     }
 
     public static void showText(String title, String text) {

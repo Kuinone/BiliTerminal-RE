@@ -31,6 +31,22 @@ object ClockSanity {
     private const val MAX_CAUSE_DEPTH = 10
 
     /**
+     * 本机与服务器时间差超过多少算「时间不对」。证书有效期以天计，几分钟的漂移不会导致校验失败，
+     * 阈值放宽到 1 小时，避免把网络延迟、服务器自身误差当成问题。
+     */
+    const val SKEW_THRESHOLD_MS = 60L * 60 * 1000
+
+    /**
+     * 本机时间与服务器时间是否差得离谱（早晚都算）。
+     *
+     * 服务器时间来自明文 http（见 `api/ServerTimeApi`），可被篡改，<b>只能用来给提示</b>，不参与任何校验。
+     */
+    @JvmStatic
+    fun isSkewed(deviceMillis: Long, serverMillis: Long): Boolean {
+        return Math.abs(deviceMillis - serverMillis) > SKEW_THRESHOLD_MS
+    }
+
+    /**
      * versionCode（YYMMDD0，如 2610270）→ 当天 00:00（UTC）的毫秒时间戳。
      * 不符合格式（月日越界、位数不对）返回 null，调用方当作「无法判断」。
      */

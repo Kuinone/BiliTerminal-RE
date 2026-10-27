@@ -53,6 +53,21 @@ class ClockSanityTest {
     }
 
     @Test
+    fun skewed_bothDirections() {
+        val server = build261027
+        assertTrue(ClockSanity.isSkewed(server + 5L * 365 * 86_400_000, server)) // 拨到未来
+        assertTrue(ClockSanity.isSkewed(0L, server)) // 回到 1970
+    }
+
+    @Test
+    fun skewed_smallDriftIsFine() {
+        val server = build261027
+        assertFalse(ClockSanity.isSkewed(server, server))
+        assertFalse(ClockSanity.isSkewed(server + 10L * 60_000, server))
+        assertFalse(ClockSanity.isSkewed(server - 59L * 60_000, server))
+    }
+
+    @Test
     fun certTimeError_detectsWrappedCause() {
         val e = SSLHandshakeException("handshake failed")
         e.initCause(CertificateNotYetValidException("not yet"))
