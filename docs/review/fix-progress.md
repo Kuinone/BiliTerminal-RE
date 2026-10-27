@@ -1596,6 +1596,16 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
   - 验证：`ClockSanityTest` 11 例、`ServerTimeApiTest` 2 例全过，双 flavor 单测与 `assembleDebug` 通过。MuMu 拨到 2031-06-01 与 2015-01-01 各测一次，logcat 均出现「设备时间：2031-06-01 12:00 / 2015-01-01 12:00，实际时间约：2026-10-27 18:36」；2031 那次启动后 5 秒截图，提示条四行完整、右侧有「x」✔。测完恢复自动对时。
 - **遗留**：①时间被拨到**未来**只在请求失败时提示，启动时不提示——本地没有可靠的「最晚日期」，用上次使用时间当上限会误报；时间只超前几天到几周、证书还没过期时网络本来正常，不影响使用；②系统浏览器 / WebView 的证书弹窗不归本应用管；③未在 XP5800 真机复测。
 
+### 3.73 点赞投币收藏卡片的玻璃质感适配（26.10.27，用户反馈）
+
+- **缘起**：用户反馈视频详情的点赞 / 投币 / 收藏卡片和文章详情末尾的点赞 / 收藏卡片在玻璃质感下观感很差。核查发现两张卡片都在布局里写死底色，玻璃覆盖层管不到：视频页是不透明 surface 底，夹在半透明玻璃按钮中间很突兀；文章页用 `?attr/colorPrimary` 实底，点赞激活后图标（`ThemeTint.setActiveIcon` 也用主色）和底色融成一片，卡片还比上方 UP 卡片宽。
+- **改法**：
+  - `attrs_glass.xml` 新增 `actionCardColor` / `actionCardStroke`；`themes.xml` 9 个会 inflate 布局的主题都定义了（surface + 各主题 brand 色），`themes_glass.xml` 7 个 `GlassOverlay` 改成玻璃按钮同源的 `glass_btn_bg_fill_<x>` / `glass_btn_stroke_<x>`。
+  - `fragment_video_info.xml`、`cell_article_end.xml` 的 `like_coin_fav` 改读这两个属性；文章卡片补上 1dp 描边和 `activity_padding_horizontal` 的左右边距，宽度与 UP 卡片对齐。
+  - 非玻璃模式下视频卡片观感不变；文章卡片从主色实底改成和视频页一样的 surface 底 + 主色描边，算顺手统一。
+- **验证**：双 flavor `assembleDebug` 与单测通过。MuMu（共存版）截图看了视频详情和文章详情，组合有：粉色玻璃（暗色 / 亮色）、知乎蓝玻璃、经典终端玻璃、粉色非玻璃。两张卡片都和周围的玻璃按钮同一种半透明底和描边，文章卡片宽度与 UP 卡片一致 ✔。测完把主题、玻璃、亮暗设置恢复成默认。
+- **遗留**：没有在已点赞状态下截图（要真去点赞），激活态图标和玻璃底的对比是按色值推断的。
+
 ## 4. 历史章节索引
 
 > 完整正文在 `docs/archive/review/fix-progress-history.md`。**编号在历史上有重复**（`## 二十二` / `## 二十九` 各出现两次、`## 30.` 是阿拉伯数字写法，原为不打断既有交叉引用而保持不动），下表**以归档文件的物理行序为准**。

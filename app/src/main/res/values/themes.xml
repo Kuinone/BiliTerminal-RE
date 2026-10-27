@@ -35,6 +35,8 @@
         <!-- 玻璃质感槽位的默认值 = colorSurface（见 attrs_glass.xml） -->
         <item name="choiceCardColor">@color/surface_dark</item>
         <item name="secondaryButtonTint">@color/surface_dark</item>
+        <item name="actionCardColor">@color/surface_dark</item>
+        <item name="actionCardStroke">@color/pink_brand</item>
     </style>
 
     <style name="Theme.BiliClient.Splash" parent="Theme.BiliClient">
@@ -77,6 +79,8 @@
         <!-- 玻璃质感槽位的默认值 = colorSurface（见 attrs_glass.xml） -->
         <item name="choiceCardColor">@color/surface_light</item>
         <item name="secondaryButtonTint">@color/surface_light</item>
+        <item name="actionCardColor">@color/surface_light</item>
+        <item name="actionCardStroke">@color/pink_brand</item>
     </style>
 
     <style name="Theme.NoSwipe" parent="android:Theme.Black">
@@ -131,6 +135,8 @@
         <!-- 玻璃质感槽位的默认值 = colorSurface（见 attrs_glass.xml） -->
         <item name="choiceCardColor">@color/zhihu_surface_dark</item>
         <item name="secondaryButtonTint">@color/zhihu_surface_dark</item>
+        <item name="actionCardColor">@color/zhihu_surface_dark</item>
+        <item name="actionCardStroke">@color/zhihu_brand</item>
     </style>
 
     <style name="Theme.ZhihuBlue.Splash" parent="Theme.ZhihuBlue">
@@ -250,6 +256,8 @@
         <!-- 玻璃质感槽位的默认值 = colorSurface（见 attrs_glass.xml） -->
         <item name="choiceCardColor">@color/iqiyi_surface_dark</item>
         <item name="secondaryButtonTint">@color/iqiyi_surface_dark</item>
+        <item name="actionCardColor">@color/iqiyi_surface_dark</item>
+        <item name="actionCardStroke">@color/iqiyi_brand</item>
     </style>
 
     <style name="Theme.IQIYIGreen.Splash" parent="Theme.IQIYIGreen">
@@ -369,6 +377,8 @@
         <!-- 玻璃质感槽位的默认值 = colorSurface（见 attrs_glass.xml） -->
         <item name="choiceCardColor">@color/purple_fantasy_surface_dark</item>
         <item name="secondaryButtonTint">@color/purple_fantasy_surface_dark</item>
+        <item name="actionCardColor">@color/purple_fantasy_surface_dark</item>
+        <item name="actionCardStroke">@color/purple_fantasy_brand</item>
     </style>
 
     <style name="Theme.PurpleFantasy.Splash" parent="Theme.PurpleFantasy">
@@ -488,6 +498,8 @@
         <!-- 玻璃质感槽位的默认值 = colorSurface（见 attrs_glass.xml） -->
         <item name="choiceCardColor">@color/rainbow_surface_dark</item>
         <item name="secondaryButtonTint">@color/rainbow_surface_dark</item>
+        <item name="actionCardColor">@color/rainbow_surface_dark</item>
+        <item name="actionCardStroke">@color/rainbow_brand</item>
     </style>
 
     <style name="Theme.RainbowFantasy.Splash" parent="Theme.RainbowFantasy">
@@ -607,6 +619,8 @@
         <!-- 玻璃质感槽位的默认值 = colorSurface（见 attrs_glass.xml） -->
         <item name="choiceCardColor">@color/classic_gray_surface_dark</item>
         <item name="secondaryButtonTint">@color/classic_gray_surface_dark</item>
+        <item name="actionCardColor">@color/classic_gray_surface_dark</item>
+        <item name="actionCardStroke">@color/classic_gray_brand</item>
     </style>
 
     <style name="Theme.ClassicGray.Splash" parent="Theme.ClassicGray">
@@ -729,6 +743,8 @@
         <!-- 玻璃质感槽位的默认值 = colorSurface（见 attrs_glass.xml） -->
         <item name="choiceCardColor">@color/terminal_surface</item>
         <item name="secondaryButtonTint">@color/terminal_surface</item>
+        <item name="actionCardColor">@color/terminal_surface</item>
+        <item name="actionCardStroke">@color/terminal_accent</item>
     </style>
 
     <style name="Theme.ClassicTerminal.Splash" parent="Theme.ClassicTerminal">
@@ -891,6 +907,8 @@
         <!-- 玻璃质感槽位的默认值 = colorSurface（见 attrs_glass.xml） -->
         <item name="choiceCardColor">@color/surface_dark</item>
         <item name="secondaryButtonTint">@color/surface_dark</item>
+        <item name="actionCardColor">@color/surface_dark</item>
+        <item name="actionCardStroke">@color/pink_brand</item>
     </style>
 
     <!--
