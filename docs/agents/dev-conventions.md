@@ -36,7 +36,7 @@
 - `values/`、`drawable/` 是**暗色**；亮色只放 `values-notnight/`、`drawable-notnight/`。同名资源两份一起改。
 - **布局里别再写死浅色字面量**（`#80ffffff`、`#ebe0e2` 之类）：要么用主题属性（`?android:attr/textColorPrimary`、`?attr/colorSurface`），
   要么在 `values/colors_mode.xml` 加语义色、并在 `values-notnight/colors_light.xml` 给亮色值。
-- **亮色用米白，不用纯白**：背景 / 表面 / 卡片是暖调米白（CIELAB L* 约 92 / 95 / 97、b* 约 +4～+7）。与暗色 6 套主题共用 `#1B1B24` 系对称，亮色 6 套主题共用同一套米白、只按主题色相微偏；经典终端是更深一档的「旧纸」。数值只在 `tools/appearance/gen_light_mode.py` 的 `CREAM` / `TINT` / `OLD_PAPER` 里改，改完重跑脚本并重算 `AmbientGlow.lightSpecFor` 的 `top`。新增亮色颜色别写 `#FFFFFF`（二维码底板 `qr_plate`、主色按钮上的白字例外）。
+- **亮色用米白，不用纯白**：背景 / 表面 / 卡片是暖调米白（CIELAB L\* 约 92 / 95 / 97、b\* 约 +4～+7）。与暗色 6 套主题共用 `#1B1B24` 系对称，亮色 6 套主题共用同一套米白、只按主题色相微偏；经典终端是更深一档的「旧纸」。数值只在 `tools/appearance/gen_light_mode.py` 的 `CREAM` / `TINT` / `OLD_PAPER` 里改，改完重跑脚本并重算 `AmbientGlow.lightSpecFor` 的 `top`。新增亮色颜色别写 `#FFFFFF`（二维码底板 `qr_plate`、主色按钮上的白字例外）。
 - **改亮色光晕先量色差**：浅底上同样的色差人眼更难察觉，亮色光晕按 CIELAB ΔE 对齐暗色（中心 ≈ 32～42、顶部 ≈ 10～16），见 `AmbientGlow.lightSpecFor` 注释。
 - **新增浅色图标**：跑 `python tools/appearance/gen_light_mode.py` 生成亮色版（`drawable-notnight/` 中性深灰 + `drawable-notnight-v21/` 按主题正文色着色）；压在主色 / 视频 / 通知上、两种模式都必须是白色的图标加进脚本的 `EXCLUDE`。
 - **压在视频 / 图片上的图标与文字**用 `*_overlay` 图标与 `@color/overlay_icon` / `overlay_text`（没有亮色覆盖，永远浅色）。
