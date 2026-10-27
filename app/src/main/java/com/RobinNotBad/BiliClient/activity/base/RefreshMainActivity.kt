@@ -64,7 +64,7 @@ open class RefreshMainActivity : InstanceActivity() {
                 }
             }
         })
-        ImageAutoLoadScrollListener.install(recyclerView)
+        ImageAutoLoadScrollListener.installIfEnabled(recyclerView)
     }
 
     fun setAdapter(adapter: RecyclerView.Adapter<*>) {

@@ -35,7 +35,7 @@ class RankingActivity : InstanceActivity() {
         Log.e("debug", "进入排行榜页")
 
         recyclerView = findViewById(R.id.recyclerView)
-        ImageAutoLoadScrollListener.install(recyclerView)
+        ImageAutoLoadScrollListener.installIfEnabled(recyclerView)
         swipeRefreshLayout = findViewById(R.id.swipeRefreshLayout)
         swipeRefreshLayout.setOnRefreshListener { loadRanking() }
 

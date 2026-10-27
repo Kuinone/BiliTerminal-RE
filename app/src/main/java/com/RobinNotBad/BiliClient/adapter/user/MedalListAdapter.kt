@@ -14,7 +14,6 @@ import com.RobinNotBad.BiliClient.BiliTerminal
 import com.RobinNotBad.BiliClient.R
 import com.RobinNotBad.BiliClient.model.MedalInfo
 import com.RobinNotBad.BiliClient.util.GlideUtil
-import com.bumptech.glide.Glide
 import com.bumptech.glide.load.engine.DiskCacheStrategy
 import com.bumptech.glide.request.RequestOptions
 
@@ -49,7 +48,7 @@ class MedalListAdapter(
         holder.intimacy.text = intimacyText
 
         if (medal.target_icon != null && medal.target_icon.isNotEmpty()) {
-            Glide.with(BiliTerminal.context!!).asDrawable().load(GlideUtil.url(medal.target_icon))
+            GlideUtil.with(holder.avatar).asDrawable().load(GlideUtil.url(medal.target_icon))
                 .transition(GlideUtil.getTransitionOptions())
                 .placeholder(R.mipmap.akari)
                 .error(R.mipmap.akari)

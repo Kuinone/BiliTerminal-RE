@@ -12,7 +12,6 @@ import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
-import com.RobinNotBad.BiliClient.BiliTerminal
 import com.RobinNotBad.BiliClient.R
 import com.RobinNotBad.BiliClient.activity.video.local.DownloadListActivity
 import com.RobinNotBad.BiliClient.activity.video.local.LocalPageChooseActivity
@@ -24,7 +23,6 @@ import com.RobinNotBad.BiliClient.util.GlideUtil
 import com.RobinNotBad.BiliClient.util.MsgUtil
 import com.RobinNotBad.BiliClient.util.SharedPreferencesUtil
 import com.RobinNotBad.BiliClient.util.ToolsUtil
-import com.bumptech.glide.Glide
 import com.bumptech.glide.load.engine.DiskCacheStrategy
 import com.bumptech.glide.load.resource.bitmap.RoundedCorners
 import com.bumptech.glide.request.RequestOptions
@@ -334,7 +332,7 @@ class CacheListAdapter(
                 " [" + video.qualityList!![0] + "]" else ""
             extra.text = size + qualityTag
             try {
-                Glide.with(BiliTerminal.context!!).asDrawable().load(video.cover)
+                GlideUtil.with(cover).asDrawable().load(video.cover)
                     .transition(GlideUtil.getTransitionOptions())
                     .apply(RequestOptions.bitmapTransform(RoundedCorners(ToolsUtil.dp2px(5f))))
                     .diskCacheStrategy(DiskCacheStrategy.NONE)

@@ -38,7 +38,7 @@ class PreciousActivity : InstanceActivity() {
         Log.e("debug", "进入入站必刷页")
 
         recyclerView = findViewById(R.id.recyclerView)
-        ImageAutoLoadScrollListener.install(recyclerView)
+        ImageAutoLoadScrollListener.installIfEnabled(recyclerView)
         swipeRefreshLayout = findViewById(R.id.swipeRefreshLayout)
         swipeRefreshLayout.setOnRefreshListener { loadPrecious() }
 

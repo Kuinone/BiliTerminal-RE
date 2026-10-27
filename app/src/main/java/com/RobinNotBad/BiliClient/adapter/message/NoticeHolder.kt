@@ -24,7 +24,6 @@ import com.RobinNotBad.BiliClient.util.StringUtil
 import com.RobinNotBad.BiliClient.util.TerminalContext
 import com.RobinNotBad.BiliClient.util.ToolsUtil
 import com.RobinNotBad.BiliClient.util.TimeUtil
-import com.bumptech.glide.Glide
 import com.bumptech.glide.load.engine.DiskCacheStrategy
 import com.bumptech.glide.request.RequestOptions
 
@@ -70,7 +69,7 @@ class NoticeHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         else avaterList.visibility = View.VISIBLE
         for (i in message.user.indices) {
             val imageView = obtainAvatar(i)
-            requestManager
+            GlideUtil.with(imageView)
                 .asDrawable()
                 .load(GlideUtil.url(message.user[i].avatar))
                 .transition(GlideUtil.getTransitionOptions())
@@ -161,7 +160,6 @@ class NoticeHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
 
     companion object {
         private val CIRCLE_OPTIONS = RequestOptions.circleCropTransform()
-        private val requestManager = Glide.with(BiliTerminal.context!!)
         private val avatarSize: Int = ToolsUtil.dp2px(32f)
         private val avatarSpacing: Int = ToolsUtil.dp2px(3f)
     }

@@ -15,7 +15,6 @@ import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
-import com.RobinNotBad.BiliClient.BiliTerminal
 import com.RobinNotBad.BiliClient.R
 import com.RobinNotBad.BiliClient.activity.user.favorite.FavoriteVideoListActivity
 import com.RobinNotBad.BiliClient.activity.user.favorite.FavouriteOpusListActivity
@@ -23,7 +22,6 @@ import com.RobinNotBad.BiliClient.model.FavoriteFolder
 import com.RobinNotBad.BiliClient.util.GlideUtil
 import com.RobinNotBad.BiliClient.util.StringUtil
 import com.RobinNotBad.BiliClient.util.ToolsUtil
-import com.bumptech.glide.Glide
 import com.bumptech.glide.load.DecodeFormat
 import com.bumptech.glide.load.engine.DiskCacheStrategy
 import com.bumptech.glide.load.resource.bitmap.RoundedCorners
@@ -96,7 +94,7 @@ class FavoriteFolderAdapter(
             if (position == folderList.size + 1) {
                 favoriteHolder.name.text = UiText.of("图文收藏夹")
                 favoriteHolder.count.text = ""
-                Glide.with(BiliTerminal.context!!).asDrawable()
+                GlideUtil.with(favoriteHolder.cover).asDrawable()
                     // 封面底色原写死在矢量图里（老版粉 #fb8787），现在矢量图只留白色图标，底色取主题主色
                     .load(LayerDrawable(arrayOf<Drawable>(
                         ColorDrawable(ColorScheme.PRIMARY),
@@ -116,7 +114,7 @@ class FavoriteFolderAdapter(
 
                 favoriteHolder.name.text = StringUtil.htmlToString(folder.name)
                 favoriteHolder.count.text = folder.videoCount.toString() + "/" + folder.maxCount
-                Glide.with(BiliTerminal.context!!).asDrawable().load(GlideUtil.url_hq(folder.cover))
+                GlideUtil.with(favoriteHolder.cover).asDrawable().load(GlideUtil.url_hq(folder.cover))
                     .transition(GlideUtil.getTransitionOptions())
                     .apply(RequestOptions.bitmapTransform(RoundedCorners(ToolsUtil.dp2px(5f))))
                     .format(DecodeFormat.PREFER_RGB_565)

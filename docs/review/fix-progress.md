@@ -652,6 +652,16 @@
 - **验证**：双 flavor `assembleDebug` 与单测全过。MuMu（共存版）：选择弹窗列出 5 项；选「左」后页面自动重建、光晕移到左侧，落盘 `ui_ambient_glow_source=left` ✔；下 / 右 / 中间截图位置正确 ✔；亮色经典终端居中正常，五彩斑斓亮色居中时红 / 青两团关于中线对称 ✔。
 - **遗留**：没在圆形真表上看「左 / 右」时光晕是否被圆角裁掉太多。
 
+### 3.77 性能审查②：列表图片绑定页面生命周期 + 「翻动时不加载图片」真正生效（26.10.27）
+
+- **缘起**：约 30 处 adapter / holder 用 `Glide.with(BiliTerminal.context!!)`（Application 级，`VideoCardHolder` / `NoticeHolder` / `TimelineAdapter` 还是 companion 里的静态 RequestManager）。后果：离开页面请求不取消，图片继续下载解码；页面退后台不暂停；`ImageAutoLoadScrollListener` 对 Activity 级 RequestManager 的 `pauseRequests()` 管不到它们，「翻动时不加载图片」开关形同虚设。基类与热门 / 必刷 / 排行榜还无条件 `install()`，不看这个开关。
+- **改法**：
+  - 新增 `GlideUtil.with(view)`：主线程上解析到存活 Activity 时用 `Glide.with(activity)`，否则回落 Application 级（不会抛「destroyed activity」）。不用 `Glide.with(view)`，因为它在 Fragment 树里找宿主，bind 热路径上更慢。上述调用点全部改调它，顺手删掉因此不再使用的 import。
+  - `ImageAutoLoadScrollListener` 只在 DRAGGING → SETTLING（手指甩出）时暂停。生效之后要防表冠：表冠走 `smoothScrollBy`，是 IDLE → SETTLING，原来遇到 SETTLING 一律暂停，等于转表冠时图片一张都不加载。纯函数 `shouldPause` 配 `ImageAutoLoadScrollListenerTest` 3 例。
+  - 6 处 `install()` 改为 `installIfEnabled()`，设置项关掉时不再暂停。
+- **验证**：双 flavor `assembleDebug` 与单测通过。MuMu（共存版）：推荐页连续快速甩动 3 次，停下后封面全部加载 ✔；动态 / 消息 / 推荐快速进出各一次，logcat 没有崩溃 ✔；评论区甩动后头像与表情都正常 ✔。
+- **遗留**：MuMu 没有表冠（`input rotaryencoder` 不存在），表冠滚动不暂停这一条只有单测覆盖，需要真表确认。
+
 ## 4. 历史章节索引
 
 > 完整正文在 `docs/archive/review/fix-progress-history.md`；§3.0~§3.51 的状态快照（26.10.09~26.10.21）在 `docs/archive/review/fix-progress-snapshots-261009-261021.md`。**编号在历史上有重复**（`## 二十二` / `## 二十九` 各出现两次、`## 30.` 是阿拉伯数字写法，原为不打断既有交叉引用而保持不动），下表**以归档文件的物理行序为准**。

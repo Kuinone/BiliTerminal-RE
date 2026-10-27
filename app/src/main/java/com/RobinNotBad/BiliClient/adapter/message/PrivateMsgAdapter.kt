@@ -16,7 +16,6 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
-import com.RobinNotBad.BiliClient.BiliTerminal
 import com.RobinNotBad.BiliClient.R
 import com.RobinNotBad.BiliClient.activity.CopyTextActivity
 import com.RobinNotBad.BiliClient.activity.ImageViewerActivity
@@ -29,7 +28,6 @@ import com.RobinNotBad.BiliClient.util.MsgUtil
 import com.RobinNotBad.BiliClient.util.SharedPreferencesUtil
 import com.RobinNotBad.BiliClient.util.TerminalContext
 import com.RobinNotBad.BiliClient.ui.appearance.ColorScheme
-import com.bumptech.glide.Glide
 import com.bumptech.glide.load.DecodeFormat
 import com.bumptech.glide.load.engine.DiskCacheStrategy
 import com.google.android.material.card.MaterialCardView
@@ -141,7 +139,7 @@ class PrivateMsgAdapter(
                     holder.videoCard.visibility = View.GONE
                     try {
                         val picUrl = msg.content.getString("url")
-                        Glide.with(BiliTerminal.context!!)
+                        GlideUtil.with(holder.picMsg)
                             .asDrawable()
                             .load(GlideUtil.url(picUrl))
                             .transition(GlideUtil.getTransitionOptions())
@@ -186,7 +184,7 @@ class PrivateMsgAdapter(
                     holder.upNameTv.text = shareContent.optString("author", "")
                     holder.videoTitleTv.text =
                         if (headline.isNotEmpty()) headline else shareContent.optString("title", "")
-                    Glide.with(BiliTerminal.context!!)
+                    GlideUtil.with(holder.videoCover)
                         .asDrawable()
                         .load(if (thumb.isEmpty()) null else GlideUtil.url(thumb))
                         .transition(GlideUtil.getTransitionOptions())
@@ -251,7 +249,7 @@ class PrivateMsgAdapter(
                     holder.videoCard.visibility = View.GONE
                     try {
                         val picUrl = msg.content.getString("pic_url")
-                        Glide.with(BiliTerminal.context!!)
+                        GlideUtil.with(holder.picMsg)
                             .asDrawable()
                             .load(GlideUtil.url(picUrl))
                             .transition(GlideUtil.getTransitionOptions())
@@ -301,7 +299,7 @@ class PrivateMsgAdapter(
                             holder.textContentTv.text = UiText.of("暂时无法显示该消息")
                         } else {
                             val coverUrl = firstCard.optString("cover_url", "")
-                            Glide.with(BiliTerminal.context!!)
+                            GlideUtil.with(holder.videoCover)
                                 .asDrawable()
                                 .load(if (coverUrl.isEmpty()) null else GlideUtil.url(coverUrl))
                                 .transition(GlideUtil.getTransitionOptions())

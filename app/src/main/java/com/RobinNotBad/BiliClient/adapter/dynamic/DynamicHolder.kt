@@ -754,7 +754,7 @@ class DynamicHolder(itemView: View, val mActivity: BaseActivity, val isChild: Bo
 
         if (dynamic.userInfo.avatar != lastAvatarUrl) {
             lastAvatarUrl = dynamic.userInfo.avatar
-            Glide.with(BiliTerminal.context!!).asDrawable().load(GlideUtil.url(dynamic.userInfo.avatar))
+            GlideUtil.with(avatar).asDrawable().load(GlideUtil.url(dynamic.userInfo.avatar))
                 .transition(GlideUtil.getTransitionOptions())
                 .placeholder(R.mipmap.akari)
                 .error(R.mipmap.akari)
@@ -837,7 +837,7 @@ class DynamicHolder(itemView: View, val mActivity: BaseActivity, val isChild: Bo
                             lastImageUrl = firstImageUrl
                             // 动态配图：列表封面级尺寸，用 url_hq 且不写死 override，
                             // 否则 400×400 的绝对像素在大屏上被放大发虚
-                            Glide.with(BiliTerminal.context!!).asDrawable().load(GlideUtil.url_hq(firstImageUrl))
+                            GlideUtil.with(imageView).asDrawable().load(GlideUtil.url_hq(firstImageUrl))
                                 .transition(GlideUtil.getTransitionOptions())
                                 .placeholder(R.mipmap.placeholder)
                                 .error(R.mipmap.placeholder)

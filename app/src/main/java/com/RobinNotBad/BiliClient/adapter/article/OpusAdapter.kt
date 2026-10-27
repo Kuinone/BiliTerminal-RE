@@ -9,14 +9,12 @@ import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
-import com.RobinNotBad.BiliClient.BiliTerminal
 import com.RobinNotBad.BiliClient.R
 import com.RobinNotBad.BiliClient.model.Opus
 import com.RobinNotBad.BiliClient.util.GlideUtil
 import com.RobinNotBad.BiliClient.util.MsgUtil
 import com.RobinNotBad.BiliClient.util.TerminalContext
 import com.RobinNotBad.BiliClient.util.ToolsUtil
-import com.bumptech.glide.Glide
 import com.bumptech.glide.load.engine.DiskCacheStrategy
 import com.bumptech.glide.load.resource.bitmap.RoundedCorners
 import com.bumptech.glide.request.RequestOptions
@@ -42,7 +40,7 @@ class OpusAdapter(
         val coverUrl = GlideUtil.url_hq(opus.cover)
         if (coverUrl != holder.lastCoverUrl) {
             holder.lastCoverUrl = coverUrl
-            Glide.with(BiliTerminal.context!!).load(coverUrl)
+            GlideUtil.with(holder.coverView).load(coverUrl)
                 .transition(GlideUtil.getTransitionOptions())
                 .placeholder(R.mipmap.placeholder)
                 .error(R.mipmap.placeholder)

@@ -31,7 +31,6 @@ import com.RobinNotBad.BiliClient.util.MsgUtil
 import com.RobinNotBad.BiliClient.util.SharedPreferencesUtil
 import com.RobinNotBad.BiliClient.util.StringUtil
 import com.RobinNotBad.BiliClient.util.ToolsUtil
-import com.bumptech.glide.Glide
 import com.bumptech.glide.load.DecodeFormat
 import com.bumptech.glide.load.engine.DiskCacheStrategy
 import com.bumptech.glide.load.resource.bitmap.RoundedCorners
@@ -97,7 +96,7 @@ class OpusContentAdapter(
                         val imageUrl = GlideUtil.url_hq(urls[0] as String)
                         if (imageUrl != holder.lastImageUrl) {
                             holder.lastImageUrl = imageUrl
-                            Glide.with(BiliTerminal.context!!).asDrawable().load(imageUrl)
+                            GlideUtil.with(imageView).asDrawable().load(imageUrl)
                                 .placeholder(R.mipmap.placeholder)
                                 .error(R.mipmap.placeholder)
                                 .transition(GlideUtil.getTransitionOptions())
@@ -137,7 +136,7 @@ class OpusContentAdapter(
                     val coverUrl = GlideUtil.url_hq(article.cover)
                     if (coverUrl != holder.lastTopImageUrl) {
                         holder.lastTopImageUrl = coverUrl
-                        Glide.with(BiliTerminal.context!!).asDrawable().load(coverUrl)
+                        GlideUtil.with(topImage).asDrawable().load(coverUrl)
                             .placeholder(R.mipmap.placeholder)
                             .error(R.mipmap.placeholder)
                             .transition(GlideUtil.getTransitionOptions())
@@ -151,7 +150,7 @@ class OpusContentAdapter(
                     val firstImageUrl = GlideUtil.url_hq(article.topImages!![0])
                     if (firstImageUrl != holder.lastTopImageUrl) {
                         holder.lastTopImageUrl = firstImageUrl
-                        Glide.with(BiliTerminal.context!!).asDrawable().load(firstImageUrl)
+                        GlideUtil.with(topImage).asDrawable().load(firstImageUrl)
                             .placeholder(R.mipmap.placeholder)
                             .error(R.mipmap.placeholder)
                             .transition(GlideUtil.getTransitionOptions())
@@ -180,7 +179,7 @@ class OpusContentAdapter(
                 val avatarUrl = upInfo?.avatar?.let { GlideUtil.url(it) } ?: ""
                 if (avatarUrl != holder.lastAvatarUrl) {
                     holder.lastAvatarUrl = avatarUrl
-                    Glide.with(BiliTerminal.context!!).asDrawable().load(avatarUrl)
+                    GlideUtil.with(upIcon).asDrawable().load(avatarUrl)
                         .placeholder(R.mipmap.akari)
                         .error(R.mipmap.akari)
                         .transition(GlideUtil.getTransitionOptions())

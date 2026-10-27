@@ -28,7 +28,6 @@ import com.RobinNotBad.BiliClient.util.GlideUtil
 import com.RobinNotBad.BiliClient.util.MsgUtil
 import com.RobinNotBad.BiliClient.util.SharedPreferencesUtil
 import com.RobinNotBad.BiliClient.util.TerminalDialog
-import com.bumptech.glide.Glide
 import com.bumptech.glide.load.engine.DiskCacheStrategy
 import com.bumptech.glide.request.RequestOptions
 import org.json.JSONException
@@ -102,7 +101,7 @@ class PrivateMsgSessionsAdapter(
                 } else {
                     holder.nameText.text = displayName
                 }
-                Glide.with(BiliTerminal.context!!).asDrawable().load(GlideUtil.url(user.avatar))
+                GlideUtil.with(holder.avatarView).asDrawable().load(GlideUtil.url(user.avatar))
                     .diskCacheStrategy(DiskCacheStrategy.AUTOMATIC)
                     .placeholder(R.mipmap.akari)
                     .error(R.mipmap.akari)

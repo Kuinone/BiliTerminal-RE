@@ -24,7 +24,6 @@ import android.widget.TextView
 import androidx.annotation.NonNull
 import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.RecyclerView
-import com.bumptech.glide.Glide
 import com.bumptech.glide.load.DecodeFormat
 import com.bumptech.glide.load.engine.DiskCacheStrategy
 import com.bumptech.glide.load.resource.drawable.DrawableTransitionOptions
@@ -195,7 +194,7 @@ class ReplyAdapter(
 
             if (GlideUtil.url(reply.sender!!.avatar) != replyHolder.lastAvatarUrl) {
                 replyHolder.lastAvatarUrl = GlideUtil.url(reply.sender!!.avatar)
-                Glide.with(BiliTerminal.context!!).asDrawable().load(GlideUtil.url(reply.sender!!.avatar))
+                GlideUtil.with(replyHolder.replyAvatar).asDrawable().load(GlideUtil.url(reply.sender!!.avatar))
                         .transition(GlideUtil.getTransitionOptions())
                         .placeholder(R.mipmap.akari)
                         .error(R.mipmap.akari)
@@ -356,7 +355,7 @@ class ReplyAdapter(
                 val firstImageUrl = GlideUtil.url(reply.pictureList!![0])
                 if (firstImageUrl != replyHolder.lastImageUrl) {
                     replyHolder.lastImageUrl = firstImageUrl
-                    Glide.with(BiliTerminal.context!!).asDrawable().load(firstImageUrl)
+                    GlideUtil.with(replyHolder.imageCard).asDrawable().load(firstImageUrl)
                             .transition(GlideUtil.getTransitionOptions())
                             .placeholder(R.mipmap.placeholder)
                             .error(R.mipmap.placeholder)

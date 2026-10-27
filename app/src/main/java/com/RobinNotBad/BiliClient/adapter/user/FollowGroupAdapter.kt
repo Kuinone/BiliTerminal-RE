@@ -18,7 +18,6 @@ import com.RobinNotBad.BiliClient.R
 import com.RobinNotBad.BiliClient.model.FollowTag
 import com.RobinNotBad.BiliClient.model.UserInfo
 import com.RobinNotBad.BiliClient.util.GlideUtil
-import com.bumptech.glide.Glide
 import com.bumptech.glide.load.engine.DiskCacheStrategy
 import com.bumptech.glide.request.RequestOptions
 
@@ -278,7 +277,7 @@ class FollowGroupAdapter(
                     holder.avatar.visibility = View.GONE
                     holder.desc.isSingleLine = false
                 } else {
-                    Glide.with(BiliTerminal.context!!).asDrawable().load(GlideUtil.url(user.avatar))
+                    GlideUtil.with(holder.avatar).asDrawable().load(GlideUtil.url(user.avatar))
                         .transition(GlideUtil.getTransitionOptions())
                         .placeholder(R.mipmap.akari)
                         .error(R.mipmap.akari)
