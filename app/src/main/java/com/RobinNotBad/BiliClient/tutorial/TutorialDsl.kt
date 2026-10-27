@@ -35,6 +35,7 @@ fun tutorial(
     hintViewId: Int? = null,
     imageRes: Int? = null,
     descriptionRes: Int? = null,
+    action: TutorialAction? = null,
     block: TutorialScope.() -> Unit = {},
 ): Tutorial {
     val scope = TutorialScope()
@@ -50,6 +51,7 @@ fun tutorial(
         descriptionRes = descriptionRes,
         hintText = hintText,
         hintViewId = hintViewId,
+        action = action,
     )
 }
 

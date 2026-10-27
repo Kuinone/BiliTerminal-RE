@@ -43,7 +43,7 @@ tutorial/TutorialModel.kt        TutorialKind / TutorialStyle / TutorialSpan / T
 tutorial/TutorialDsl.kt          tutorial { page { text().bold().color() / newline() / image() } }
 tutorial/Tutorials.kt            注册表：11 篇（recommend / theme_notice / video_main / space / search / message / dynamic / dynamic_info / article / short_video / local），另有 all / forPage() / byId()
 tutorial/TutorialStore.kt        已读状态（tutorial_ver_<id>）
-tutorial/TutorialRenderer.kt     spans → SpannableStringBuilder（颜色解析失败回退白色）
+tutorial/TutorialRenderer.kt     spans → SpannableStringBuilder（未指定或解析失败的颜色不挂色，跟随主题文字色）
 tutorial/TutorialPagerActivity.kt  分页展示页（POC）
 res/layout/activity_tutorial_pager.xml / item_tutorial_page.xml
 ```
@@ -104,3 +104,4 @@ res/layout/activity_tutorial_pager.xml / item_tutorial_page.xml
 | --- | --- | --- |
 | 26.09.08 | `:app:testDebugUnitTest` | ✅ 44 用例全绿（含 `TutorialDslTest` 6 例） |
 | 26.09.08 | `:app:assembleDebug` | ✅ 见 `fix-progress.md` |
+| 26.10.27 | 亮色主题下教程正文仍为白字 | ✅ 修：`TutorialSpan.color` 默认 `null`（原写死 `#ffffff`），渲染时不挂色、跟随主题；`theme_notice` 升 v2，补亮/暗色、弥散光晕、玻璃质感说明，并新增 `Tutorial.action` 底部按钮直达「外观设置」。`assembleDebug` + `testStandardDebugUnitTest` 通过；模拟器中途断开，**亮色下实机截图未完成** |
