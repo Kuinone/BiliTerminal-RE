@@ -1577,6 +1577,19 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
 - **遗留**：①真手表未测，只在 SDK AVD 上验证；②亮色版图标是手工另存的一份 PNG，`tools/appearance/gen_light_mode.py` 目前不覆盖 `drawable-nodpi`，下次重跑该脚本不会自动生成它（不影响运行，只是别以为它是脚本产物）。
 - **文档**：`docs/FEATURES.md` §4.2 搜索排序条目、`docs/agents/pitfalls.md` 三条（搜索框盖住 fragment / 收起走 `translationY` / 图标靠 `paddingStart` 让位）、`docs/architecture-map.md` §8.7.3 搜索框滚动隐藏逻辑、`docs/review/fix-progress.md` §1「发版后的未发版改动」与本节。
 
+### 3.72 系统时间错误防呆（26.10.27，用户反馈）
+
+- **缘起**：用户（Sonim XP5800 三防机，非触屏）反馈 B 站与 Gitee 同时报证书错误，系统浏览器弹「Security warning」，要求「无视风险直接信任证书」。用 openssl 查过两条链：B 站是 GlobalSign R1、Gitee 是 TrustAsia → Certum，都是老根，不缺。两家 CA 不同却同时失败，最后确认是**设备时间不对**（没电重启回到出厂时间），所有证书都被判「尚未生效」。trust-all 违反 `docs/agents/security.md` 红线，没做；改成提示用户改时间。
+- **改法**：
+  - 新增 `util/ClockSanity.kt`（纯函数，不读资源）：`buildDateMillis(versionCode)` 由 YYMMDD0 反推构建日期；`isClockBehind(now, versionCode)` 判当前时间早于构建日期（放宽 1 天抵消时区）；`isCertTimeError(e)` 沿 cause 链找 `CertificateNotYetValidException` / `CertificateExpiredException`，并按消息兜底。
+  - `SplashActivity`：进首屏 / 初始化向导后，若 `isClockBehind` 为真，`showMsgLong(msg_clock_behind)`（与断网提示同一套 sticky Snackbar）。
+  - `MsgUtil.err`：`IOException` 分支先判 `isCertTimeError`，命中则显示 `err_cert_time`，替代笼统的「网络错误」。
+  - 新文案 `err_cert_time` / `msg_clock_behind` 进 `strings.xml`。
+- **验证**：
+  - `ClockSanityTest` 9 例全过；`assembleDebug` 双 flavor 成功。
+  - MuMu（Android 15 / x86_64，root）：`settings put global auto_time 0` + `date 010112002015.00` 把时间拨到 2015-01-01。共存版（未完成初始化）冷启动进 `SetupUIActivity`，截图底部 Snackbar 显示「设备时间似乎不对……请到系统设置里改正日期和时间」✔。普通版 `am start` 推荐页，logcat 原文：`SSLHandshakeException: Unacceptable certificate: CN=GlobalSign RSA OV SSL CA 2018` → `Caused by: CertificateNotYetValidException: Certificate not valid until Wed Nov 21 ... 2018 (compared to Thu Jan 01 12:19:46 GMT+08:00 2015)`，随后 `MsgUtil>showMsgLong: 网络连接被拒：证书时间校验失败 / 请检查设备的日期和时间是否正确` ✔。测完 `auto_time 1` 恢复。
+- **遗留**：①时间被拨到**未来**（证书「已过期」）只靠 `isCertTimeError` 兜，启动时不提示——无法从本地可靠判断「太靠后」；②系统浏览器 / WebView 的证书弹窗不归本应用管；③未在 XP5800 真机复测。
+
 ## 4. 历史章节索引
 
 > 完整正文在 `docs/archive/review/fix-progress-history.md`。**编号在历史上有重复**（`## 二十二` / `## 二十九` 各出现两次、`## 30.` 是阿拉伯数字写法，原为不打断既有交叉引用而保持不动），下表**以归档文件的物理行序为准**。

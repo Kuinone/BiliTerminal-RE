@@ -218,6 +218,11 @@ public class MsgUtil {
 
         if (context != null) {
             if (e instanceof IOException) {
+                // 证书「尚未生效 / 已过期」几乎都是设备时间错了，单说「网络错误」用户无从下手
+                if (ClockSanity.isCertTimeError(e)) {
+                    showMsgLong(context.getString(R.string.err_cert_time));
+                    return;
+                }
                 showMsg(context.getString(R.string.err_network));
                 return;
             } else if (e instanceof JSONException) {

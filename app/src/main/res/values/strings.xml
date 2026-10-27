@@ -191,6 +191,8 @@
     <string name="text_ui_padding_vertical">纵向</string>
 
     <string name="err_network">网络错误(＃°Д°)</string>
+    <string name="err_cert_time">网络连接被拒：证书时间校验失败\n请检查设备的日期和时间是否正确</string>
+    <string name="msg_clock_behind">设备时间似乎不对（早于本应用的发布日期），网络会连不上\n请到系统设置里改正日期和时间</string>
     <string name="err_json">数据解析错误</string>
     <string name="err_sql">数据库读写错误\n请清理空间或清除软件数据</string>
     <string name="err_login_first">\n建议登陆后再尝试</string>
