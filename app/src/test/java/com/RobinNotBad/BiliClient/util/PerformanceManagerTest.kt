@@ -100,5 +100,34 @@ class PerformanceManagerTest {
         assertEquals(512, PerformanceManager.getImageMaxWidth())
         assertEquals(80, PerformanceManager.getHqImageQuality())
         assertEquals(1024, PerformanceManager.getHqImageMaxWidth())
+        assertEquals(1024, PerformanceManager.getZoomImageMaxWidth())
+    }
+
+    // ===== 按屏幕封顶（26.10.27）=====
+
+    @Test
+    fun capWidthToScreen_watchScreensGetSmallBuckets() {
+        // 常见圆表 / 方表：长边 320~480 → 480 档，不再请求 1024w
+        assertEquals(480, PerformanceManager.capWidthToScreen(1024, 466))
+        assertEquals(480, PerformanceManager.capWidthToScreen(1024, 454))
+        assertEquals(320, PerformanceManager.capWidthToScreen(1024, 320))
+        assertEquals(320, PerformanceManager.capWidthToScreen(512, 240))
+        // 列表档 512 在 466 屏上也压到 480
+        assertEquals(480, PerformanceManager.capWidthToScreen(512, 466))
+    }
+
+    @Test
+    fun capWidthToScreen_neverRaisesTierWidth() {
+        // 低端档本来就比屏幕小，封顶只能往下压
+        assertEquals(320, PerformanceManager.capWidthToScreen(320, 720))
+        assertEquals(512, PerformanceManager.capWidthToScreen(512, 1080))
+    }
+
+    @Test
+    fun capWidthToScreen_largeOrUnknownScreens_keepTier() {
+        assertEquals(1024, PerformanceManager.capWidthToScreen(1024, 1080))
+        assertEquals(1024, PerformanceManager.capWidthToScreen(1024, 2560))
+        assertEquals(1024, PerformanceManager.capWidthToScreen(1024, 0))
+        assertEquals(1024, PerformanceManager.capWidthToScreen(1024, -1))
     }
 }

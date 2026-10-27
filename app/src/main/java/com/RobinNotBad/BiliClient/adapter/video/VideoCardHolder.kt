@@ -177,15 +177,19 @@ class VideoCardHolder(@androidx.annotation.NonNull itemView: View) : RecyclerVie
     @SuppressLint("SetTextI18n")
     fun showVideoCard(videoCard: VideoCard, context: Context) {
         val strUpName = videoCard.upName
+        // 两个分支都要显式设可见性：holder 会被复用，上一条置了 GONE、这一条有值时不恢复就一直不显示
         if (strUpName == null || strUpName.isEmpty()) {
             upName.visibility = View.GONE
-        } else
+        } else {
+            upName.visibility = View.VISIBLE
             upName.text = strUpName
+        }
 
         val strViewCount = videoCard.view
         if (strViewCount == null || strViewCount.isEmpty()) {
             viewCount.visibility = View.GONE
         } else {
+            viewCount.visibility = View.VISIBLE
             viewCount.text = strViewCount
         }
 

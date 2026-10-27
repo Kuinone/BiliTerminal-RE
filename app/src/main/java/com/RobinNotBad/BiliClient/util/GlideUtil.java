@@ -50,11 +50,20 @@ public class GlideUtil {
         }
     }
 
+    /** 详情 / 卡片大图：宽度已按屏幕长边封顶（手表上不会再请求 1024w）。 */
     public static String url_hq(String url) {
+        return hqUrl(url, PerformanceManager.getHqImageMaxWidth());
+    }
+
+    /** 可缩放查看的大图（图片查看器）：不按屏幕封顶，放大后仍清晰。 */
+    public static String url_zoom(String url) {
+        return hqUrl(url, PerformanceManager.getZoomImageMaxWidth());
+    }
+
+    private static String hqUrl(String url, int maxWidth) {
         if (!url.startsWith("http") || url.endsWith("gif") || url.contains("@") || url.contains("afdiancdn.com"))
             return url;
         final int quality = PerformanceManager.getHqImageQuality();
-        final int maxWidth = PerformanceManager.getHqImageMaxWidth();
         if (SharedPreferencesUtil.getBoolean("image_request_jpg", false)) {
             if (url.endsWith("jpeg") || url.endsWith("jpg")) return url;
             return url + "@0e_"

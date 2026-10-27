@@ -861,6 +861,8 @@ CenterThreadPool.supplyAsyncWithLiveData { fetch...().getOrThrow() }
 - 档位计算是 `@JvmStatic` 纯函数（`levelFromScore` / `isLowPerfLevel` / `listImageQuality` / `listImageMaxWidth` / `hqImageQuality` / `hqImageMaxWidth`），接收 `(level, highPerformanceMode)`，因此可被 JVM 单测直接覆盖；对应的"喂当前状态"getter 只是转调。
 - **`getPageSize()` 只对 3 个接口生效**（`RecommendApi` popular/precious、`SeriesApi` 用户系列）。其余硬编码 `ps`/`page_size` **是有意为之**（`FavoriteApi.java:106 ps=100` 一次拉全、`MessageApi.java:380 page_size=35` 是 cursor 分页、`EmoteApi` 表情面板等），改它们要先确认分页语义。
 - **首次硬件检测不在主线程**：`init()` 无缓存时先置中档返回，检测在 `CenterThreadPool` 上跑完再 `applyPerformanceSettings()`。因此**冷启动最初几十毫秒内读到的是中档参数**，属于预期行为；单测 `PerformanceManagerTest.defaultsBeforeInit_areMedium` 锁住了这套默认值。
+- **列表图 / 高清图宽度再按屏幕封顶**（26.10.27）：`getImageMaxWidth()` / `getHqImageMaxWidth()` 会经过 `capWidthToScreen(tierWidth, 屏幕长边)` 处理，只会变小，按 320/480/640/720/1024 分档。图片查看器要放大看，所以走不封顶的 `getZoomImageMaxWidth()` / `GlideUtil.url_zoom()`。不要把查看器改回 `url_hq`。
+- **列表图片的 RequestManager 用 `GlideUtil.with(view)`**（26.10.27），**不要**写 `Glide.with(BiliTerminal.context!!)`，也不要写 companion 里的静态 RequestManager：Application 级请求不跟页面生命周期走，`ImageAutoLoadScrollListener` 的 `pauseRequests()` 也管不到。这个监听器只在 DRAGGING → SETTLING 时暂停，表冠的 IDLE → SETTLING 不暂停；装监听器统一用 `installIfEnabled()`。
 
 ### 7.11 更新包校验：`util/ApkVerifier.kt`（26.10.04 批次 4 新增）
 

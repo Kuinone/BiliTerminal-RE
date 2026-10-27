@@ -662,6 +662,18 @@
 - **验证**：双 flavor `assembleDebug` 与单测通过。MuMu（共存版）：推荐页连续快速甩动 3 次，停下后封面全部加载 ✔；动态 / 消息 / 推荐快速进出各一次，logcat 没有崩溃 ✔；评论区甩动后头像与表情都正常 ✔。
 - **遗留**：MuMu 没有表冠（`input rotaryencoder` 不存在），表冠滚动不暂停这一条只有单测覆盖，需要真表确认。
 
+### 3.78 性能审查③：图片请求宽度按屏幕封顶，图片查看器懒加载（26.10.27）
+
+- **缘起**：列表图请求 512w，高清图请求 1024w，只看档位不看屏幕。手表屏长边多在 320～480px，下载和解码的像素是实际显示的 2～4 倍。`ImageViewerActivity` 一进来就把所有页（动态九图就是 9 张）按 `SIZE_ORIGINAL` 全量加载，低内存的表上容易卡顿甚至 OOM。另外 `VideoCardHolder` 的复用分支只隐藏 UP 主 / 播放量，不再重新显示，卡片复用后这两行可能一直不出来。
+- **改法**：
+  - `PerformanceManager.capWidthToScreen(tierWidth, screenLongSidePx)` 纯函数：取屏幕长边向上对齐到 320/480/640/720/1024 档，宽度取它与档位值中的较小者；屏幕超过 1024 或读不到尺寸时保持档位值。`getImageMaxWidth()` / `getHqImageMaxWidth()` 都封顶，**只会变小**，CDN 缓存命中仍集中在少数几档。
+  - 新增 `getZoomImageMaxWidth()`（不封顶）和 `GlideUtil.url_zoom()`，专给图片查看器用，因为要放大看细节。
+  - `ImageViewerActivity` 只加载当前页和前后各一页，翻页时补齐，已加载过的页不再重复请求。
+  - `VideoCardHolder` 复用分支补上 `VISIBLE`。
+  - `PerformanceManagerTest` 新增 3 例：手表屏用小档，封顶不抬高宽度，大屏 / 未知尺寸保持档位。
+- **验证**：双 flavor `assembleDebug` 与单测通过。MuMu（共存版）：466x466 下推荐页封面清晰 ✔；动态九图进入图片查看器后第 1 页正常，滑到第 3/9 页图片都正常加载 ✔；logcat 无崩溃、无 OOM ✔。
+- **遗留**：实际请求 URL 里的宽度只靠单测覆盖，没有在模拟器上抓包确认。
+
 ## 4. 历史章节索引
 
 > 完整正文在 `docs/archive/review/fix-progress-history.md`；§3.0~§3.51 的状态快照（26.10.09~26.10.21）在 `docs/archive/review/fix-progress-snapshots-261009-261021.md`。**编号在历史上有重复**（`## 二十二` / `## 二十九` 各出现两次、`## 30.` 是阿拉伯数字写法，原为不打断既有交叉引用而保持不动），下表**以归档文件的物理行序为准**。
