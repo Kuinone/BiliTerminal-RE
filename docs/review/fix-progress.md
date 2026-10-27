@@ -632,6 +632,16 @@
 - **验证**：`AmbientGlowTest` 7 例全过，`assembleDebug` 通过。MuMu（共存版、经典终端、光晕开）进入真实私信会话截图：标题与时钟直接压在光晕上、没有横带，消息从顶栏下方开始排，输入栏位置不变 ✔。
 - **遗留**：没在消息多到需要滚动的会话里测；`clipToPadding=false` 只影响列表自身 4dp 内边距，不会画到顶栏区域（列表本身就在顶栏下方）。
 
+### 3.75 性能审查①：评论 / 动态的表情改为并发加载（26.10.27）
+
+- **缘起**：全量性能审查（手表优先）。`EmoteUtil.replaceSingle` 对每个表情 `submit().get()` **串行阻塞**，而 `Reply` / `DynamicApi.analyzeTextContent` 在构造时就调它：一页 20 条评论 + 楼中楼的表情逐个排队等，首屏要等所有表情下完才显示，弱网下尤其慢；`get()` 无超时，一张卡住就拖到 OkHttp 读超时。私信页更糟：传入的是整个会话的表情表，每条消息都把表里**每一张**图同步取一遍，绝大多数根本不在这条消息里。
+- **改法**：
+  - `EmoteUtil.textReplaceEmote(ArrayList<Emote>…)`：只对文本里真正出现的表情发请求，先全部 `submit()` 再按同一截止时间（5s）取结果；超时保留原文字。`replaceSingle` 两个重载先判 `contains` 再下载，`get` 也加了 5s 上限。
+  - 新增 `EmoteUtil.prefetch(urls)`：整页并发预取（总上限 10s），完成的立即 `clear` 退回内存 LRU；超时未完成的不 clear（clear 会取消下载）。接线点：`ReplyApi.analyzeReplyArray`、`DynamicApi.getDynamicList`。
+  - 新增纯函数 `util/EmoteUrlCollector.kt`：评论收 `content.emote.*.url`（含楼中楼），动态只收 `modules.module_dynamic` 子树与 `orig` 里的 EMOJI 节点（评论预览等不渲染的位置不收）。`EmoteUrlCollectorTest` 4 例。
+- **验证**：双 flavor `assembleDebug` 与单测通过。MuMu（共存版、已登录）：视频 av80433022 评论区日志 `表情预取 10/10 张，用时 160ms`，楼中楼 `[笑哭]` 截图确认渲染为图片 ✔；动态页 `表情预取 8/8 张，用时 37ms`，列表正常 ✔。
+- **遗留**：没有在弱网 / 真表上对比改前改后的首屏耗时；私信会话内的表情没截到图（点击导航在 MuMu 上不稳定），只靠代码路径确认。
+
 ## 4. 历史章节索引
 
 > 完整正文在 `docs/archive/review/fix-progress-history.md`；§3.0~§3.51 的状态快照（26.10.09~26.10.21）在 `docs/archive/review/fix-progress-snapshots-261009-261021.md`。**编号在历史上有重复**（`## 二十二` / `## 二十九` 各出现两次、`## 30.` 是阿拉伯数字写法，原为不打断既有交叉引用而保持不动），下表**以归档文件的物理行序为准**。

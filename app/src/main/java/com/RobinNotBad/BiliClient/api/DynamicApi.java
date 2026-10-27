@@ -21,6 +21,7 @@ import com.RobinNotBad.BiliClient.model.TopicNode;
 import com.RobinNotBad.BiliClient.model.UserInfo;
 import com.RobinNotBad.BiliClient.model.VideoCard;
 import com.RobinNotBad.BiliClient.util.DmImgParamUtil;
+import com.RobinNotBad.BiliClient.util.EmoteUrlCollector;
 import com.RobinNotBad.BiliClient.util.EmoteUtil;
 import com.RobinNotBad.BiliClient.util.Logu;
 import com.RobinNotBad.BiliClient.util.MsgUtil;
@@ -764,6 +765,8 @@ public class DynamicApi {
         }
 
         JSONArray items = data.getJSONArray("items");
+        // 整页表情并发预取，逐条 analyzeDynamic 时就是缓存命中（见 EmoteUtil.prefetch）
+        EmoteUtil.prefetch(EmoteUrlCollector.fromDynamicItems(items));
         for (int i = 0; i < items.length(); i++) {
             dynamicList.add(analyzeDynamic(items.getJSONObject(i)));
         }

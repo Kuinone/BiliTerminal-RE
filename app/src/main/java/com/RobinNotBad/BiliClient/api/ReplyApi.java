@@ -12,6 +12,8 @@ import androidx.annotation.NonNull;
 
 import com.RobinNotBad.BiliClient.model.ContentType;
 import com.RobinNotBad.BiliClient.model.Reply;
+import com.RobinNotBad.BiliClient.util.EmoteUrlCollector;
+import com.RobinNotBad.BiliClient.util.EmoteUtil;
 import com.RobinNotBad.BiliClient.util.NetWorkUtil;
 import com.RobinNotBad.BiliClient.util.Result;
 import com.RobinNotBad.BiliClient.util.SharedPreferencesUtil;
@@ -173,6 +175,8 @@ public class ReplyApi {
     }  //-1错误,0正常，1到底了，2空页(未到底，可带原游标重试)
 
     public static void analyzeReplyArray(boolean isRoot, JSONArray replies, List<Reply> replyArrayList) throws JSONException {
+        // 先把整页（含楼中楼）的表情并发预取，逐条构造 Reply 时就是缓存命中（见 EmoteUtil.prefetch）
+        EmoteUtil.prefetch(EmoteUrlCollector.fromReplies(replies));
         for (int i = 0; i < replies.length(); i++) {
             JSONObject reply = replies.getJSONObject(i);
             Reply replyReturn = new Reply(isRoot, reply);
