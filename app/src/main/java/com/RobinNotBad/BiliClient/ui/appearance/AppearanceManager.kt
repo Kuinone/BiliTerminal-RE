@@ -52,6 +52,7 @@ object AppearanceManager {
         val cornerRadius: String,
         val fontPath: String,
         val ambientGlow: Boolean,
+        val ambientGlowSource: String,
         val glassComponents: Boolean,
         val version: Int
     )
@@ -76,6 +77,7 @@ object AppearanceManager {
         cornerRadius = CornerStyle.current(),
         fontPath = FontStyle.currentPath(),
         ambientGlow = AmbientGlow.isEnabled(),
+        ambientGlowSource = AmbientGlow.currentSource(),
         glassComponents = GlassStyle.isEnabled(),
         version = version()
     )
@@ -117,6 +119,12 @@ object AppearanceManager {
     /** 写入弥散光晕开关。下次创建 / 重建的页面按新值画背景。 */
     fun setAmbientGlow(enabled: Boolean) {
         SharedPreferencesUtil.putBooleanSync(AmbientGlow.KEY, enabled)
+        bumpVersion()
+    }
+
+    /** 写入弥散光晕的光源位置（已规整到合法值）。 */
+    fun setAmbientGlowSource(source: String) {
+        SharedPreferencesUtil.putStringSync(AmbientGlow.KEY_SOURCE, AmbientGlow.normalizeSource(source))
         bumpVersion()
     }
 

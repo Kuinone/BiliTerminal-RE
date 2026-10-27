@@ -31,6 +31,8 @@ object SettingsKeys {
     const val UI_FONT_PATH = "ui_font_path"
     /** 弥散光晕（页面背景的主题色光晕）开关，见 `ui/appearance/AmbientGlow`。 */
     const val UI_AMBIENT_GLOW = "ui_ambient_glow"
+    /** 弥散光晕的光源位置（top / bottom / left / right / center），见 `AmbientGlow.SOURCE_VALUES`。 */
+    const val UI_AMBIENT_GLOW_SOURCE = "ui_ambient_glow_source"
     /** 玻璃质感组件（卡片 / 按钮半透明化）开关，见 `ui/appearance/GlassStyle`。 */
     const val UI_GLASS_COMPONENTS = "ui_glass_components"
     /** 暗色 / 亮色模式（"dark" / "light"），见 `ui/appearance/ColorMode`。 */

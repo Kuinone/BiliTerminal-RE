@@ -389,6 +389,19 @@ class SettingGroupActivity : RefreshListActivity() {
             AppearanceManager.setAmbientGlow(isChecked)
             recreate()
         }
+        listChoose(
+            getString(R.string.text_setting_ambient_glow_source),
+            getString(R.string.desc_setting_ambient_glow_source),
+            AmbientGlow.KEY_SOURCE,
+            AmbientGlow.DEFAULT_SOURCE,
+            resources.getStringArray(R.array.ambient_glow_source_names).toList(),
+            AmbientGlow.SOURCE_VALUES
+        ) { oldValue, newValue ->
+            if (oldValue != newValue) {
+                AppearanceManager.setAmbientGlowSource(newValue)
+                recreate()
+            }
+        }
         switch("玻璃质感", getString(R.string.desc_setting_glass_components), SettingsKeys.UI_GLASS_COMPONENTS, GlassStyle.DEFAULT) { isChecked ->
             AppearanceManager.setGlassComponents(isChecked)
             recreate()

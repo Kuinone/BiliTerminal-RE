@@ -9,7 +9,7 @@
 - **版本号**：`26.10.27`（`app/build.gradle` 的 `versionName`），`versionCode 2610270`；`strings.xml` 的 `update_log_current` 锚点是「【26.10.27 本次更新】」，`:app:verifyVersionConsistency` 以该锚点校验。tag `26.10.27` 已占用（发版记录见 §4 的 §五十八）。
 - **上一版**：`26.10.26` / tag `26.10.26`。
 - **本轮改动（26.10.27）**：暗色 / 亮色模式、弥散光晕背景、玻璃质感（默认关闭）；设置新增「布局适配」二级页，与「外观设置」同在「界面与外观」下；搜索排序入口收进搜索框左侧图标（§3.71）；控制栏收起后字幕随之下沉；Android 7.1 及以下内测码更新报 Trust anchor（§3.70）。明细见 `strings.xml` 的 `update_log_current`（5 条编号条目，另 1 条为版本锚点）。
-- **26.10.27 发版后的未发版改动**：系统时间错误防呆（启动与证书时间错误时提示改时间，§3.72）、点赞投币收藏卡片适配玻璃质感（§3.73）。下次发版时 `update_log_current` 要补这两条。
+- **26.10.27 发版后的未发版改动**：系统时间错误防呆（启动与证书时间错误时提示改时间，§3.72）、点赞投币收藏卡片适配玻璃质感（§3.73）、弥散光晕可选光源位置（§3.76）。下次发版时 `update_log_current` 要补这三条。
 - **下次递增**：先看 `app/build.gradle:23-24`；release immutability 下被 Release 用过的 tag **永久不可复用**，同版本名补丁版只能用 `26.10.24.1` 这种后缀形式，`versionCode` 递增、`versionName` 可不变。改了版本号还要同步 `strings.xml` 里 `update_log_current` 的「【YY.MM.DD 本次更新】」锚点，否则 `:app:verifyVersionConsistency` 会失败。
 - **构建命令**（单测任务名**带 flavor 前缀**，`testDebugUnitTest` 自 26.10.11 引入 flavor 后已不存在）：
 
@@ -641,6 +641,16 @@
   - 新增纯函数 `util/EmoteUrlCollector.kt`：评论收 `content.emote.*.url`（含楼中楼），动态只收 `modules.module_dynamic` 子树与 `orig` 里的 EMOJI 节点（评论预览等不渲染的位置不收）。`EmoteUrlCollectorTest` 4 例。
 - **验证**：双 flavor `assembleDebug` 与单测通过。MuMu（共存版、已登录）：视频 av80433022 评论区日志 `表情预取 10/10 张，用时 160ms`，楼中楼 `[笑哭]` 截图确认渲染为图片 ✔；动态页 `表情预取 8/8 张，用时 37ms`，列表正常 ✔。
 - **遗留**：没有在弱网 / 真表上对比改前改后的首屏耗时；私信会话内的表情没截到图（点击导航在 MuMu 上不稳定），只靠代码路径确认。
+
+### 3.76 弥散光晕可选光源位置：上 / 下 / 左 / 右 / 中间（26.10.27）
+
+- **缘起**：用户希望光晕最亮处不只能在顶部，可选下、左、右、中间，默认仍是上。
+- **改法**：
+  - `AmbientGlow` 的 14 份 `Spec` 仍只按「顶部」写一份，新增纯函数 `placeGlow` / `baseGradient` 按光源位置变换：下 / 左 / 右是把「沿边位置、离边深度」映射到对应边（下与上、右与左互为镜像，方屏上「左」即「上」转 90°）；中间把各团光晕的重心平移到屏幕中心、半径 × 0.8，底色改为从中心向外的径向渐变。`draw` 仍零分配。
+  - 新键 `ui_ambient_glow_source`（`top` / `bottom` / `left` / `right` / `center`，未知值回退 `top`），写入走 `AppearanceManager.setAmbientGlowSource`（规整取值 + 递增版本号）。外观设置在「弥散光晕」下方加「光晕位置」单选，设置搜索可直达。
+  - `AmbientGlowTest` 增至 15 例：默认值与规整、落盘与版本号、上位置与原公式一致、各位置贴边、镜像 / 旋转关系、中间位置重心与半径、底色渐变坐标。
+- **验证**：双 flavor `assembleDebug` 与单测全过。MuMu（共存版）：选择弹窗列出 5 项；选「左」后页面自动重建、光晕移到左侧，落盘 `ui_ambient_glow_source=left` ✔；下 / 右 / 中间截图位置正确 ✔；亮色经典终端居中正常，五彩斑斓亮色居中时红 / 青两团关于中线对称 ✔。
+- **遗留**：没在圆形真表上看「左 / 右」时光晕是否被圆角裁掉太多。
 
 ## 4. 历史章节索引
 
