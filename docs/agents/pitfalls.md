@@ -11,6 +11,7 @@
 - **私信发图（`msg_type=2`）的 content 有硬格式**（26.10.04 批次 5 新增）：`url` 必须是 B 站图床地址（否则 21037「图片格式不合法，不要调戏接口啦」），`width`/`height` 必带（缺了接口不报错、客户端显示异常），`size` 单位是 **KB**。组装一律走纯函数 `PrivateMsgApi.buildImageContent(...)`，别手拼 JSON（详见 `docs/architecture-map.md` §7.14）。
 - **`model/` 里 `VideoFolder`/`VideoMeta`/`LocalVideo` 实现 `Parcelable`，且字段名就是磁盘 JSON 存储格式**：删改字段必须两端同步。
 - **评论写接口的 `type` 是「评论区类型」，不是稿件类型**（26.10.27 加举报时确认）：`ReplyAdapter` 里同时有 `oid`/`type`/`replyType` 三个字段，评论区的点赞、置顶、删除、举报**一律传 `replyType`**；传 `type`（视频类型）会让动态/专栏的评论被服务端拒。
+- **别照 `bilibili-API` 旧快照写举报理由码**（26.10.27 血泪）：快照那张「0 其他 … 17 青少年不良信息」的连续表**是错的**。官方现行是 18 个非连续码（0,1,2,3,4,5,7,8,9,10,12,15,17,18,19,20,22,23），没有 6/11/13/14/16/21，8 是「视频不相关」。**理由表由服务端 `GET /x/v2/reply/report/metadata` 下发**，静态表只是官方 H5 的兜底；改这块先读 `docs/bilibili-api-notes.md` §8。
 - **`NetWorkUtil.FormData.toString()` 会对值做 URL 编码，且底层是 `HashMap`（顺序不确定）**（26.10.27 写 `ReportApiTest` 时踩到）：纯函数单测里断言请求体必须①拆成 key→value、②用 `URLDecoder.decode` 还原中文，**不能断言整串**。另外 `FormData` 的 `autoAddAccessKey` 默认 **false**，只有显式打开才会在 `toString()` 里读 `SharedPreferences`——想让「拼请求体」保持纯函数可测，csrf / access_key 这类要在**调用方**补，别塞进被单测直接调的函数里。
 
 ## 基类与列表

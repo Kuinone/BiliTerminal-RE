@@ -25,7 +25,7 @@
 - **依赖仓库**：`settings.gradle` 已把 aliyun 的 `google` / `public` / `gradle-plugin` 三个镜像前置，`google()`/`mavenCentral()`/jitpack 仅作兜底。
 - **改了 `res/` 文件集合时**：`:app:clean` 与后续命令**必须分两次 Gradle 调用**，且带 `--no-build-cache --no-configuration-cache`，否则会回放陈旧资源（症状是 `Unresolved reference 'R.layout.xxx'`）。
 - **版本一致性**：`:app:verifyVersionConsistency` 以 `strings.xml` 的 `update_log_current` 为锚点校验版本一致性；发版说明也由 CI 从它抽取（抽不到直接拒绝发版）。
-- **单测（静态计数，26.10.27 加举报评论功能后实测）**：**94 个测试类 / 1026 个用例**，两个 flavor 完全相同（同源码），0 失败 0 错误 0 跳过。计数方式：`app/src/test/` 下 `*Test.kt|java` 计数（另有共享假实现 `util/FakeSharedPreferences.kt`），`app/build/test-results/testStandardDebugUnitTest/TEST-*.xml` 的 `tests=` 求和。用例数一律以机器产出为准，队友口述数字不进入文档。
+- **单测（静态计数，26.10.27 加举报评论功能后实测）**：**94 个测试类 / 1032 个用例**，两个 flavor 完全相同（同源码），0 失败 0 错误 0 跳过。计数方式：`app/src/test/` 下 `*Test.kt|java` 计数（另有共享假实现 `util/FakeSharedPreferences.kt`），`app/build/test-results/testStandardDebugUnitTest/TEST-*.xml` 的 `tests=` 求和。用例数一律以机器产出为准，队友口述数字不进入文档。
 - **26.10.10 那一轮的构建记录（历史，留作「改 minSdk / 重跑 release 链路」时的验证口径）**：`minSdk 24 → 19` 全部改动（含 jsoup 1.16.1、7 个 `res/drawable-v21` 资源）落盘后，按「`clean` → `assembleRelease` → `lintRelease` → 单测」四步跑完（均带 `--no-configuration-cache`，`clean` 与 `assemble` 分两次调用），四步全 `BUILD SUCCESSFUL`（37s / 2m13s / 1m25s / 39s）。当时单测汇总 **49 suites / 460 tests / 0 failures**（任务名当时还是 `testDebugUnitTest`，现已带 flavor 前缀），最新 XML 时间 `2026-10-09T22:59:04`（晚于当轮 APK 出包时间 22:56:58，覆盖了当轮全部源码改动）。`:app:lintRelease` 的 **`NewApi` 从 22 条降到 2 条**，且这 2 条就是 `PlayerActivity.kt:1981` 的已知假阳性。发版前仍建议再跑一次确认。
 - **「自动跳过片头片尾」已恢复上线（26.10.22）**：26.10.10 的紧急撤回**已解除**，`SkipOpEdPrefs.FEATURE_ENABLED` 回到 `true`，设置入口与搜索索引均已恢复；口径按用户拍板改为**默认关闭**（`DEFAULT_ENABLED = false`，老用户存档里显式写的值仍然优先）。恢复细节见 §3.3「恢复记录」，乱跳的三个根因修复见 §3.55。
 - **本轮基建改动（26.10.10）**：**`minSdk 24 → 21 → 19（Android 4.4）`**，唯一落点是 `app/build.gradle:21`。两级下调的成本不同，分开记：
@@ -1600,14 +1600,14 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
 
 - **缘起**：用户要求「加入举报功能，api 使用从 app 逆向的接口」。口径经确认收敛为 **只做评论举报 + 入口放在长按操作面板**（视频举报、弹幕举报本轮不做，原因见 `docs/bilibili-api-notes.md` §8）。
 - **改法**：
-  - 新增 `api/ReportApi.java`：理由码表 `COMMENT_REASON_CODES = {0..8}`（其他/垃圾广告/色情/刷屏/引战/剧透/政治/人身攻击/内容不相关）、纯函数 `buildReportForm(...)`（**不含 csrf**，csrf 由 `reportReply` 补，否则纯函数要读 `SharedPreferences`，JVM 单测必然空指针）、`reportReply(...)` 打 `POST https://api.bilibili.com/x/v2/reply/report`。
+  - 新增 `api/ReportApi.java`：理由表（**服务端 metadata 下发优先 + 官方 H5 静态兜底表**，见下面的修订记录）、纯函数 `buildReportForm(...)`（**不含 csrf**，csrf 由 `reportReply` 补，否则纯函数要读 `SharedPreferences`，JVM 单测必然空指针）、`reportReply(...)` 打 `POST https://api.bilibili.com/x/v2/reply/report`、`fetchReasons(...)` 打 `GET .../report/metadata` 并缓存。
   - `errorMsg(code)` 覆盖 -101/-102/-111/-352/-412/-400/-403/-404/-500/-509/12002/12006/**12008（已举报过）**/12009/12019/12026/**12077（理由过长或过短）**；这些码取自快照的 json 回复段 ＋ 客户端「CD时间未到不能举报」的文案，**除 -352 外没有一条在真机上撞过**，所以每条都给具体文案而不是留白——撞到没见过的码时用户至少能读懂，而不是「操作失败（错误码 …）」。
   - `adapter/ReplyAdapter.kt`：`ManageAction.Kind` 加 `REPORT`；`showManageMenu` 里**只在「不是自己的、也管不了这条」时**列出该项（自己的评论举报自己没意义，管理员的处置手段是删除），**不按登录态隐藏**——理由是重装丢了登录态之后，别人的评论会只剩「复制文字」一项，正好命中「只剩复制就直接进复制界面」那条捷径，用户看到的是「举报功能没了」；未登录点了由 `showReportDialog` 提示「请先登录后再举报」，不发那个注定 -352 的请求。`type` 传 `replyType` 而不是视频的 `type`（同点赞接口的约束：动态/专栏传 1 会被拒）；新增 `showReportDialog` / `askReportContent` / `submitReport`。
-  - 「其他」理由先 `TerminalDialog.input` 收正文，`≥3 字` 走 `ReportApi.isContentAcceptable`（官方客户端原文「举报理由不能少于3个字」），不合格**不提交**——服务端对短正文只回笼统的 -400，用户看不出是字数卡住的。`TerminalDialog.input` 的确认按钮是「先关窗再回调」，所以不合格时还会**重开输入框并把已输入内容带回去**（`askReportContent(..., initialText)`）：手表上打字本来就贵，不能让用户从「选理由」重来一遍。已实测（输入 `ab` → 提示 + 输入框里仍是 `ab`）。
+  - 「其他」理由先 `TerminalDialog.input` 收正文，长度按 `ReportApi.isContentAcceptable`（2~200 字符，与官方 H5 一致），不合格**不提交**——服务端对长度不合规只回 12077，用户看不出是字数卡住的。`TerminalDialog.input` 的确认按钮是「先关窗再回调」，所以不合格时还会**重开输入框并把已输入内容带回去**（`askReportContent(..., initialText)`）：手表上打字本来就贵，不能让用户从「选理由」重来一遍。已实测。
   - `api/ApiErrorText.kt` 新增 `riskRejected()`：原来 `-352/-412` 复用 `searchRejected()`「搜索被风控」，放在举报提示里会让人以为是搜索坏了。
   - 新文案 `text_reply_report` / `title_report_reason` / `title_report_content` / `hint_report_content` / `btn_report_submit` / `msg_report_login_first` / `msg_report_content_too_short` / `msg_report_submitted` 进 `strings.xml`。
 - **验证**：
-  - `assembleDebug` 双 flavor 成功；`testStandardDebugUnitTest` / `testCoexistDebugUnitTest` 各 **94 个测试类 / 1026 例 / 0 失败**（新增 `ReportApiTest` 20 例：码表 0~8 与文案一一对应、`needsContent` 只有 reason=0、`isContentAcceptable` 的 trim/下限/上限/非「其他」理由忽略正文、`buildReportForm` 的参数名与「content 只在 reason=0 时带上」、`errorMsg` 的登录/凭证/风控/冷却/兜底分支）。
+  - `assembleDebug` 双 flavor 成功；`testStandardDebugUnitTest` / `testCoexistDebugUnitTest` 各 **94 个测试类 / 1032 例 / 0 失败**（`ReportApiTest` 共 30 例，覆盖官方 18 项理由表与码序、已废弃码不存在、metadata 两种格式解析、`content_required` 真值、2~200 正文闸门、请求体参数与「不需要正文就不带 content」、错误码翻译；其中 6 例是理由表重做后新增的）。
   - `ReportApiTest` 里踩到一个坑：`NetWorkUtil.FormData.toString()` 会对值做 `URLEncoder.encode`，中文断言必须 `URLDecoder.decode` 回来；`FormData` 底层是 `HashMap`，**顺序不确定**，只能拆成 map 比对，不能断言整串。
   - **设备侧（MuMu Android 15 / x86_64 / coexist debug）实测通过**。这轮先卡在「截不了图」上：MuMu 每次启动都把包丢到一个**新建副屏**，而 `screencap -d <id>` 对任何 display 都回 `Status: -2`（root 也一样）。改用 **`uiautomator dump --display <id>` 读控件树 + `input -d <id> tap/motionevent` 驱动**，不截图也能断言文字与位置（配方已写进 `docs/review/agent-test-guide.md` §6、`docs/agents/workflow.md`）。
     - **未登录**（正式口径，26.10.27 二次修订后复测）：视频详情 → 评论页长按别人评论 → 面板**两项：`复制文字` / `举报评论`**；点「举报评论」→ 菜单关闭、logcat 只有 `I MsgUtil>showMsg: 请先登录后再举报`、**没有任何 `reply/report` 请求** ✔
@@ -1615,12 +1615,18 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
       - 长按 → 面板两项：`复制文字` / `举报评论` ✔
       - 点「举报评论」→ 标题「选择举报理由」，9 项齐全：其他 / 垃圾广告 / 色情 / 刷屏 / 引战 / 剧透 / 政治 / 人身攻击 / 内容不相关，底部「点空白处取消」✔
       - 选「其他」→ 标题「补充举报理由」、提示「至少3个字，说清哪里违规」、按钮「取消 / 提交」✔
-      - 输入 2 个字符提交 → logcat `I MsgUtil>showMsg: 举报理由不能少于3个字`，**弹窗重开且把原文带回**（`ab` 仍在框里）✔
+      - 输入过短正文提交 → logcat 出现长度提示，**弹窗重开且把原文带回**（输入框里仍是刚才那几个字）✔（当时判定是 3 字，现按官方 H5 改成 2 字，见下方修订记录）
       - 补成 3 个字符再提交 → `D NetWorkUtil>post: post-url>https://api.bilibili.com/x/v2/reply/report`，`http>POST ... -> 200 (61ms) | req=reason=0&csrf=***&oid=170001&type=1&rpid=1353715029&content=abc`，`res={"code":-352}` → `I MsgUtil>showMsg: 操作被风控拦下了，过一会儿再试` ✔
       - 选「垃圾广告」（reason=1）→ `req=reason=1&csrf=***&oid=170001&type=1&rpid=1353715029`，**不含 `content`**，同样 `-352` → 同一句提示 ✔（`-352` 是模拟器未登录的预期风控，**不是缺陷**）
   - **修订记录（同日）**：第一版把入口按登录态藏起来，维护者重装后登录态丢失、长按直接进复制页，反馈「菜单没了」。已改成入口常显 + 点后提示登录，上面两条验证即为修订后结果。
+  - **理由表推翻重做（同日，维护者指出反编译不完整后重查）**：第一版照 `bilibili-API` 旧快照写成 `0..8`，并给出「9~17 无法核实」的结论。补全 33 个 dex 的全量扫描后发现**官方根本没有原生评论举报界面**——它把举报交给 H5（`comment.report_url` 默认 `https://www.bilibili.com/h5/comment/report`），理由表来自服务端 `GET /x/v2/reply/report/metadata`，H5 里另有一份静态兜底表。据此重做：
+    - 静态兜底表换成 H5 原文的 18 项（**非连续码**）：9 违法违规 / 2 色情 / 10 低俗 / 12 赌博诈骗 / 23 违法信息外链 / 19 涉政谣言 / 22 虚假不实信息 / 20 涉社会事件谣言 / 7 人身攻击 / 15 侵犯隐私 / 1 垃圾广告 / 4 引战 / 5 剧透 / 3 刷屏 / 8 **视频不相关** / 18 违规抽奖 / 17 青少年不良信息 / 0 其他。旧快照的 6（政治）、11、13、14、16、21 **都不存在**，第一版发过 `reason=6` 属于会撞空的码。
+    - 新增 `ReportApi.fetchReasons(oid, type)`（打 metadata、进程内缓存）＋ `cachedOrDefaultReasons()`：弹窗同步取缓存保证不打顿，同时在后台预热；拿不到就用兜底表。`content_required` 逐项来自服务端。
+    - 正文下限 **3 → 2**：H5 校验是 `length < 2`，文案「自定义举报内容长度为2-200字符」；APK 里「不能少于3个字」属更老版本。
+    - `ReportApiTest` 30 例（+6）：兜底表码序、已废弃码不存在、8/23/20/18 的文案、metadata 两种格式解析、`content_required` 的 1/"1" 真值、不可用返回 null 而不是空表、新码（9/10/12/...）确实进了请求体。
+    - **设备侧复测**（MuMu，临时放开登录判定后立刻回退）：理由弹窗按官方顺序渲染（违法违规 / 色情 / 低俗 / 赌博诈骗 / 违法信息外链 / 涉政谣言 / …），点「违法违规」→ `req=reason=9&csrf=***&oid=170001&type=1&rpid=1353715029`，回 `-352` 并提示「操作被风控拦下了」✔
   - **评审跟进（同日，代码评审意见）**：
-    - 「错误码没覆盖 -102/-403/12008/12009/12019/12077」→ 已补齐（见改法第 2 条），`ReportApiTest` 相应新增 4 例（12008 说清「举报过」、12077 与 12008 可区分、12019/12026 两句不重复、-102 不写成「未登录」），共 24 例。
+    - 「错误码没覆盖 -102/-403/12008/12009/12019/12077」→ 已补齐（见改法第 2 条），`ReportApiTest` 相应新增 4 例（12008 说清「举报过」、12077 与 12008 可区分、12019/12026 两句不重复、-102 不写成「未登录」），共 24 例（理由表重做后总数为 30 例）。
     - 「快照列了理由码 9~17，客户端没开放」→ **查证后决定暂不开放**，三条证据：①服务端先风控后校验参数，`reason=99` 与 `reason=1` 都回 -352，离线拿不到合法/非法信号；②APK 里「违法违规/赌博诈骗/侵犯隐私/抢楼」字符串确实存在，但按 `public.xml` 的资源 id 反查 `jadx` 全部代码**0 命中**，是历史遗留资源，不能判定仍在使用；③未知 `reason` 服务端是回 -400 还是降级成「其他」无证据。定论方法（登录后逐码试 `9..17`）写进 `docs/bilibili-api-notes.md` §8 与 `ReportApi` 类注释，验完补两个数组即可，UI 不用动。
 - **遗留**：①**登录态下的成功提交（code=0）没验**——模拟器没有可用登录态，登录要扫码，只能等真机；已验证到「请求体正确、服务端确实在回业务码」这一步；②视频/弹幕举报未做（各有明确理由，见 api notes §8）；③举报后列表不会变（服务端审核结果不回写列表，也不打算轮询）。
 

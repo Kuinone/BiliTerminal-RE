@@ -644,11 +644,14 @@ class ReplyAdapter(
     }
 
     /**
-     * 举报面板：先选理由，理由选「其他」时再补一段正文。
+     * 举报面板：先选理由，服务端标了「需正文」的理由再补一段正文。
      *
-     * <p>两步弹窗是照官方客户端的流程来的（`comment_global_string_171`「举报理由不能少于3个字」
-     * 只在「其他」分支出现）。理由码与文案的对照表在 [ReportApi] 里，这里只负责展示与提交，
-     * 免得 UI 与协议各存一份码表。
+     * <p>理由表**以服务端为准**（`/x/v2/reply/report/metadata`，与官方 H5 同一套），拿不到就用
+     * [ReportApi.defaultReasons] 里那份官方静态兜底表。为了不让弹窗等网络，这里同步取
+     * [ReportApi.cachedOrDefaultReasons]，同时在后台预热一次缓存——第一次打开用兜底表，
+     * 之后就是服务端的最新表。
+     *
+     * <p>哪些理由要正文也看服务端下发的 `content_required`，不再自己假设「只有其他要」。
      *
      * <p>`TerminalDialog.singleChoice` **不会自己 show、回调里也不自动 dismiss**，两者都得自己来。
      */
@@ -659,55 +662,65 @@ class ReplyAdapter(
             MsgUtil.showMsg(context.getString(R.string.msg_report_login_first))
             return
         }
-        val codes = ReportApi.commentReasonCodes()
-        val labels = ReportApi.commentReasonLabels()
+        warmReportReasons()
+        val reasons = ReportApi.cachedOrDefaultReasons()
         TerminalDialog.singleChoice(
             context = context,
             title = context.getString(R.string.title_report_reason),
-            items = labels.toList()
+            items = reasons.map { it.label }
         ) { sheet, which ->
             sheet.dialog.dismiss()
-            val reasonCode = codes[which]
-            if (ReportApi.needsContent(reasonCode)) askReportContent(reply, reasonCode)
-            else submitReport(reply, reasonCode, "")
+            val reason = reasons[which]
+            if (ReportApi.needsContent(reason)) askReportContent(reply, reason)
+            else submitReport(reply, reason, "")
         }.show()
     }
 
     /**
-     * 「其他」理由的正文输入。
+     * 后台预热理由表缓存（只在还没缓存过时拉一次；失败就继续用兜底表，不打扰用户）。
      *
-     * <p>正文长度校验走 [ReportApi.isContentAcceptable]（与客户端「不能少于3个字」一致），
-     * 不合格时**只提示、不提交**——服务端对短正文只回一个笼统的 -400，
-     * 用户看不出是被字数卡住的。
+     * <p>metadata 接口需要登录，所以未登录时不发这个请求。
+     */
+    private fun warmReportReasons() {
+        if (ReportApi.cachedReasons() != null) return
+        CenterThreadPool.run { ReportApi.fetchReasons(oid, replyType) }
+    }
+
+    /**
+     * 需要正文的理由的输入框。
+     *
+     * <p>长度校验走 [ReportApi.isContentAcceptable]（2~200 字符，与官方 H5
+     * 「自定义举报内容长度为2-200字符」一致），不合格时**只提示、不提交**——
+     * 服务端对长度不合规只回 12077，用户看不出是字数卡住的。
      *
      * <p>[initialText] 只为「太短被退回」这条路径服务：`TerminalDialog.input` 的确认按钮是
      * 「先关窗再回调」，校验失败时输入框已经不在了，不把原文带回来用户就得从「选理由」重来一遍。
      */
-    private fun askReportContent(reply: Reply, reasonCode: Int, initialText: String = "") {
+    private fun askReportContent(reply: Reply, reason: ReportApi.Reason, initialText: String = "") {
         TerminalDialog.input(
             context = context,
             title = context.getString(R.string.title_report_content),
             hint = context.getString(R.string.hint_report_content),
             initialText = initialText,
-            maxLength = ReportApi.OTHER_CONTENT_MAX_LENGTH,
+            maxLength = ReportApi.CONTENT_MAX_LENGTH,
             confirmText = context.getString(R.string.btn_report_submit),
             onConfirm = { text ->
-                if (ReportApi.isContentAcceptable(reasonCode, text)) {
-                    submitReport(reply, reasonCode, text)
+                if (ReportApi.isContentAcceptable(reason, text)) {
+                    submitReport(reply, reason, text)
                 } else {
                     MsgUtil.showMsg(context.getString(R.string.msg_report_content_too_short))
-                    askReportContent(reply, reasonCode, text)
+                    askReportContent(reply, reason, text)
                 }
             }
         ).show()
     }
 
-    private fun submitReport(reply: Reply, reasonCode: Int, content: String) {
+    private fun submitReport(reply: Reply, reason: ReportApi.Reason, content: String) {
         CenterThreadPool.run {
             try {
                 // 评论区类型要用 replyType 而不是 type：动态/专栏的评论传 1 会被服务端拒绝，
                 // 这与点赞接口的约束是同一条（见上面 likeReply 的注释）。
-                val code = ReportApi.reportReply(oid, replyType, reply.rpid, reasonCode, content)
+                val code = ReportApi.reportReply(oid, replyType, reply.rpid, reason, content)
                 (context as Activity).runOnUiThread {
                     if (code == 0) MsgUtil.showMsg(context.getString(R.string.msg_report_submitted))
                     else MsgUtil.showMsg(ReportApi.errorMsg(code).ifEmpty { ApiErrorText.opFailedBrief(code) })
