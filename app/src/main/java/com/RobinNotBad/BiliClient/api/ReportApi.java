@@ -24,6 +24,21 @@ import java.util.Objects;
  *       {@code CD时间未到不能举报}（{@code _178}）也是客户端原文，对应下面的长度校验与 12026 文案。</li>
  * </ul>
  *
+ * <h3>为什么只开放 0~8，快照里的 9~17 没开</h3>
+ * 同一份快照的「举报类型」表其实列到 17（9 违法违规 / 10 低俗 / 11 非法网站 / 12 赌博诈骗 /
+ * 13 传播不实信息 / 14 怂恿教唆信息 / 15 侵犯隐私 / 16 抢楼 / 17 青少年不良信息），
+ * 但**没法确认服务端现在仍然收这几个码**：
+ * <ul>
+ *   <li>服务端先做风控再做参数校验——匿名请求下 {@code reason=99}（必定非法）与 {@code reason=1}
+ *       返回的都是 {@code -352}，离线拿不到「这个码合不合法」的信号；</li>
+ *   <li>官方客户端 9.16.1 里确实有「违法违规 / 赌博诈骗 / 侵犯隐私 / 抢楼」这些字符串，
+ *       但**反编译代码里没有任何引用**，属于历史遗留资源，不能据此判定它们还在选项里；</li>
+ *   <li>服务端对未知 {@code reason} 会回什么、是否降级成「其他」，同样没有实测证据。</li>
+ * </ul>
+ * 所以先只开放有把握的 0~8：拿不确定的码去撞，用户看到的是「请求出错了」，比少几个分类更糟。
+ * 真机登录后逐个码试一遍（{@code reason=9..17} 看回 0 还是 -400）就能定论，验完把
+ * {@link #COMMENT_REASON_CODES} 与 {@link #COMMENT_REASON_LABELS} 一起补齐即可。
+ *
  * <h3>为什么只有评论，没有视频</h3>
  * 视频举报的**提交**接口（{@code POST app.bilibili.com/x/v2/view/report/add}）其实也能用
  * （匿名实测只回 {@code -101 账号未登录}），但**拉理由列表**的
@@ -139,8 +154,15 @@ public class ReportApi {
     /**
      * 返回码 → 人话。空串表示成功。
      *
-     * <p>只列举报链路上真会遇到的码：{@code -352} 是风控（匿名/短时间连点最常见），
-     * {@code 12026} 是客户端文案 {@code CD时间未到不能举报} 对应的冷却拒绝。
+     * <p>码表来源：`bilibili-API/docs/comment/action.md`「举报评论」的 json 回复段
+     * （-101 / -102 / -111 / -400 / -403 / -404 / -500 / -509 / 12002 / 12006 / 12008 /
+     * 12009 / 12019 / 12077）＋ 官方客户端 9.16.1 的提示文案（`CD时间未到不能举报`
+     * 对应下面 12026）。
+     *
+     * <p>**这些码是「文档 + 客户端文案」推导出来的，没有逐条在真机上撞过**：举报链路实测只
+     * 拿到过 -352（模拟器未登录，风控先于业务校验）。所以每条都给了具体文案而不是留白——
+     * 万一线上码值与文档有出入，用户至少看到一句能读懂的话，而不是「操作失败（错误码 …）」。
+     * 最常见的两条是 12008（已经举报过）与 12077（「其他」正文长度不合规）。
      */
     public static String errorMsg(int code) {
         switch (code) {
@@ -148,6 +170,8 @@ public class ReportApi {
                 return "";
             case -101:
                 return ApiErrorText.loginRequired();
+            case -102:
+                return "账号已被封停，无法举报";
             case -111:
                 return ApiErrorText.tokenExpired();
             case -352:
@@ -155,16 +179,30 @@ public class ReportApi {
                 return ApiErrorText.riskRejected();
             case -400:
                 return ApiErrorText.requestIllegal();
+            case -403:
+                return "权限不足，无法举报这条评论";
             case -404:
                 return "评论不存在";
+            case -500:
+                return "服务器出错了，请稍后再试";
             case -509:
                 return "操作过于频繁，请稍后再试";
             case 12002:
                 return "评论区已关闭";
             case 12006:
                 return "没有这条评论";
-            case 12026:
+            case 12008:
+                return "你已经举报过这条评论了";
+            case 12009:
+                return "评论类型不合法，这条评论无法举报";
+            case 12019:
                 return "举报太频繁了，请稍后再试";
+            case 12026:
+                // 客户端原文「CD时间未到不能举报」——与 12019 都属冷却拒绝，措辞上区分开，
+                // 免得看日志时两个码给同一句话
+                return "刚举报过，冷却中，请稍后再试";
+            case 12077:
+                return "举报理由过长或过短";
             default:
                 return ApiErrorText.opFailed(code);
         }

@@ -175,11 +175,49 @@ class ReportApiTest {
 
     @Test
     fun errorMsg_knownReportErrorsAreNotGeneric() {
-        for (code in listOf(-101, -111, -352, -412, -400, -404, -509, 12002, 12006, 12026)) {
+        // 全部取自 bilibili-API/docs/comment/action.md「举报评论」的 json 回复段
+        val known = listOf(
+            -101, -102, -111, -352, -412, -400, -403, -404, -500, -509,
+            12002, 12006, 12008, 12009, 12019, 12026, 12077
+        )
+        for (code in known) {
             val msg = ReportApi.errorMsg(code)
             assertTrue("code=$code 应有专属提示", msg.isNotEmpty())
             assertFalse("code=$code 不该落到兜底文案", msg.startsWith("操作失败（错误码"))
         }
+    }
+
+    @Test
+    fun errorMsg_alreadyReportedSaysSo() {
+        // 12008 是举报链路最高频的拒绝（同一评论只能报一次）。落到兜底文案的话，
+        // 用户只会看到「操作失败（错误码 12008）」，根本不知道是自己已经报过了。
+        val msg = ReportApi.errorMsg(12008)
+        assertTrue("12008 要说清是重复举报", msg.contains("举报过"))
+    }
+
+    @Test
+    fun errorMsg_reasonLengthIsDistinguishedFromOtherErrors() {
+        // 12077 是「其他」正文长度不合规：界面已经拦了 <3 字，但服务端上限与本地
+        // OTHER_CONTENT_MAX_LENGTH 未必一致，超长时仍会走到这里
+        val msg = ReportApi.errorMsg(12077)
+        assertTrue("12077 要提到「理由」", msg.contains("理由"))
+        assertNotEquals("12077 不能和 12008 混为一谈", ReportApi.errorMsg(12008), msg)
+    }
+
+    @Test
+    fun errorMsg_cooldownCodesAreDistinguishable() {
+        // 12019（举报过于频繁）与 12026（客户端「CD时间未到」）都是冷却拒绝，
+        // 但给同一句话会让看日志的人分不清撞的是哪个码
+        assertNotEquals(ReportApi.errorMsg(12019), ReportApi.errorMsg(12026))
+        assertTrue(ReportApi.errorMsg(12019).contains("稍后"))
+        assertTrue(ReportApi.errorMsg(12026).contains("稍后"))
+    }
+
+    @Test
+    fun errorMsg_bannedAccountIsNotMistakenForLogout() {
+        // -102（封停）与 -101（未登录）用户要做的事完全不同：一个去登录没用
+        assertNotEquals(ReportApi.errorMsg(-101), ReportApi.errorMsg(-102))
+        assertTrue("封停要出现「封」", ReportApi.errorMsg(-102).contains("封"))
     }
 
     @Test
