@@ -546,9 +546,13 @@ class ReplyAdapter(
     /**
      * 当前用户是否已登录。
      *
-     * 举报是写操作，必须登录（服务端对匿名请求回 -101 / -352）。判定放在**展示入口之前**
-     * 而不是等提交失败再提示：未登录时连「举报评论」这一项都不列出来，
-     * 别人的评论就还是老样子只有「复制文字」一项、长按直接进复制界面，行为不变。
+     * 只作为**提交前**的闸门（见 [showReportDialog]）：没登录就只提示、不发请求，
+     * 免得白跑一趟再抛个 -352 风控。
+     *
+     * **不要拿它当「要不要显示举报入口」的判据**（26.10.27 改过一版，反例见
+     * `docs/review/fix-progress.md` §3.73）：入口藏起来之后，别人的评论就只剩「复制文字」
+     * 一项，而「只剩复制」会走下面的直连捷径——用户重装后丢了登录态，长按直接进复制页，
+     * 看到的现象是「举报功能没了」，根本想不到是没登录。
      */
     private fun isLoggedIn(): Boolean =
         SharedPreferencesUtil.getLong(SharedPreferencesUtil.mid, 0) != 0L
@@ -607,8 +611,11 @@ class ReplyAdapter(
         })
 
         // 「举报评论」只对「不是自己、也管不了」的评论出现：自己的评论举报自己没意义，
-        // 管理员的处置手段是删除而不是举报。未登录时也不列（见 isLoggedIn 的说明）。
-        if (!canManage(reply) && isLoggedIn())
+        // 管理员的处置手段是删除而不是举报。
+        // **不按登录态隐藏**：藏起来会让别人的评论只剩「复制文字」一项，从而命中下面那条
+        // 「只剩复制就直接复制」的捷径——重装后丢了登录态的用户会以为举报功能不存在。
+        // 未登录时照常列出，点了由 showReportDialog 提示「请先登录后再举报」。
+        if (!canManage(reply))
             actions.add(ManageAction(ManageAction.Kind.REPORT, context.getString(R.string.text_reply_report), false) {
                 showReportDialog(reply)
             })
@@ -619,8 +626,9 @@ class ReplyAdapter(
         }
 
         // 只剩「复制文字」一项时，不必弹一个只有单选项的菜单——直接进复制界面。
-        // 别人的评论（非管理员、也不是自己发的）就是这种情况：以前长按会弹一个孤零零的
-        // 「复制文字」，多一次点击才拿到本来就该直接给的东西。
+        // **评论这边已经命中不到了**（别人的评论总会多一项「举报评论」），保留它是防
+        // 「复制之外再无操作项」的组合再次出现时又变成「弹一个没得选的面板」；
+        // 动态那条 `DynamicHolder.showManageMenu` 仍在用同一套判据，那边是活的。
         if (actions.size == 1 && actions[0].kind == ManageAction.Kind.COPY) {
             actions[0].run()
             return
@@ -645,7 +653,8 @@ class ReplyAdapter(
      * <p>`TerminalDialog.singleChoice` **不会自己 show、回调里也不自动 dismiss**，两者都得自己来。
      */
     private fun showReportDialog(reply: Reply) {
-        // 理论上入口已经被 isLoggedIn 挡过一道，这里再挡一次是因为登录态可能在面板开着的时候失效。
+        // 入口对所有人可见（见 showManageMenu 的说明），所以这里是**唯一**的登录闸门：
+        // 没登录就直接提示，不发那个注定被 -352 打回来的请求。
         if (!isLoggedIn()) {
             MsgUtil.showMsg(context.getString(R.string.msg_report_login_first))
             return
