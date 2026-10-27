@@ -30,7 +30,8 @@ object SettingsIndex {
             a.startActivity(Intent(a, SettingPlayerChooseActivity::class.java))
         }
         list += Entry("账号与登录", "登录、切换账号与查看登录信息") { a -> openGroup(a, "account", "账号与登录") }
-        list += Entry("界面与外观", "界面大小、主题与动画效果") { a -> openGroup(a, "ui", "界面与外观") }
+        list += Entry("界面与外观", "主题配色、字体与动画效果") { a -> openGroup(a, "ui", "界面与外观") }
+        list += Entry("布局适配", "界面大小、边距、圆屏与横屏等屏幕适配") { a -> openGroup(a, "layout", "布局适配") }
         list += Entry("内容与浏览", "菜单、搜索、详情页、评论区与偏好") { a -> openGroup(a, "content", "内容与浏览") }
         list += Entry("通知设置", "新消息、追番更新等通知栏提醒的开关") { a -> openGroup(a, GROUP_NOTIFY, "通知设置") }
         list += Entry(
@@ -112,18 +113,18 @@ object SettingsIndex {
         }
 
         // ---- 界面与外观 内联项 ----
-        list += Entry("圆屏适配", "适配圆形屏幕") { a -> openGroup(a, "ui", "界面与外观", "圆屏适配") }
-        list += Entry("界面大小", "调整应用界面缩放大小") { a -> openGroup(a, "ui", "界面与外观", "界面大小") }
-        list += Entry("界面边距（横向）", "单位百分比，用于圆屏适配") { a -> openGroup(a, "ui", "界面与外观", "界面边距（横向）") }
-        list += Entry("界面边距（纵向）", "单位百分比，用于圆屏适配") { a -> openGroup(a, "ui", "界面与外观", "界面边距（纵向）") }
-        list += Entry("设置Density", "手动指定屏幕密度") { a -> openGroup(a, "ui", "界面与外观", "设置Density") }
+        list += Entry("圆屏适配", "适配圆形屏幕") { a -> openGroup(a, "layout", "布局适配", "圆屏适配") }
+        list += Entry("界面大小", "调整应用界面缩放大小") { a -> openGroup(a, "layout", "布局适配", "界面大小") }
+        list += Entry("界面边距（横向）", "单位百分比，用于圆屏适配") { a -> openGroup(a, "layout", "布局适配", "界面边距（横向）") }
+        list += Entry("界面边距（纵向）", "单位百分比，用于圆屏适配") { a -> openGroup(a, "layout", "布局适配", "界面边距（纵向）") }
+        list += Entry("设置Density", "手动指定屏幕密度") { a -> openGroup(a, "layout", "布局适配", "设置Density") }
         list += Entry("外观设置", "主题配色、卡片圆角、自定义字体") { a -> openGroup(a, GROUP_APPEARANCE, "外观设置") }
         list += Entry("颜色模式", "暗色 / 亮色模式切换") { a -> openGroup(a, GROUP_APPEARANCE, "外观设置", "颜色模式") }
         list += Entry("主题配色", "选择应用的主题配色方案") { a -> openGroup(a, GROUP_APPEARANCE, "外观设置", "主题配色") }
         list += Entry("弥散光晕", "页面顶部的主题色光晕背景") { a -> openGroup(a, GROUP_APPEARANCE, "外观设置", "弥散光晕") }
         list += Entry("玻璃质感", "卡片与按钮半透明，让光晕透进来") { a -> openGroup(a, GROUP_APPEARANCE, "外观设置", "玻璃质感") }
         list += Entry("卡片圆角", "调整卡片与按钮的圆角") { a -> openGroup(a, GROUP_APPEARANCE, "外观设置", "卡片圆角") }
-        list += Entry("横屏模式", "启用横屏显示") { a -> openGroup(a, "ui", "界面与外观", "横屏模式") }
+        list += Entry("横屏模式", "启用横屏显示") { a -> openGroup(a, "layout", "布局适配", "横屏模式") }
         list += Entry("开屏文字", "自定义开屏显示文字") { a -> openGroup(a, "ui", "界面与外观", "开屏文字") }
         list += Entry("文字跑马灯", "文字跑马灯效果") { a -> openGroup(a, "ui", "界面与外观", "文字跑马灯") }
         list += Entry("加载渐入渐出动画", "页面加载渐入渐出") { a -> openGroup(a, "ui", "界面与外观", "加载渐入渐出动画") }
