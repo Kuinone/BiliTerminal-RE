@@ -33,7 +33,7 @@ import okhttp3.OkHttpClient;
  * 「DST Root CA X3 交叉签名」兜底，但 2024 年 Let's Encrypt 已停发这条交叉链。于是 Android 7.1 及以下
  * （大量手表还停在 4.4~7.1）访问分享站会报
  * {@code CertPathValidatorException: Trust anchor for certification path not found}，
- * 而走 DigiCert/Sectigo 的 Gitee、GitHub 更新源不受影响——这就是「部分设备」才出问题的原因。
+ * 而 Gitee（TrustAsia，交叉签到 Certum 老根，26.10.27 实测）、GitHub（Sectigo）更新源不受影响——这就是「部分设备」才出问题的原因。
  *
  * <p><b>做法</b>：把 {@code res/raw/extra_ca_roots.pem} 里的根证书<b>追加</b>到系统信任锚之上，构造一个普通的 {@link X509TrustManager}。证书链、有效期、主机名照常校验，
  * <b>不是</b> trust-all；只是让老设备也认识这两张主流根证书。
