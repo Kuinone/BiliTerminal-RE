@@ -30,7 +30,7 @@ object SettingsIndex {
             a.startActivity(Intent(a, SettingPlayerChooseActivity::class.java))
         }
         list += Entry("账号与登录", "登录、切换账号与查看登录信息") { a -> openGroup(a, "account", "账号与登录") }
-        list += Entry("界面与外观", "主题配色、字体与动画效果") { a -> openGroup(a, "ui", "界面与外观") }
+        list += Entry("界面与外观", "主题配色、字体与布局适配") { a -> openGroup(a, "ui", "界面与外观") }
         list += Entry("布局适配", "界面大小、边距、圆屏与横屏等屏幕适配") { a -> openGroup(a, "layout", "布局适配") }
         list += Entry("内容与浏览", "菜单、搜索、详情页、评论区与偏好") { a -> openGroup(a, "content", "内容与浏览") }
         list += Entry("通知设置", "新消息、追番更新等通知栏提醒的开关") { a -> openGroup(a, GROUP_NOTIFY, "通知设置") }

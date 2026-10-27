@@ -250,11 +250,21 @@ class SettingGroupActivity : RefreshListActivity() {
     }
 
     private fun buildUIGroup() {
-        // 外观配置：主题配色、字体与整体观感相关（布局/尺寸类已拆到「布局适配」分组）
+        // 两个二级页：「外观设置」管配色/字体，「布局适配」管尺寸/边距/圆屏/横屏
         nav(R.drawable.icon_ui, "外观设置", "主题配色、卡片圆角、自定义字体") {
             startActivity(Intent(this, SettingGroupActivity::class.java).apply {
                 putExtra("group_type", GROUP_APPEARANCE)
                 putExtra("group_title", "外观设置")
+            })
+        }
+        nav(
+            R.drawable.icon_ui,
+            getString(R.string.settingtext_setting_layout_group),
+            getString(R.string.settingtext_setting_layout_group_desc)
+        ) {
+            startActivity(Intent(this, SettingGroupActivity::class.java).apply {
+                putExtra("group_type", "layout")
+                putExtra("group_title", getString(R.string.settingtext_setting_layout_group))
             })
         }
         input("开屏文字", getString(R.string.setting_lab_splashtext), SettingsKeys.SPLASH_TEXT, "input_string", "欢迎使用\nRE:哔哩终端")
@@ -263,9 +273,9 @@ class SettingGroupActivity : RefreshListActivity() {
     }
 
     /**
-     * 「布局适配」分组：界面大小、边距、圆屏、密度、横屏等「屏幕如何排布」相关项。
+     * 「布局适配」二级页（入口在「界面与外观」里）：界面大小、边距、圆屏、密度、横屏等「屏幕如何排布」相关项。
      *
-     * 由「界面与外观」拆出（原 `buildUIGroup` 中非外观的那一半）。首次启动引导页
+     * 由「界面与外观」拆出（原 `buildUIGroup` 中非外观的那一半），不在设置主页单列。首次启动引导页
      * `SetupUIActivity` 本就是纯布局项（界面大小 / 边距 / 圆屏），语义与本分组一致，无需改动。
      */
     private fun buildLayoutGroup() {
