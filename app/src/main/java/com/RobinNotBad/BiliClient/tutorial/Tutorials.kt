@@ -101,7 +101,7 @@ object Tutorials {
             target = SettingGroupActivity::class.java,
             extras = mapOf(
                 "group_type" to GROUP_APPEARANCE,
-                "group_title" to UiText.of("外观设置"),
+                "group_title" to "外观设置",
             ),
         ),
     ) {
