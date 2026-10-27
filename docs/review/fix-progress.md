@@ -9,6 +9,7 @@
 - **版本号**：`26.10.26`（`app/build.gradle` 的 `versionName`），`versionCode 2610260`（26.10.24 是 `2610240`，26.10.26 抬到 `2610260`；`strings.xml` 的 `update_log_current` 锚点同期换成「【26.10.26 本次更新】」，`:app:verifyVersionConsistency` 以该锚点校验，本机未复跑）。tag `26.10.26` 已占用，上一版 tag 是 `26.10.24`。
 - **上一版**：`26.10.24` / tag `26.10.24`。
 - **本轮改动（26.10.26）**：搜索结果支持排序（综合 / 播放量 / 最新 / 收藏，视频与专栏）；收藏夹接口升级 B 站新版；播放器新增「无极调音」，音量可在 0~100% 之间任意调；发布动态支持「仅自己可见」「关闭评论」；图片默认存进应用专属目录；下载修掉卡在 20% 不动、1080P+ 缓存下载完成后合并成单文件；断网启动进缓存页；短视频横滑重做；关于页 RE 开发者独立成一列；菜单级页面顶栏箭头统一朝下；发现新版本自动跳更新页；修复 ColorOS Watch 弹窗只剩空方块。明细见 `strings.xml` 的 `update_log_current`（12 条编号条目，另 1 条为版本锚点）。
+- **26.10.26 发版后的未发版改动**：搜索排序入口从搜索框下方的全宽按钮改成搜索框内最左侧的图标按钮（点它仍是同一个单选弹窗），搜索框的滚动收起逻辑整体回退到「加排序功能之前」的 `translationY` 版本（见 §3.71）。下次发版时 `update_log_current` 要补这一条。
 - **下次递增**：先看 `app/build.gradle:23-24`；release immutability 下被 Release 用过的 tag **永久不可复用**，同版本名补丁版只能用 `26.10.24.1` 这种后缀形式，`versionCode` 递增、`versionName` 可不变。改了版本号还要同步 `strings.xml` 里 `update_log_current` 的「【YY.MM.DD 本次更新】」锚点，否则 `:app:verifyVersionConsistency` 会失败。
 - **构建命令**（单测任务名**带 flavor 前缀**，`testDebugUnitTest` 自 26.10.11 引入 flavor 后已不存在）：
 
@@ -1559,6 +1560,22 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
   - `util/UpdateManager.kt` 的 `okHttpClient` 套上 `ExtraTrust.apply(...)`，所以更新检查、内测解析、内测 txt、APK 下载都走合并后的信任。**带登录 Cookie 的主客户端 `NetWorkUtil` 没动**，不扩大信任面。
 - **验证**：本机沙箱没有 Android SDK，**`assembleDebug` / 单测没跑成**。把 `ExtraTrust` 的纯逻辑部分（`readCertificates` / `systemTrustManager` / `build`）剥出来在 JDK 25 上测过：PEM 读出 2 张证书（ISRG Root X1 / X2）；keytool 自签 CA 签发的叶子证书，系统 TM 拒绝、合并 TM（不含该 CA）**仍然拒绝**、合并 TM（含该 CA）通过。
 - **未验证 / 残留**：①Android 编译与单测待跑；②要在 Android 7.1 及以下的真机或 AVD 上跑通内测码下载才算真修好；③如果分享站换成别家证书（比如根也不在老系统里），往 `extra_ca_roots.pem` 追加对应根证书即可，代码不用改；④如果其实是服务器漏发了中间证书，所有设备都会报错，那就不属于这次修的问题，要改服务器配置。
+
+### 3.71 搜索排序入口挪进搜索框内部 + 收起逻辑回退（26.10.26 发版后，用户要求）
+
+- **缘起**：用户要求「查看排序这个按钮加入之前搜索框的逻辑，现在删除搜索框，之后用这个图标（`filter_filters_funnel_list_navigation_sort_sorting_icon_123212.ico`）放在搜索框的最最左边来替代底部的排序功能入口，将搜索框的收起逻辑改为没加入排序功能之前的逻辑（一模一样最好）」。即：撤掉 26.10.24 加的那条全宽排序按钮与为它引入的整套高度动画，排序入口收敛成搜索框内左侧一个图标按钮。
+- **改法（2 个代码/布局文件 + 2 张新图 + 3 处文档）**：
+  - `app/src/main/res/layout/activity_search.xml`：删掉 `<Button @+id/searchSortButton>`（全宽、锚 `searchbar` 下方那条）；`ViewPager` 的 `layout_constraintTop_toBottomOf` 回 `@id/top`（旧版口径：搜索框盖在列表上方、列表从顶栏下方就开始走）；`searchbar` 内部最左边新增 `@+id/searchSortButton` 的 `ImageView`（30dp 宽、`marginStart 3dp`、`padding 5dp`、`scaleType=fitCenter`、`visibility=gone`、`contentDescription` 复用 `text_search_sort_title`，id 沿用旧名所以 `findViewById` 绑定方式不变）。
+  - `SearchActivity.kt`：删整套 `applyTopChrome` / `setViewHeight` / `resetViewHeight` / `naturalHeightOf` / `setDropdownVisible` 与 `chromeAnimator` / `naturalHeights` / `CHROME_ANIM_MS`；`onScrolled` 逐字回退到加排序之前（`ObjectAnimator.ofFloat(searchBar, "translationY", 0f, -height)` + `handler.postDelayed({ visibility = GONE }, 200)`，展开反向，`dy < -1` 才展开，`animate_last` 200ms 节流）；`refreshSortBar()` 只控制图标显隐与点击（`hasSearched` 且当前 fragment 有 `sortOptions()` 才显示，风控时 `alpha=0.4` + 点击 `MsgUtil.showMsg` 后 `retry()`）；新增 `applySortIconVisible()` 在 `keywordInput.setPaddingRelative` 上把 `paddingStart` 在 8dp 与 `SORT_ICON_SLOT_DP=38f`（3dp 边距 + 30dp 图标 + 5dp 间隙）之间切，给图标让位。`showSortDialog()` 与 `TerminalDialog.singleChoice` 未改。
+  - 图标：新建 `app/src/main/res/drawable-nodpi/icon_sort_filter.png`（仓库无密度分桶目录，图片一向放 `mipmap-nodpi`）。源 `.ico` 是 128×128 纯黑图形，黑色在 `#80242424` 的搜索框上看不见，用 Pillow 裁 alpha bbox（9,17,119,111）→ 6% 留白 → LANCZOS 缩到 128 → RGB 统一重着色成 `#EBE0E2`（与 `icon_search` 同色），alpha 原样保留。亮色模式另出一份 `app/src/main/res/drawable-notnight-nodpi/icon_sort_filter.png`（同图形、RGB 换成 `#3A3438`，与 `drawable-notnight/icon_search.xml` 的描边同色）：亮色模式的搜索框底是 `#0A000000`（浅底），`#EBE0E2` 那份会隐形，`drawable-notnight` 里既然已经给 `icon_search` 备了深色版，这个新图标也得同一套。以后改这个图标两份一起改（`tools/appearance/gen_light_mode.py` 的约定）。
+- **验证**：
+  - 构建/单测：`assembleDebug` 双 flavor 成功；`testStandardDebugUnitTest` + `testCoexistDebugUnitTest` 全绿。
+  - 设备侧（SDK AVD `wear5`，Android 14 / 466×466 圆屏，standard debug，headless 启动 + `adb emu power ac off` 否则 Wear 会盖一层 `ChargingActivity`）：未搜索时 `searchSortButton` 不在 `uiautomator` dump 里（GONE ✔）；输入 `linux` 回车后以 `ImageView` 出现，bounds `[41,91][101,175]`（= 3dp 边距 + 30dp 图标，密度 2.0）、`content-desc="排序：综合"`、`clickable=true`；像素测量（screencap + Pillow 统计亮列）图标描边占 x=53..88、文字从 x=112 起，互不重叠，`paddingStart` 让位生效；点图标弹出 `TerminalDialog` 单选（标题「搜索结果排序」，项「综合 ✓ / 播放量 / 最新」，第四档「收藏」在滚动区外，底部「点空白处取消」），点「播放量」后 `content-desc` 变「排序：播放量」、列表 798.2万 → 502.0万 降序、弹窗消失，选档 → `selectSort("click")` 链路通。
+  - 收起/展开（旧版口径）：上滑 `input swipe 233 350 233 120 300` 后 dump 里 `searchbar` 整个 GONE、卡片从 y=87（`@id/top` 下方）开始铺 ✔；下滑 `input swipe 233 130 233 400 400` 后 `searchbar` 回到 `[23,91][443,175]`、`content-desc` 仍是「排序：播放量」✔。
+  - 亮色模式：把 `shared_prefs/default.xml` 的 `ui_color_mode` 临时改成 `light` 复测（测完改回 `dark`）——列表底色平均亮度 237 确认亮色生效，图标区最小亮度 4.0、958 个暗像素，说明 `#3A3438` 那份可见；列扫描图标描边到 x≈103、文字仍从 x=112 起，与暗色一致。
+  - `logcat -b crash` 无本应用崩溃（只有模拟器自身 sensor HAL 的 `unexpected sensor type: 26`）。
+- **遗留**：①真手表未测，只在 SDK AVD 上验证；②亮色版图标是手工另存的一份 PNG，`tools/appearance/gen_light_mode.py` 目前不覆盖 `drawable-nodpi`，下次重跑该脚本不会自动生成它（不影响运行，只是别以为它是脚本产物）。
+- **文档**：`docs/FEATURES.md` §4.2 搜索排序条目、`docs/agents/pitfalls.md` 三条（搜索框盖住 fragment / 收起走 `translationY` / 图标靠 `paddingStart` 让位）、`docs/architecture-map.md` §8.7.3 搜索框滚动隐藏逻辑、`docs/review/fix-progress.md` §1「发版后的未发版改动」与本节。
 
 ## 4. 历史章节索引
 
