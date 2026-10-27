@@ -2,13 +2,13 @@
 
 > 面向对象：AI agent / 自动化脚本 / 需要脚本化验证真机行为的人。
 > 适用版本：26.10.14 起的 Debug 构建。Release 包**不含**本文描述的任何东西。
-> 配套：`docs/architecture-map.md`（架构与坑）、`docs/review/device-test-plan.md`（待执行的真机用例清单）。
+> 配套：`docs/architecture-map.md`（架构与坑）、`docs/review/real-device-regression-checklist.md`（发版前真机回归清单）；旧的 T/D 测试计划已归档为 `docs/archive/review/device-test-plan.md`。
 
 ---
 
 ## 1. 为什么需要这份手册
 
-`device-test-plan.md` 里那句「**全部用例一条都还没执行**」的根因不是没人想测，而是 debug 包**没有给自动化留任何入口**：
+（已归档的）`device-test-plan.md` 里那句「**全部用例一条都还没执行**」的根因不是没人想测，而是 debug 包**没有给自动化留任何入口**：
 
 | 原来的状况 | 对 agent 的后果 |
 | --- | --- |
@@ -188,7 +188,7 @@ adb shell $BRIDGE --es cmd log --es file http.log --es bytes 20000
 ### 4.5 常规 logcat 过滤
 
 `Logu` 的 logcat tag **就是调用者**（`类名>方法名`），这是**既有诊断契约，不要改**——
-`docs/review/device-test-plan.md` 的 D3-11~D3-14 直接写死了 `adb logcat -s "PlayerActivity>onPrepared"`
+`docs/archive/review/device-test-plan.md` 的 D3-11~D3-14 直接写死了 `adb logcat -s "PlayerActivity>onPrepared"`
 / `"PlayerActivity>getExtras"` / `"PlayerActivity>checkStall"`，全工程 269 处 `Logu.*` 调用点都吃这套约定，
 `api/NoteApi.java` 的 `adb logcat -s BiliNote` 也是同一思路。改成统一 tag 会把它们一次性作废。
 

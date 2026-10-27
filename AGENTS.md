@@ -8,7 +8,7 @@
 
 ## 先读架构地图
 
-改任何非平凡代码前先读 **`docs/architecture-map.md`**：真实分层、基类体系、43 个 API 类映射、UI 模板、逐条坑点。其他参考：**`docs/README.md`（文档总索引）**、`bilibili-API/`（B 站接口文档快照）、`docs/bilibili-api-notes.md`（接口与风控常识，改 API 前读）、`docs/FEATURES.md`（用户可见功能总表）、`docs/review/agent-test-guide.md`（**用 adb / agent 驱动 Debug 包测试的手册**，加调试能力前先读）、`docs/superpowers/specs/`（功能设计文档，写新功能前读）、`docs/tutorial-system-redesign.md`（教程系统重做中——**改教程前先读它**）。**`docs/archive/` 里全是历史资料，记录的是当时、不是现状**，别照着它改代码。
+改任何非平凡代码前先读 **`docs/architecture-map.md`**：真实分层、基类体系、API 层映射表、UI 模板、逐条坑点。其他参考：**`docs/README.md`（文档总索引）**、`bilibili-API/`（B 站接口文档快照）、`docs/bilibili-api-notes.md`（接口与风控常识，改 API 前读）、`docs/FEATURES.md`（用户可见功能总表）、`docs/review/agent-test-guide.md`（**用 adb / agent 驱动 Debug 包测试的手册**，加调试能力前先读）、`docs/superpowers/specs/`（功能设计文档，写新功能前读）、`docs/tutorial-system-redesign.md`（教程系统重做中——**改教程前先读它**）。**`docs/archive/` 里全是历史资料，记录的是当时、不是现状**，别照着它改代码。
 
 ## 分册索引（按"我正在做什么"读）
 
@@ -64,4 +64,4 @@
 
 ## 原生库
 
-`app/libs/{arm64-v8a,armeabi-v7a,mips,x86}/` 是已提交的 `.so`，日常别动；重建需 NDK r21e（见 `rebuild_all.sh` 等脚本）。
+`app/libs/{arm64-v8a,armeabi-v7a,x86}/` 是已提交的 `.so`，日常别动；重建需 NDK r21e（见 `rebuild_all.sh` 等脚本）。

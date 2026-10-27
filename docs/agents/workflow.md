@@ -16,7 +16,7 @@
 ## 改完必须自测
 
 - **改完必须自测，不许只说"应该没问题"**（26.10.22 起）：本机常驻 **MuMu 模拟器**（`adb connect 127.0.0.1:7555`，Android 15 / x86_64，`adb root` 可用 → 用 `app-coexist-x86-debug.apk`）。
-- 凡涉及播放器 / 网络 / UI 时序的改动，改完自己装包、跑一遍、看日志与截图，把实测结论（日志原文、关键截图、未复现的原因）写进 `docs/review/fix-progress.md`。**"编译通过 + 单测绿"只证明纯函数没写错，不证明功能可用**（见 `docs/review/device-test-plan.md` 〇节）。测法见 `docs/review/agent-test-guide.md`。
+- 凡涉及播放器 / 网络 / UI 时序的改动，改完自己装包、跑一遍、看日志与截图，把实测结论（日志原文、关键截图、未复现的原因）写进 `docs/review/fix-progress.md`。**"编译通过 + 单测绿"只证明纯函数没写错，不证明功能可用**（见 `docs/archive/review/device-test-plan.md` 〇节）。测法见 `docs/review/agent-test-guide.md`。
 - MuMu 的两个坑：**活动会落在 display 3/4/5 等副屏**（`screencap -d 0` 拍到的是桌面，要用 `screencap -p -d <physicalId>`、`input -d <displayId>`，映射由 `dumpsys display | grep -o 'displayId=[0-9]*, uniqueId=.local:[0-9]*'` 查），且 `input` **必须带 `-d <displayId>`**，否则点击落在桌面。
 
 ## 小改动不必上模拟器

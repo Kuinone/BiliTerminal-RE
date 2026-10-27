@@ -386,7 +386,7 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
     private var loop_enabled: Boolean = false
     private var auto_next_enabled = false
 
-    // ---- 位置停滞看门狗（弱网，见 docs/superpowers/specs/2026-10-11-player-network-resilience.md 的 P0-3）----
+    // ---- 位置停滞看门狗（弱网，见 docs/archive/superpowers/specs/2026-10-11-player-network-resilience.md 的 P0-3）----
     // IJK 没有任何"位置 N 秒不前进"的看门狗：弱网下连接可能还在、但一个字节都不来，
     // 于是既不回调 onError、也不走 onCompletion，界面永远停在转圈上（用户看到的就是"卡死"）。
     // 这里复用已有的 250ms 主线程定时器做判定：位置长时间不动 → 自动重连。
@@ -1425,7 +1425,7 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
             ijkPlayer!!.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "packet-buffering", 1)
             ijkPlayer!!.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "max-buffer-size", 15 * 1024 * 1024)
             ijkPlayer!!.setOption(IjkMediaPlayer.OPT_CATEGORY_FORMAT, "user_agent", NetWorkUtil.USER_AGENT_WEB)
-            // 弱网韧性（详见 docs/superpowers/specs/2026-10-11-player-network-resilience.md 的 P0-1）：
+            // 弱网韧性（详见 docs/archive/superpowers/specs/2026-10-11-player-network-resilience.md 的 P0-1）：
             // 1) rw_timeout：默认 0 = "读可以永久阻塞"，而且卡住时 IJK 不会回调 onError，
             //    界面上只会一直转圈 —— 这是弱网下直播/长视频"卡死不动"的直接原因；
             // 2) reconnect 只在"某次 read 返回负值"时才生效，而 chunked 直播（is_streamed=1）
@@ -1437,7 +1437,7 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
             ijkPlayer!!.setOption(IjkMediaPlayer.OPT_CATEGORY_FORMAT, "reconnect_delay_max", 5L)
             // 4) reconnect_at_eof：直播流被服务端"正常收尾"（chunked 响应干净 EOF）时，
             //    ffmpeg 会当成播完了，reconnect/reconnect_streamed 都不会触发。只有直播加这一项
-            //    （spec 的 P0-1 明确要求，见 docs/superpowers/specs/2026-10-11-player-network-resilience.md
+            //    （spec 的 P0-1 明确要求，见 docs/archive/superpowers/specs/2026-10-11-player-network-resilience.md
             //    §1 第 3 条、§4 P0-1）；点播的 EOF 就是真的播完，加了会无限重连，故只放在直播分支。
             if (isLiveMode) {
                 ijkPlayer!!.setOption(IjkMediaPlayer.OPT_CATEGORY_FORMAT, "reconnect_at_eof", 1L)

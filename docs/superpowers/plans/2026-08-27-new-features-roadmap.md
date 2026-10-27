@@ -57,6 +57,8 @@
 
 ### 2. 漫画签到（含补签）
 
+> **状态（26.10.27 核对）**：用户 26.10.04 已拍板「漫画算了」，漫画相关一律**不做**（见 `docs/review/fix-progress.md` §2.3）。本节只留接口资料。
+
 - **文档**：`docs/manga/ClockIn.md`
 - **接口**：
   - 签到：`POST https://manga.bilibili.com/twirp/activity.v1.Activity/ClockIn`（参数 `platform=android`）
@@ -91,6 +93,8 @@
 
 ### 5. 视频笔记（观看笔记）
 
+> **状态（26.10.27 核对）**：**查看已实现**（`api/NoteApi.java` + `activity/note/NoteActivity.kt`，见 `docs/FEATURES.md` §3.8）；新建 / 编辑笔记仍未做。
+
 - **文档**：`docs/note/`（list / info / action）
 - **接口**：笔记列表、详情、操作；富文本正文（节点序列格式）
 - **实现**：视频页加"笔记"入口，支持新建私有笔记 + 查看笔记列表
@@ -98,6 +102,8 @@
 - **工作量**：中
 
 ### 6. 图文/图片动态发布（含图片上传）
+
+> **状态（26.10.27 核对）**：**已实现**（`activity/dynamic/send/SendDynamicActivity.kt` 先上传图床再交 `DynamicApi.publishComplex` 组装 `pics`），本节保留作接口资料。
 
 - **文档**：`docs/dynamic/publish.md`
   - 图片上传：`POST https://api.bilibili.com/x/dynamic/feed/draw/upload_bfs`（multipart，`file_up` + `csrf`）
@@ -116,6 +122,8 @@
 
 ### 8. 充电（给 UP 主/自己充电）
 
+> **状态（26.10.27 核对）**：只做了**查看**——用户空间的充电公示（`api/ElectricApi.java` 的 `getElectricPanel`）；真正发起充电（扣费）未做。
+
 - **文档**：`docs/electric/`（Bcoin / charge_list / charge_msg / monthly）
 - **实现**：视频页/UP 主页加"充电"入口
 - **注意**：**涉及实际扣费**，需谨慎 + 确认风控后再上
@@ -133,6 +141,8 @@
 - **工作量**：大
 
 ### 10. 漫画客户端
+
+> **状态**：**不做**（用户 26.10.04 拍板，见 `docs/review/fix-progress.md` §2.3）。
 
 - **文档**：`docs/manga/` 全目录（Comic/Season/Download/点券）
 - **内容**：漫画浏览 / 阅读 / 下载

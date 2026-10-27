@@ -1315,7 +1315,7 @@ class ShortVideoPagerAdapter(
             IjkOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "min-frames", 5),
             // 原有一条 "max_cached_duration" = 3000 已删：实测本工程两个 .so（libijkplayer /
             // libijkffmpeg，arm64-v8a）里都找不到这个选项名，设了也不会生效，留着只会误导后来人
-            // （依据见 docs/superpowers/specs/2026-10-11-player-network-resilience.md 的 §2.4）。
+            // （依据见 docs/archive/superpowers/specs/2026-10-11-player-network-resilience.md 的 §2.4）。
             // 也不再设 infbuf=1：它是给"实时流"准备的（ff_ffplay_options.h:79-80），会短路
             // max-buffer-size 与 min-frames 两道闸门、让缓存无上限（同文档 §1 第 5 条）。短视频是
             // 点播语义，保留上面的 8MB 上限，宁可多等一点也不要内存随播放时长上涨。

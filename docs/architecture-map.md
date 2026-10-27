@@ -16,7 +16,7 @@
 | `network/api/`（Retrofit + kotlinx-serialization） | 目录**空**，0 个文件 |
 | `di/`（Hilt） | 目录**空**，0 个文件 |
 | `data/repository/` | 目录**空**，0 个文件 |
-| `ui/*`（ViewModel/MVVM） | 只有 `ui/appearance/`（26.09.11 新增，现 5 个文件：`AppearanceManager.kt` / `ColorScheme.kt` / `CornerStyle.kt` / `FontStyle.kt` / `AppearanceApplier.kt`）+ `ui/widget/`（13 个文件，26.10.21 新增 `SwipePageLayout.kt`）。`ui/theme/` **已并入 `ui/appearance/`**（原 `ThemeManager.kt` → `ColorScheme.kt`）；其余 `ui/base`、`ui/player`、`ui/video/viewmodel` 等子目录**已全部删除** |
+| `ui/*`（ViewModel/MVVM） | 只有 `ui/appearance/`（26.09.11 新增，现 9 个文件：`AppearanceManager.kt` / `ColorScheme.kt` / `CornerStyle.kt` / `FontStyle.kt` / `AppearanceApplier.kt`，26.10.26~27 又加 `AmbientGlow.kt` / `ColorMode.kt` / `GlassStyle.kt` / `ThemeTint.kt`）+ `ui/widget/`（13 个文件，26.10.21 新增 `SwipePageLayout.kt`）。`ui/theme/` **已并入 `ui/appearance/`**（原 `ThemeManager.kt` → `ColorScheme.kt`）；其余 `ui/base`、`ui/player`、`ui/video/viewmodel` 等子目录**已全部删除** |
 | `BiliTerminalApp.kt`（@HiltAndroidApp）为入口 | **该类已于 26.10.02 整体删除**。Manifest 指向 `.BiliTerminal`（26.09.10 起是 Kotlin，原先为 `.java`）；它从未被实例化，只因 `SplashActivity` 的 UETool 逻辑引用其静态方法与常量而残留，那些已移入 `BiliTerminal.kt` 伴生对象 |
 
 **核实方式**：全工程 `grep '@AndroidEntryPoint|@HiltViewModel|@Inject|@Module|@InstallIn'` → **0 命中**；空目录统计 → **24 个**（26.09.11 已全部删除）。
@@ -169,7 +169,7 @@ armeabi-v7a 6,225,574 B），说明 release 全量依赖里没有别的东西要
 
 **没做的事**：本机 `D:\Program Files\android-sdk` 下没有 `emulator`、没有 `system-images`，
 **没有在 API 19~23 的设备/模拟器上做过运行验证**，以上全部是静态审计 + 依赖元数据 + `dexdump` 反汇编结论。
-真机验证清单见 `docs/review/device-test-plan.md` 的 T12。
+真机验证清单见 `docs/archive/review/device-test-plan.md` 的 T12。
 
 ---
 
@@ -711,11 +711,11 @@ CenterThreadPool.supplyAsyncWithLiveData { fetch...().getOrThrow() }
 - `PlayerSurfaceBinder.kt`（26.09.10 新增）— 在用，Surface 就绪事件回调，取代 200ms 轮询 Timer。
 - `VideoPlayerCore.kt`（26.09.10 新增）— **已可用但尚无消费方**，是合并两个播放器的目标内核（多实例安全、不持 Activity、`reload()` 复用播放器）。
 - `PlayerIntegrator.kt` — ~~死代码~~ **26.09.11 已删除**（全工程无一处实例化）。
-- `PlayerControlDelegate.kt`（含 `GestureHandler`）— **仍未删除，待决策**：`PlayerIntegrator`（它唯一的引用方）已删，此后它全库零外部引用；但播放器合并方案 S6 明确把它列为"**决定去留**"（`docs/superpowers/specs/2026-09-10-player-core-merge.md:63`），且它带着 26.09.10 的手势 bug 修复（`isLongPressing` 复位），**删之前先定方案**。
+- `PlayerControlDelegate.kt`（含 `GestureHandler`）— **仍未删除，待决策**：`PlayerIntegrator`（它唯一的引用方）已删，此后它全库零外部引用；但播放器合并方案 S6 明确把它列为"**决定去留**"（`docs/archive/superpowers/specs/2026-09-10-player-core-merge.md:63`），且它带着 26.09.10 的手势 bug 修复（`isLongPressing` 复位），**删之前先定方案**。
 - `PlayerScaleMode` 枚举（原在 `IjkPlayerBridge.kt`）— **26.09.11 已删除**（无人使用）。
 - `DanmakuManager.loadFromProtobuf` / `toggleVisibility` / `setSpeedFactor` / `setTextSizeScale` / `setTransparency` — **26.09.11 已删除**（全库零调用；`loadFromProtobuf` 实现还是坏的：解压后从未把数据交给 parser）。连带 `PlayerSurfaceBinder.cancelAwait`、`DanmakuManager` 的 `Inflater`/`ByteArrayInputStream` import 一并删除。
 
-**改播放相关代码时的判断顺序**：先确认要改的是"普通播放器那套"还是"短视频那套"。合并工作正在进行（见 `docs/superpowers/specs/2026-09-10-player-core-merge.md`：S1/S2/S3 已完成，S4/S5/S6 待做），所以两边文件的归属会逐步收敛；**当前 `player/` 包仍不是公共层** —— `PlayerActivity` 只用了 `DanmakuManager` 与 `PlayerSurfaceBinder`，播放器本身还是裸 `IjkMediaPlayer`。
+**改播放相关代码时的判断顺序**：先确认要改的是"普通播放器那套"还是"短视频那套"。合并方案（已归档：`docs/archive/superpowers/specs/2026-09-10-player-core-merge.md`）S1/S2/S3 已完成，S4、S5 后半与 `PlayerControlDelegate` 去留仍未做，待办登记在 `docs/review/fix-progress.md` §2.2；**当前 `player/` 包仍不是公共层** —— `PlayerActivity` 只用了 `DanmakuManager` 与 `PlayerSurfaceBinder`，播放器本身还是裸 `IjkMediaPlayer`。
 
 **弹幕序列化的两个硬约束（踩过坑，别重犯）**：
 
@@ -1164,7 +1164,7 @@ CenterThreadPool.supplyAsyncWithLiveData { fetch...().getOrThrow() }
 
 **完整用法见 `docs/review/agent-test-guide.md`**，这里只记改代码时必须知道的取舍。
 
-这一批解决的是「能编译、能跑单测，但没法自动验证真机行为」——`docs/review/device-test-plan.md` 里 88 条用例一条未执行，根因就是 debug 包没给自动化留入口。四个新增物：
+这一批解决的是「能编译、能跑单测，但没法自动验证真机行为」——`docs/archive/review/device-test-plan.md` 里 88 条用例一条未执行，根因就是 debug 包没给自动化留入口。四个新增物：
 
 - **`debug/DebugBridge`（`app/src/debug/java/...`）**：exported 的 `BroadcastReceiver`，用 `am broadcast -n <包名>/.debug.DebugBridge` 驱动，命令 `ping`/`agent`/`get`/`set`/`remove`/`dump`/`start`/`activities`/`http`/`log`/`logs`/`logclear`/`trail`/`logring`/`top`。**类与清单都在 debug 源集**，release 编译时该类根本不存在（不需要 R8 规则）。
   - **`start` 是它最有价值的命令**：全应用除 `SplashActivity`/`GetIntentActivity` 外都是 `exported="false"`，adb（uid 2000、非 root）拉不起来；而**进程内 `startActivity` 不受 exported 限制**，等于把全部页面开放给 agent。但受 Android 10+ 后台启动限制，应用不可见时会被静默丢弃——需 `adb shell appops set <包名> SYSTEM_ALERT_WINDOW allow`（悬浮窗权限是该限制的豁免条件之一），`start` 的结果里会提示当前是否已授权。
@@ -1172,7 +1172,7 @@ CenterThreadPool.supplyAsyncWithLiveData { fetch...().getOrThrow() }
 - **`BiliTerminal.AGENT_TEST_MODE` + `applyLogSwitches()`**：Agent 测试模式总开关（`SettingsKeys.DEV_AGENT_MODE`）。**它是日志级别、落盘、HTTP 追踪、UETool 跳过四件事的唯一落地处**——改这些开关一律调 `applyLogSwitches()`，别在别处直接改 `Logu.*`。`agentMode = debugBuild && 开关`，`debugBuild` 是编译期常量，release 下 R8 把整段折叠，行为与改动前一致。
   - **改完即生效**是硬要求：原实现里日志开关只在 `Application.onCreate` 读一次，改完要重启——自动化流程里「重启」= 上下文丢失 + 一轮额外等待。所以 `SettingGroupActivity.buildDevGroup()` 的每个开关都带回调。
 - **`Logu`**：新增**异步落盘**（业务线程 O(1) 入队，`rebili-log-writer` 守护线程写，队列 4096 满则丢弃并计数）与单文件 2MB 上限（超限砍前半留后半）。落盘位置 `getExternalFilesDir("logs")`，回退内部 `files/logs`。文件行格式 `MM-dd HH:mm:ss.SSS 级别 调用者 | 内容`。
-  - **logcat 的 tag 一律不动，仍是 `类名>方法名`**（26.10.14 一度改成统一常量 `ReBili`，已回退）。理由：这个 tag 是**既有诊断契约**——`docs/review/device-test-plan.md` D3-11~D3-14 写死了 `adb logcat -s "PlayerActivity>onPrepared"` / `"PlayerActivity>getExtras"` / `"PlayerActivity>checkStall"`，`api/NoteApi.java` 的 `adb logcat -s BiliNote` 是同一思路，全工程 269 处 `Logu.*` 调用点都吃它。**改 tag 等于一次性作废这批排障指令。**
+  - **logcat 的 tag 一律不动，仍是 `类名>方法名`**（26.10.14 一度改成统一常量 `ReBili`，已回退）。理由：这个 tag 是**既有诊断契约**——`docs/archive/review/device-test-plan.md` D3-11~D3-14 写死了 `adb logcat -s "PlayerActivity>onPrepared"` / `"PlayerActivity>getExtras"` / `"PlayerActivity>checkStall"`，`api/NoteApi.java` 的 `adb logcat -s BiliNote` 是同一思路，全工程 269 处 `Logu.*` 调用点都吃它。**改 tag 等于一次性作废这批排障指令。**
   - 「一次抓全」用**按进程过滤**而不是改 tag：`adb logcat --pid=$(adb shell pidof -s <包名>)`；真要事后取证就读落盘日志（调试桥 `log` 命令）。
   - **别改成同步写**：`Logu.d` 会被 UI 线程调用，同步写文件等于把卡顿直接带给用户。落盘队列里放的是**任务**而非「文件名+内容」，这样写行 / flush / 清空三种操作全在同一条线程上串行，`BufferedWriter` 不会被跨线程碰。
   - 工程里还有 38 个文件、110 处直接调 `android.util.Log`（tag 五花八门，`"debug"` 占 51 处），**不受 `Logu` 开关控制、也不落盘**，属尚未收口的历史遗留。
@@ -1275,7 +1275,7 @@ CenterThreadPool.supplyAsyncWithLiveData { fetch...().getOrThrow() }
 1. **落盘必须先脱敏**：`util/Logu.java` 的 `appendToFile` 现在是「`LogSanitizer.sanitize` → shorten → enqueue」，`util/NetWorkUtil.java` 的 HTTP 追踪进 logcat 前也先脱敏。**新增任何写文件/打日志的通道要复用 `LogSanitizer`**，别再直接 `write` 原始请求体；Agent 测试模式的 `logs/http.log` 是历史泄露点，已闭环。
 2. **`LogSanitizer` 的边界**（`util/LogSanitizer.kt`）：覆盖 `键=值`、URL 编码、JSON 键值、裸 11 位手机号四形态；JSON 的数字值、以及任何 `1[3-9]` 开头 11 位数字都会被替换成 `***`（误伤是有意代价）。键表见文件里的 `EXTRA_SENSITIVE_KEYS`。
 3. **`.bak` 不是垃圾**：`DownloadService.safeReplaceTemp(..., keepBackup = true)`（`service/DownloadService.kt:798-830`）会在切清晰度重下时把旧成品改名成 `.bak`；`util/FileUtil.cleanDownloadTempFiles`（`util/FileUtil.java:85-111`）必须**成品缺失才用 `.bak` 恢复、成品存在才删**。改清理逻辑时别再一句 `delete("*.bak")`。
-4. **`reconnect_at_eof=1` 只放直播分支**：`activity/player/PlayerActivity.kt:1126-1132`，在 `isLiveMode` 内才设；点播设了会在播完后无限重连（见 `docs/superpowers/specs/2026-10-11-player-network-resilience.md` P0-1）。
+4. **`reconnect_at_eof=1` 只放直播分支**：`activity/player/PlayerActivity.kt:1126-1132`，在 `isLiveMode` 内才设；点播设了会在播完后无限重连（见 `docs/archive/superpowers/specs/2026-10-11-player-network-resilience.md` P0-1）。
 5. **`NetWorkUtil.post` 非 2xx 现在会抛 `IOException`**（`util/NetWorkUtil.java:443-447`），调用点必须按失败处理；`get` 仍不 `followRedirects`，3xx 原样返回，下载链路要自己判 `code()`（`activity/DownloadActivity.kt`）。
 6. **DebugBridge 的 `http` 默认不带应用请求头**（`appheaders` 默认 false，`app/src/debug/.../debug/DebugBridge.kt:521` 附近）：要带登录态必须显式 `--ez appheaders true`，这是为了不再无脑把 Cookie 写进 `logs/`。
 7. **`X-Install-Id` 受隐私同意闸控制**（`api/TerminalApi.java:535-547` 的 `headers()`）；反馈链路另走 `feedbackHeaders()`（`:763-778`）在未同意时补回，否则反馈无归属。改这两处前先读注释。
@@ -1764,9 +1764,9 @@ TTF/OTF/TTC，应用把它**拷进私有目录**（`filesDir/custom_font/custom_
 
 ---
 
-## 9. API 层映射表（44 个类，改功能时定位用）
+## 9. API 层映射表（48 个文件，改功能时定位用）
 
-按功能域分组。`api/` 下 41 个 Java + 3 个 Kotlin（`HotSearchApi.kt`、`ShortVideoFeedApi.kt`、`StoryFeedQuery.kt`）（26.10.21 实测；`BilibiliIDConverter` 已删除，见下）。
+按功能域分组。`api/` 下 42 个 Java + 6 个 Kotlin（`ApiErrorText.kt`、`HotSearchApi.kt`、`ServerTimeApi.kt`、`ShortVideoFeedApi.kt`、`StoryFeedQuery.kt`、`StorySeenStore.kt`）（26.10.27 实测；`BilibiliIDConverter` 已删除，见下）。`ApiErrorText`（共用错误文案）与 `StorySeenStore`（短视频跨会话去重记忆）不是接口类，未单独列行。
 
 ### 视频与播放
 
@@ -1834,18 +1834,20 @@ TTF/OTF/TTC，应用把它**拷进私有目录**（`filesDir/custom_font/custom_
 | `ConfInfoApi` | **WBI 签名**（全 api 层依赖） | `signWBI`、`getWBIMixinKey`、`sortUrlParams` |
 | `AppInfoApi` | 上游服务器的崩溃上报 / 赞助 / 检查更新（公告接口已于 26.10.23 移除） | `check`、`uploadStack`、`getSponsors` |
 | `TerminalApi` | **自建**服务器：公告（含上游逐条审核透传）/反馈/匿名统计/崩溃上报（见 §6.5） | `ping`、`submitFeedback`、`uploadCrash`、`checkAnnouncement`、`getOwnAnnouncementList` |
+| `ServerTimeApi.kt` | 证书时间校验失败后**明文** http 取 B 站服务器时间，只用于「设备时间错误」提示（26.10.27） | `fetchServerMillis`、`parseNowMillis` |
 | `BilibiliIDConverter` | av/bv 互转（纯函数） | ~~`bvtoaid`、`aidtobv`~~ **26.09.11 已删除**（全工程 0 调用） |
 
-### 网络出口的 4 个例外
+### 网络出口的 5 个例外
 
-44 个类里只有 4 处**绕过** `NetWorkUtil` 的 `get`/`post` 封装自己拼 `Request`，因此不受它的解压/重试/Cookie 管理保护：
+`api/` 里只有 5 处**绕过** `NetWorkUtil` 的 `get`/`post` 封装自己拼 `Request`，因此不受它的解压/重试/Cookie 管理保护：
 
 1. `ReplyApi.java:190-208` `uploadReplyImage`（multipart，不处理 br/gzip）
 2. `UserInfoApi.java:291-303` `updateUserInfo`（自带 `decompressResponse`）
 3. `UserInfoApi.java:330-348` `uploadAvatar`
 4. `ReplyTranslateApi.java` `translateReplies`（gRPC 二进制 body，手动拼帧与头；复用 `NetWorkUtil.getOkHttpInstance()` 的共享 client，故 CookieSave/HttpTrace 两个拦截器仍生效）
+5. `ServerTimeApi.kt` `fetchServerMillis`（明文 http，**独立 client、不带 Cookie、不挂任何拦截器**——绝不能改走主客户端）
 
-前三者均手工拼 Cookie 头；第 4 项是游客可用的公开接口，不带 Cookie。改这几个方法时不要假设 NetWorkUtil 的行为。
+前三者均手工拼 Cookie 头；第 4、5 项是游客可用的公开接口，不带 Cookie。改这几个方法时不要假设 NetWorkUtil 的行为。
 
 ### 纯函数可测点
 

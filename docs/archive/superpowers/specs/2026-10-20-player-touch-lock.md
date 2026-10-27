@@ -1,5 +1,7 @@
 # 播放页触摸锁定（防误触）
 
+> **【已归档 2026-10-27】** 文首「待用户签字后实施」已过时：功能已实现（`activity/player/PlayerLockPolicy.kt` + `PlayerLockPolicyTest`），用户口径见 `docs/FEATURES.md`。
+
 - **日期**：2026-10-20
 - **状态**：需求已与用户逐条确认（见 §8 答复原文 + 2026-10-20 修订），**待用户签字后实施**
 - **涉及文件（预测）**：`res/layout/activity_player.xml`、`activity/player/PlayerActivity.kt`、`activity/player/PlayerLockPolicy.kt`（新增，纯函数）、`res/drawable/icon_player_lock.xml` / `icon_player_unlock.xml`（新增）、`res/values/strings.xml`、`util/SettingsKeys.kt`、`test/.../player/PlayerLockPolicyTest.kt`（新增）、`docs/FEATURES.md`
