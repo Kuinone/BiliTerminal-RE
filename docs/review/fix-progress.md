@@ -1588,7 +1588,8 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
 - **验证**：
   - `ClockSanityTest` 9 例全过；`assembleDebug` 双 flavor 成功。
   - MuMu（Android 15 / x86_64，root）：`settings put global auto_time 0` + `date 010112002015.00` 把时间拨到 2015-01-01。共存版（未完成初始化）冷启动进 `SetupUIActivity`，截图底部 Snackbar 显示「设备时间似乎不对……请到系统设置里改正日期和时间」✔。普通版 `am start` 推荐页，logcat 原文：`SSLHandshakeException: Unacceptable certificate: CN=GlobalSign RSA OV SSL CA 2018` → `Caused by: CertificateNotYetValidException: Certificate not valid until Wed Nov 21 ... 2018 (compared to Thu Jan 01 12:19:46 GMT+08:00 2015)`，随后 `MsgUtil>showMsgLong: 网络连接被拒：证书时间校验失败 / 请检查设备的日期和时间是否正确` ✔。测完 `auto_time 1` 恢复。
-- **遗留**：①时间被拨到**未来**（证书「已过期」）只靠 `isCertTimeError` 兜，启动时不提示——无法从本地可靠判断「太靠后」；②系统浏览器 / WebView 的证书弹窗不归本应用管；③未在 XP5800 真机复测。
+  - 未来时间（同一台 MuMu，`date 060112002031.00`）：推荐页 logcat 原文 `Caused by: CertificateExpiredException: Certificate expired at Tue Nov 21 08:00:00 GMT+08:00 2028 (compared to Sun Jun 01 12:00:01 GMT+08:00 2031)`，随后同样显示 `err_cert_time` ✔（12 秒后的截图里 Snackbar 已按时长消失，以日志为准）。
+- **遗留**：①时间被拨到**未来**只在请求失败时提示，启动时不提示——本地没有可靠的「最晚日期」，用上次使用时间当上限会误报；时间只超前几天到几周、证书还没过期时网络本来正常，不影响使用；②系统浏览器 / WebView 的证书弹窗不归本应用管；③未在 XP5800 真机复测。
 
 ## 4. 历史章节索引
 
