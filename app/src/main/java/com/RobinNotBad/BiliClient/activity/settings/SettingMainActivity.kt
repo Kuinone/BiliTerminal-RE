@@ -70,6 +70,7 @@ class SettingMainActivity : InstanceActivity() {
         buildPlayerGroup()
         buildAccountGroup()
         buildUIGroup()
+        buildLayoutGroup()
         buildContentGroup()
         buildNotifyGroup()
         buildDisguiseGroup()
@@ -137,8 +138,17 @@ class SettingMainActivity : InstanceActivity() {
         addGroup(
             R.drawable.icon_ui,
             "界面与外观",
-            "界面大小、主题与动画效果",
+            getString(R.string.settingtext_settingmainactivity_006),
             "ui"
+        )
+    }
+
+    private fun buildLayoutGroup() {
+        addGroup(
+            R.drawable.icon_ui,
+            getString(R.string.settingtext_setting_layout_group),
+            getString(R.string.settingtext_setting_layout_group_desc),
+            "layout"
         )
     }
 

@@ -1033,7 +1033,9 @@
     <string name="settingtext_settingmainactivity_003">账号与登录</string>
     <string name="settingtext_settingmainactivity_004">登录、切换账号与查看登录信息</string>
     <string name="settingtext_settingmainactivity_005">界面与外观</string>
-    <string name="settingtext_settingmainactivity_006">界面大小、主题与动画效果</string>
+    <string name="settingtext_settingmainactivity_006">主题配色、字体与动画效果</string>
+    <string name="settingtext_setting_layout_group">布局适配</string>
+    <string name="settingtext_setting_layout_group_desc">界面大小、边距、圆屏与横屏等屏幕适配</string>
     <string name="settingtext_settingmainactivity_007">内容与浏览</string>
     <string name="settingtext_settingmainactivity_008">菜单、搜索、详情页、评论区与偏好</string>
     <string name="settingtext_settingmainactivity_009">通知设置</string>
