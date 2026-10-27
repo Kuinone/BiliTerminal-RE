@@ -96,7 +96,7 @@ object AmbientGlow {
             top = 0xFFE5D0E1.toInt(),
             glows = arrayOf(
                 Glow(0x76AD6BE3.toInt(), 0.5f, 0.05f, 0.72f),
-                Glow(0x70C9A0F0, 0.88f, 0.42f, 0.46f)
+                Glow(0x70C9A0F0.toInt(), 0.88f, 0.42f, 0.46f)
             ),
             fadeEnd = LIGHT_FADE_END
         )
