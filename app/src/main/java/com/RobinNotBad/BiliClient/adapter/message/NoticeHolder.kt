@@ -144,6 +144,14 @@ class NoticeHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
                                     "article" -> {
                                         TerminalContext.getInstance().enterArticleDetailPage(context, message.subjectId)
                                     }
+                                    "danmu" -> {
+                                        // 弹幕点赞：跳到弹幕所在视频（BV 号由 MessageApi.parseBvid 从 uri 抠出）
+                                        if (childReply.ofBvid.isNullOrEmpty()) {
+                                            MsgUtil.showMsg(context.getString(R.string.msg_like_danmaku_no_video))
+                                        } else {
+                                            TerminalContext.getInstance().enterVideoDetailPage(context, 0, childReply.ofBvid)
+                                        }
+                                    }
                                     else -> {
                                         MsgUtil.showMsg(UiText.fmt(UiText.of("不支持这个类型喵：%1\$s"), message.itemType))
                                     }

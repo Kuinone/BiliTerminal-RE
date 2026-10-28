@@ -2432,4 +2432,11 @@
     <string name="msg_reply_translate_failed">翻译失败，请稍后再试</string>
     <!-- 请求成功但服务端没给译文（已是目标语言/不支持翻译）时的提示 -->
     <string name="msg_reply_translate_none">该评论暂无译文（可能已是目标语言或不支持翻译）</string>
+
+    <!-- ==================== 消息：收到的赞 ==================== -->
+    <!-- 弹幕被点赞；%1$d 为点赞总人数 -->
+    <string name="text_like_danmaku">等总共 %1$d 人点赞了你的弹幕</string>
+    <!-- 弹幕点赞消息里没带视频地址，无法跳转 -->
+    <string name="msg_like_danmaku_no_video">没找到这条弹幕所在的视频</string>
+
 </resources>
