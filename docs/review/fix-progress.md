@@ -25,7 +25,7 @@
 - **依赖仓库**：`settings.gradle` 已把 aliyun 的 `google` / `public` / `gradle-plugin` 三个镜像前置，`google()`/`mavenCentral()`/jitpack 仅作兜底。
 - **改了 `res/` 文件集合时**：`:app:clean` 与后续命令**必须分两次 Gradle 调用**，且带 `--no-build-cache --no-configuration-cache`，否则会回放陈旧资源（症状是 `Unresolved reference 'R.layout.xxx'`）。
 - **版本一致性**：`:app:verifyVersionConsistency` 以 `strings.xml` 的 `update_log_current` 为锚点校验版本一致性；发版说明也由 CI 从它抽取（抽不到直接拒绝发版）。
-- **单测（静态计数，26.10.27 加举报评论功能后实测）**：**94 个测试类 / 1032 个用例**，两个 flavor 完全相同（同源码），0 失败 0 错误 0 跳过。计数方式：`app/src/test/` 下 `*Test.kt|java` 计数（另有共享假实现 `util/FakeSharedPreferences.kt`），`app/build/test-results/testStandardDebugUnitTest/TEST-*.xml` 的 `tests=` 求和。用例数一律以机器产出为准，队友口述数字不进入文档。
+- **单测（静态计数，26.10.27 加举报评论功能后实测）**：**95 个测试类 / 1041 个用例**，两个 flavor 完全相同（同源码），0 失败 0 错误 0 跳过。计数方式：`app/src/test/` 下 `*Test.kt|java` 计数（另有共享假实现 `util/FakeSharedPreferences.kt`），`app/build/test-results/testStandardDebugUnitTest/TEST-*.xml` 的 `tests=` 求和。用例数一律以机器产出为准，队友口述数字不进入文档。
 - **26.10.10 那一轮的构建记录（历史，留作「改 minSdk / 重跑 release 链路」时的验证口径）**：`minSdk 24 → 19` 全部改动（含 jsoup 1.16.1、7 个 `res/drawable-v21` 资源）落盘后，按「`clean` → `assembleRelease` → `lintRelease` → 单测」四步跑完（均带 `--no-configuration-cache`，`clean` 与 `assemble` 分两次调用），四步全 `BUILD SUCCESSFUL`（37s / 2m13s / 1m25s / 39s）。当时单测汇总 **49 suites / 460 tests / 0 failures**（任务名当时还是 `testDebugUnitTest`，现已带 flavor 前缀），最新 XML 时间 `2026-10-09T22:59:04`（晚于当轮 APK 出包时间 22:56:58，覆盖了当轮全部源码改动）。`:app:lintRelease` 的 **`NewApi` 从 22 条降到 2 条**，且这 2 条就是 `PlayerActivity.kt:1981` 的已知假阳性。发版前仍建议再跑一次确认。
 - **「自动跳过片头片尾」已恢复上线（26.10.22）**：26.10.10 的紧急撤回**已解除**，`SkipOpEdPrefs.FEATURE_ENABLED` 回到 `true`，设置入口与搜索索引均已恢复；口径按用户拍板改为**默认关闭**（`DEFAULT_ENABLED = false`，老用户存档里显式写的值仍然优先）。恢复细节见 §3.3「恢复记录」，乱跳的三个根因修复见 §3.55。
 - **本轮基建改动（26.10.10）**：**`minSdk 24 → 21 → 19（Android 4.4）`**，唯一落点是 `app/build.gradle:21`。两级下调的成本不同，分开记：
@@ -1629,6 +1629,25 @@ java.lang.IllegalArgumentException: You cannot start a load for a destroyed acti
     - 「错误码没覆盖 -102/-403/12008/12009/12019/12077」→ 已补齐（见改法第 2 条），`ReportApiTest` 相应新增 4 例（12008 说清「举报过」、12077 与 12008 可区分、12019/12026 两句不重复、-102 不写成「未登录」），共 24 例（理由表重做后总数为 30 例）。
     - 「快照列了理由码 9~17，客户端没开放」→ **查证后决定暂不开放**，三条证据：①服务端先风控后校验参数，`reason=99` 与 `reason=1` 都回 -352，离线拿不到合法/非法信号；②APK 里「违法违规/赌博诈骗/侵犯隐私/抢楼」字符串确实存在，但按 `public.xml` 的资源 id 反查 `jadx` 全部代码**0 命中**，是历史遗留资源，不能判定仍在使用；③未知 `reason` 服务端是回 -400 还是降级成「其他」无证据。定论方法（登录后逐码试 `9..17`）写进 `docs/bilibili-api-notes.md` §8 与 `ReportApi` 类注释，验完补两个数组即可，UI 不用动。
 - **遗留**：①**登录态下的成功提交（code=0）没验**——模拟器没有可用登录态，登录要扫码，只能等真机；已验证到「请求体正确、服务端确实在回业务码」这一步；②视频/弹幕举报未做（各有明确理由，见 api notes §8）；③举报后列表不会变（服务端审核结果不回写列表，也不打算轮询）。
+
+### 3.74 按线上崩溃报告修 7 类缺陷（26.10.28，用户要求，mapping 还原后定位）
+
+- **缘起**：控制台积了 50 条待处理崩溃。第一轮只按「堆栈里未混淆的帧」推断，结论不可用；用户提示「编译一遍 release 就有 mapping」后重新做：`./gradlew.bat :app:minifyStandardReleaseWithR8 :app:minifyCoexistReleaseWithR8`（本机没有 `key.jks`，只跑 R8 阶段即可）产出 `app/build/outputs/mapping/{standard,coexist}Release/mapping.txt`，逐帧还原后 **50 条全部归类**，其中 7 类能落到代码。
+- **还原的可信度校验**（重要，否则等于瞎猜）：崩溃文本自带的 `adapter:d1.r@…` → mapping 里 `d1.r = MenuSettingAdapter`；`UpdateActivity.O` 的相邻帧 `R0.v` → `UpdateActivity$$ExternalSyntheticLambda0`；页面轨迹与解出的类一致。**跨版本的报告只能解出方法名、行号不可用**（mapping 来自当前 `main`），所以 26.10.19/26.10.16 的那 3 条 NPE 与 3 条 Fragment 崩溃仍未定位。
+- **改法（7 处 + 1 个新类 + 1 组单测）**：
+  1. `adapter/MenuSettingAdapter.kt` `dragCallback.clearView` → `recyclerView.post { ensureStartValid() }`。ItemTouchHelper 是在 RecyclerView 的 layout/scroll 过程中回调 `clearView` 的，当场 `notifyItemChanged` 必然抛 `Cannot call this method while RecyclerView is computing a layout or scrolling`（**6 例**）。
+  2. `activity/settings/UpdateActivity.kt` `startDownload()`：`updateConfig!!.downloadUrl!!` → 先取 `downloadUrl` 判 `isNullOrBlank`，为空提示新文案 `msg_update_no_download_url` 直接返回。根因是强制更新拦截把 SP 里可能为 null 的 `force_update_download_url`（`BiliTerminal.kt` 的 `getString(..., null)`）塞进 intent（**5 例**，NPE 消息为 `null`，Kotlin `!!` 的指纹）。
+  3. `activity/video/ShortVideoPlayerActivity.kt` 封面加载套 `GlideUtil.canLoad(coverImage)`；`adapter/user/UserListAdapter.kt` 头像加载套 `GlideUtil.canLoad(holder.itemView)`。Glide 4 的 `with(Activity)`/`with(View)` 会在宿主销毁时抛 `You cannot start a load for a destroyed activity`（**4 例**能确认到这两个调用点）。**注意 `Glide.with(BiliTerminal.context!!)` 不受影响**——那是 `createConfigurationContext(applicationContext)`，走 application manager，不做销毁校验；Opus/私信那几处就是被 R8 lambda 合并误指的。
+  4. `activity/video/ShortVideoFeedFragment.kt` 三条 `preloadManager` 回调（`onItemsLoaded` / `onLoadError` / `onRelatedLoaded`）开头加 `if (!isAdded) return@label`。预加载是后台线程拉、回主线程才回调，中间用户可能已退出（**4 例** `Fragment ... not attached to an activity`）。
+  5. `activity/settings/setup/SetupUIActivity.kt` 的 `save()` 改走新纯函数 `util/UiScaleInput.kt`（`parseDpi` / `parsePadding`，`toFloatOrNull` + 原范围校验）。旧代码直接 `toFloat()`，线上两次 `For input string: "界面大小"` / `"确认设置"`——都是页面自己的文案，疑似被粘贴进框（**2 例**）。
+  6. `activity/player/PlayerActivity.kt` `onDestroy` 里 `requestedOrientation = …` 包 `try/catch (IllegalStateException)`。Android 8.0 在非全屏（分屏/悬浮）下调它抛 「Only fullscreen activities can request orientation」，在 `onDestroy` 里会升级成 `Unable to destroy activity` 直接崩在退出路径（**4 例**，全部 sdk 26 / HONOR HWDUK）。
+  7. 新增 `ui/widget/SafeViewPager.kt` 并让 3 个布局（`activity_simple_viewpager.xml` / `activity_emote.xml` / `activity_short_video_player.xml`）改用它：只吞 message 含 `pointerIndex` 的 `IllegalArgumentException`，其余照抛。老 ViewPager 的多指下标越界是已知库缺陷（**7 例**：4 例 `pointerIndex out of range` + 3 例 `invalid pointerIndex -1 for MotionEvent`，全部停在该类的 `onInterceptTouchEvent`）。
+- **验证**：
+  - `assembleDebug` 双 flavor 成功；两 flavor 单测各 **95 个测试类 / 1041 例 / 0 失败**（新增 `UiScaleInputTest` 9 例，钉住 `"界面大小"` / `"确认设置"` / 空串 / null / 越界 / 保留旧口径的负边距）。
+  - 设备侧（MuMu Android 15 / coexist debug）：`SettingMenuActivity` 正常渲染；`VideoInfoActivity` 左右滑能在「简介 / 评论」间切换（走的正是新的 `SafeViewPager`）；`ShortVideoPlayerActivity` 打开并来回滑 3 轮，`logcat -b crash` **为空**。
+  - **没能复现验证的部分（如实记录）**：①`clearView` 的崩溃依赖「拖拽结束恰好落在 smoothScroll 期间」，adb 手势造不出来，只改了 1 行 `post`；②`PlayerActivity` 的方向异常要设备处于分屏/悬浮窗口才触发，单窗口模拟器造不出；③DPI 框的中文输入无法用 `adb input text` 复现（走 KeyEvent，被 `DigitsKeyListener` 挡掉），改由 `UiScaleInputTest` 覆盖。
+- **遗留**：①仍 6 条无法定位（3 条 26.10.16 的 NPE、3 条 26.10.19 的 Fragment not attached）——需要按对应版本再编一次 release 取 mapping；②`Inconsistency detected`（4 例）与第 1 条同源但无法定位到具体 notify 点；③全仓仍有 ~58 处裸 `Glide.with(...)`，建议后续统一收敛到 `GlideUtil.request*`（已自带 `canLoad`）或 `AccountSwitchActivity` 那种「一次取 RequestManager」的写法。
+- **另一条结构性建议**：`mapping.txt` 现在是构建副产物，`build/` 一清就没了，下次再有人报崩溃又回到解不出来的状态。建议在 `build-release.yml` 里把它作为 artifact 按 `versionCode` 归档。
 
 ## 4. 历史章节索引
 
