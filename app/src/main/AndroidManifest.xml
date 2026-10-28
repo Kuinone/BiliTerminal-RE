@@ -13,6 +13,10 @@
         android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
         tools:ignore="ScopedStorage" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+    <!-- 内置选图页（反馈 #53）在 Android 13+ 读相册用；13 以下仍是上面的 READ_EXTERNAL_STORAGE。
+         不声明 READ_MEDIA_VISUAL_USER_SELECTED：Android 14 的「仅部分照片」按兼容模式处理即可。
+         只在点开选图页时申请，拒绝后退回系统选择器，不影响发图。 -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission
         android:name="android.permission.WRITE_EXTERNAL_STORAGE"
@@ -444,6 +448,12 @@
             android:label="@string/pagename_image_viewer"
             android:screenOrientation="locked"
             android:theme="@style/Theme.NoSwipe" />
+        <!-- 内置选图页（反馈 #53），只被应用内的发图入口拉起，不导出 -->
+        <activity
+            android:name=".activity.ImagePickerActivity"
+            android:exported="false"
+            android:label="@string/pagename_image_picker"
+            android:screenOrientation="locked" />
         <activity
             android:name=".activity.DialogActivity"
             android:exported="false"

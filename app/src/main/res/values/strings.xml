@@ -2447,4 +2447,19 @@
     <!-- 服务端没给具体原因时的兜底；超过 2 分钟等情况服务端会回自己的提示 -->
     <string name="msg_private_msg_recall_failed">撤回失败，只能撤回 2 分钟内发出的消息</string>
 
+    <!-- ==================== 内置选图页（ImagePickerActivity） ==================== -->
+    <string name="pagename_image_picker">选择图片</string>
+    <string name="text_image_picker_all">全部图片</string>
+    <!-- 相册名为空的图归在这里 -->
+    <string name="text_image_picker_other">其他</string>
+    <string name="text_image_picker_choose_album">选择相册</string>
+    <!-- 相册弹窗里的一行：%1$s 相册名，%2$d 张数 -->
+    <string name="text_image_picker_album_item">%1$s（%2$d）</string>
+    <!-- 退回系统自带的选图 / 文件管理器 -->
+    <string name="btn_image_picker_system">系统选择器</string>
+    <string name="text_image_picker_no_permission">没有相册权限，可以点上方「系统选择器」选图，或到系统设置里允许读取照片</string>
+    <string name="text_image_picker_empty">相册里还没有图片，可以点上方「系统选择器」从文件里选</string>
+    <string name="text_image_picker_load_failed">读取相册失败，可以点上方「系统选择器」选图</string>
+    <!-- 缩略图的读屏文字 -->
+    <string name="text_image_picker_item">图片</string>
 </resources>
