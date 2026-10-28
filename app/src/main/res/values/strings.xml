@@ -2439,4 +2439,12 @@
     <!-- 弹幕点赞消息里没带视频地址，无法跳转 -->
     <string name="msg_like_danmaku_no_video">没找到这条弹幕所在的视频</string>
 
+    <!-- ==================== 私信：长按菜单 / 撤回 ==================== -->
+    <string name="btn_private_msg_copy">复制文字</string>
+    <!-- 只对自己 2 分钟内发出的消息显示 -->
+    <string name="btn_private_msg_recall">撤回</string>
+    <string name="msg_private_msg_recalled">已撤回</string>
+    <!-- 服务端没给具体原因时的兜底；超过 2 分钟等情况服务端会回自己的提示 -->
+    <string name="msg_private_msg_recall_failed">撤回失败，只能撤回 2 分钟内发出的消息</string>
+
 </resources>

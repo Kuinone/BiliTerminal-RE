@@ -23,6 +23,7 @@ import androidx.annotation.NonNull
 import androidx.recyclerview.widget.RecyclerView
 
 import com.RobinNotBad.BiliClient.R
+import com.RobinNotBad.BiliClient.activity.ImagePickerActivity
 import com.RobinNotBad.BiliClient.activity.base.BaseActivity
 import com.RobinNotBad.BiliClient.adapter.message.PrivateMsgAdapter
 import com.RobinNotBad.BiliClient.api.ImageApi
@@ -95,6 +96,7 @@ class PrivateMsgActivity : BaseActivity() {
                 Collections.reverse(list)
                 emoteArray = PrivateMsgApi.getEmoteJsonArray(allMsg)
                 adapter = PrivateMsgAdapter(list, emoteArray, this)
+                adapter!!.onRecall = { msg -> recallMessage(msg) }
 
                 if (SharedPreferencesUtil.getBoolean(SharedPreferencesUtil.PRIVATE_MSG_AUTO_READ_ENABLE, true)) {
                     try {
@@ -200,15 +202,11 @@ class PrivateMsgActivity : BaseActivity() {
     }
 
     /**
-     * 拉起系统选图。手表上系统相册/文件选择器不一定支持 ACTION_PICK，
-     * ACTION_GET_CONTENT 兼容性更好（与 WriteReplyActivity、SettingGroupActivity 的结论一致）。
+     * 选图：走内置选图页（反馈 #53），页内可退回系统的 ACTION_GET_CONTENT；结果格式相同。
      */
     private fun pickImage() {
         try {
-            val intent = Intent(Intent.ACTION_GET_CONTENT)
-            intent.type = "image/*"
-            intent.addCategory(Intent.CATEGORY_OPENABLE)
-            imageLauncher.launch(intent)
+            imageLauncher.launch(ImagePickerActivity.intent(this))
         } catch (e: Exception) {
             MsgUtil.err(e)
         }
@@ -259,6 +257,32 @@ class PrivateMsgActivity : BaseActivity() {
                     } catch (e: JSONException) {
                         MsgUtil.showMsg("发送失败：\n$result")
                         e.printStackTrace()
+                    }
+                }
+            } catch (e: Exception) {
+                runOnUiThread { MsgUtil.err(e) }
+            }
+        }
+    }
+
+    /**
+     * 撤回自己发的私信（反馈 #57）。入口在消息长按菜单，是否显示由 [PrivateMsgApi.canRecall] 决定；
+     * 超时等失败以服务端返回的 message 为准（本地时间可能不准）。
+     */
+    private fun recallMessage(msg: PrivateMessage) {
+        CenterThreadPool.run {
+            try {
+                val result = PrivateMsgApi.recallMsg(
+                    SharedPreferencesUtil.getLong(SharedPreferencesUtil.mid, 0L), uid, msg.msgId
+                )
+                runOnUiThread {
+                    if (result.optInt("code", -1) == 0) {
+                        MsgUtil.showMsg(getString(R.string.msg_private_msg_recalled))
+                        adapter?.removeMessage(msg)
+                        refresh()
+                    } else {
+                        val message = result.optString("message")
+                        MsgUtil.showMsg(message.ifEmpty { getString(R.string.msg_private_msg_recall_failed) })
                     }
                 }
             } catch (e: Exception) {
