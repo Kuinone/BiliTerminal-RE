@@ -23,6 +23,14 @@ import com.github.chrisbanes.photoview.PhotoView
 
 class ImageViewerActivity : BaseActivity() {
 
+    /**
+     * 看图时左右翻页、放大后拖动都是横向手势，手表的系统右滑返回会把它们抢成退出（反馈 #38）。
+     * 清单里虽然写了 `Theme.NoSwipe`，但 `BaseActivity.onCreate` 会按用户主题重新 `setTheme`
+     * 把它覆盖掉，所以必须走这个钩子。退出靠返回键 / 表冠键。
+     */
+    override val forceNoSwipeTheme: Boolean
+        get() = true
+
     private var longClickTimestamp: Long = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
