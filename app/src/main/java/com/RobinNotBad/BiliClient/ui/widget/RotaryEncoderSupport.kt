@@ -48,10 +48,19 @@ internal object RotaryEncoderSupport {
      */
     const val DEFAULT_MULTIPLE = "1.0"
 
+    /**
+     * 总开关默认值（26.10.28 起默认开，反馈 #20）。
+     *
+     * 默认关时完全靠系统自带的表冠滚动，实测多数页面转得很慢，用户得自己翻到设置里打开；
+     * 原版终端开箱即用。只有 `SOURCE_ROTARY_ENCODER` 的事件会走这里（[isRotaryEvent]），
+     * 没有表冠的设备不受影响。与设置页 `SettingPrefActivity` 的开关默认值共用此常量。
+     */
+    const val DEFAULT_ENABLED = true
+
     /** 表冠滚动总开关（`SettingsKeys.UI_ROTATORY_ENABLE`，且需要 Android 8.0+）。 */
     fun isEnabled(): Boolean =
         Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
-                SharedPreferencesUtil.getBoolean(SettingsKeys.UI_ROTATORY_ENABLE, false)
+                SharedPreferencesUtil.getBoolean(SettingsKeys.UI_ROTATORY_ENABLE, DEFAULT_ENABLED)
 
     /**
      * 读取某个灵敏度设置键。
