@@ -674,6 +674,27 @@
 - **验证**：双 flavor `assembleDebug` 与单测通过。MuMu（共存版）：466x466 下推荐页封面清晰 ✔；动态九图进入图片查看器后第 1 页正常，滑到第 3/9 页图片都正常加载 ✔；logcat 无崩溃、无 OOM ✔。
 - **遗留**：实际请求 URL 里的宽度只靠单测覆盖，没有在模拟器上抓包确认。
 
+### 3.79 反馈列表清账：7 个 bug + 私信撤回 + 内置选图页（26.10.28，用户反馈）
+
+- **缘起**：按控制台未处理反馈逐条核对源码，挑出「原因在代码里看得出来」的 7 条全修，另做两个新功能（#57 私信撤回、#53 内置选图页）。#49（推荐页长按改稍后再看）、#11（内置文件管理器）用户决定不做。括号里是控制台反馈编号。
+- **#55 短视频弹幕设置不生效**（此前已回复用户「已修复」，但源码里没有）：`ShortVideoPlayerActivity` 每个 `PageHolder` 写死 `isDanmakuVisible = true`，从不读「播放默认值 → 弹幕」。改成 Activity 级字段，用与长视频同一个 `PlayerDefaults.resolveTriState(PLAYER_DEFAULT_DANMAKU, PLAYER_LAST_DANMAKU)` 开播，切换时写回 `PLAYER_LAST_DANMAKU`。另一半根因在 `DanmakuManager`：`hide()` 有 `isPrepared` 守卫，prepare 之前调用只记状态就返回，所以 `prepared()` 回调里补一次 `danmakuView.hide()`。
+- **#44「收到的赞」不显示弹幕点赞**：`MessageApi` 的类型 switch 缺 `danmu`，落到「无法识别这个类别」。新增分支：显示弹幕原文，`NoticeHolder` 点卡片跳视频；BV 号用纯函数 `MessageApi.parseBvid` 从 uri 里提取（uri 后缀不固定，不能照 video 分支直接 replace）。`MessageApiTest` 3 例。
+- **#52 空关键词搜索后历史记录消失**：`SearchActivity.searchKeyword` 先 `hideDropdowns()` 再判空 `return`。判空挪到最前。
+- **#51 文件夹里点 P2 从 P1 开始播 / 老缓存没声音**：`LocalListActivity.playVirtualCollection` 的起播地址固定取 `[0]`，`startPageIndex` 只写进了选集高亮。改成按 `startPageIndex` 取；双文件（未合并 DASH）缓存原来只传 mp4，现在另传与 `videoFileList` 对齐的 `audioFileList`，起播带 `audio_track_url`，`PlayerActivity.switchToLocalPage` 切 P 时把对应音轨交给 `doSwitchPage`（新增 `newAudioTrackUrl` 参数，原来这里固定置 null）。
+- **#38 图片查看页仍响应右滑**：清单里的 `Theme.NoSwipe` 被 `BaseActivity.onCreate` 的 `setTheme` 覆盖。`ImageViewerActivity` 覆写 `forceNoSwipeTheme = true`（与短视频页同一钩子），退出走顶栏 / 返回键。
+- **#20 表冠默认转得很慢**：`RotaryEncoderSupport` 总开关默认 `false`，用户要自己去设置里开。新增 `DEFAULT_ENABLED = true`，设置页默认值共用此常量，说明文案改为「默认开启，关掉可换回系统手感与震动」。只处理 `SOURCE_ROTARY_ENCODER` 事件，无表冠设备不受影响。
+- **#57 私信撤回（新功能）**：长按自己 120 秒内发出的文字 / 图片 → 菜单「复制文字 / 撤回」，撤回即发一条 `msg_type=5`、内容为目标 `msg_key` 的私信（`private_msg_content.md`「撤回消息」）。入口判据 `PrivateMsgApi.canRecall` 纯函数（自己发的、非撤回通知、本地时间看来未超 120 秒；本地时间比消息早时仍给入口，交服务端判，见 §3.72 的时间问题）。顺带：接口对被撤回的原消息仍回原文（`msg_status=1`），原先原文和「撤回了一条消息」两条都显示，现在 `shouldDisplay` 过滤掉原消息；撤回通知 seqno 必大于原消息，过滤不影响 refresh / loadMore 的分页起点。`PrivateMsgRecallTest` 5 例。
+- **#53 内置选图页（新功能）**：新增 `activity/ImagePickerActivity`（不导出）+ 纯逻辑 `util/ImagePickerAlbums`（相册分组 / 过滤 / 读图权限名，`ImagePickerAlbumsTest` 4 例）。读 MediaStore 按 `DATE_ADDED` 倒序铺三列缩略图（Glide 按格子尺寸、RGB_565 解码），可按相册筛选；顶部「系统选择器」退回原 `ACTION_GET_CONTENT` 并把结果原样转交。**结果格式与 `ACTION_GET_CONTENT` 相同**（`data.data` 为 content Uri），私信 / 写评论 / 发动态 / 换头像四个调用点只换了 Intent。清单新增 `READ_MEDIA_IMAGES`（Android 13+；13 以下沿用已有的 `READ_EXTERNAL_STORAGE`），只在打开选图页时申请，拒绝后显示说明并可走系统选择器。
+- **验证**：双 flavor `assembleDebug` 通过；`testStandardDebugUnitTest` 99 类 / 1039 例 / 0 失败。MuMu（Android 12L / SDK 32，共存版，已登录）：
+  - #52：搜索页空输入点搜索 → 日志出现「还没输入内容喵~」，历史记录列表仍可见（uiautomator 能取到两条历史）✔。
+  - #55：`player_default_danmaku=off` 进短视频 → 弹幕 170 条已加载但不显示、按钮是关闭图标 ✔；点按钮打开 → 滚动弹幕出现、`pref_switch_danmaku=true` ✔；再关掉后上滑到下一条 → 仍为关闭 ✔。测完已删掉这两个设置项。
+  - #53：选图页三列缩略图正常 ✔；相册弹窗列出「全部图片（226）/ 其他 / burst3 …」，选 burst3 后网格只剩 4 张 ✔；从发动态页进入选一张 → 回到发动态页显示「添加图片(1)」与预览 ✔；「系统选择器」拉起 `documentsui` 的 PickActivity，返回回到选图页 ✔。权限申请链路走到了 `GrantPermissionsActivity`（logcat 可见），但 MuMu 会自动授予，**「拒绝后」的分支没能测到**。
+- **遗留**：
+  - #44 弹幕点赞的 `type` 值 `danmu` 来自 B 站网页端「收到的赞」的已知取值，接口文档快照里没有，测试账号也没有弹幕点赞记录，**未用真实数据确认**；若真实值不同，表现与改前一样落到「无法识别这个类别：xxx」，从文案就能看出该改成什么。
+  - #51 没在模拟器上跑：伪造双文件缓存需要往 `Android/media/<包名>/` 写文件，这一步被会话权限拦下。需要真机用一条未合并的 1080P+ 老缓存验证「文件夹点 P2 从 P2 起播、有声音、切到 P1 也有声音」。
+  - #57 没在模拟器上实测撤回（会真的给对方发私信），只有判据单测；需要真机给自己的小号发一条再撤回。
+  - #38 / #20 的手势本身只能在真手表上确认（MuMu 没有窗口层右滑返回，也没有表冠）。
+
 ## 4. 历史章节索引
 
 > 完整正文在 `docs/archive/review/fix-progress-history.md`；§3.0~§3.51 的状态快照（26.10.09~26.10.21）在 `docs/archive/review/fix-progress-snapshots-261009-261021.md`。**编号在历史上有重复**（`## 二十二` / `## 二十九` 各出现两次、`## 30.` 是阿拉伯数字写法，原为不打断既有交叉引用而保持不动），下表**以归档文件的物理行序为准**。
