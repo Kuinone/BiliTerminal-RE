@@ -2831,9 +2831,18 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
             mediaSession = null
         }
 
-        requestedOrientation = if (SharedPreferencesUtil.getBoolean("ui_landscape", false))
-            ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-        else ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        // 退出播放器时把方向锁回设置里的默认值。**必须包 try/catch**：
+        // 「Only fullscreen activities can request orientation」是 Android 8.0 的已知行为——
+        // 页面不在全屏（分屏 / 悬浮窗 / 某些 ROM 的窗口化）时 setRequestedOrientation 抛 ISE，
+        // 而这里是 onDestroy，异常会升级成 "Unable to destroy activity" 直接崩在退出路径上。
+        // 线上实测 4 例，全部是 sdk 26 的 HONOR HWDUK。
+        try {
+            requestedOrientation = if (SharedPreferencesUtil.getBoolean("ui_landscape", false))
+                ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+            else ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        } catch (ignored: IllegalStateException) {
+            Logu.w("退出时恢复屏幕方向失败（非全屏窗口），忽略")
+        }
 
         super.onDestroy()
     }

@@ -112,7 +112,12 @@ class ShortVideoFeedFragment : Fragment() {
 
         view.findViewById<TextView>(R.id.retryButton).setOnClickListener { loadFeed() }
 
-        preloadManager.onItemsLoaded = { items ->
+        preloadManager.onItemsLoaded = load@{ items ->
+            // 预加载是后台线程拉数据、回主线程才回调的，这中间用户可能已经退出页面。
+            // 不判 isAdded 时旧代码会在这里抛
+            // "Fragment ... not attached to an activity"（线上实测 4 例：loadInitial/loadRelated
+            // 的回调打在一个已 detach 的 Fragment 上），所以三条回调都先过这道闸。
+            if (!isAdded) return@load
             if (items.isNotEmpty()) {
                 loadingLayout.visibility = View.GONE
                 errorLayout.visibility = View.GONE
@@ -130,7 +135,8 @@ class ShortVideoFeedFragment : Fragment() {
             }
         }
 
-        preloadManager.onLoadError = { msg ->
+        preloadManager.onLoadError = err@{ msg ->
+            if (!isAdded) return@err
             if (preloadManager.getItemCount() == 0) {
                 loadingLayout.visibility = View.GONE
                 errorLayout.visibility = View.VISIBLE
@@ -141,7 +147,8 @@ class ShortVideoFeedFragment : Fragment() {
         }
 
         // 播到列表末尾时用相关推荐续接：成功后追加并切到下一条，失败就停住并提示
-        preloadManager.onRelatedLoaded = { items ->
+        preloadManager.onRelatedLoaded = related@{ items ->
+            if (!isAdded) return@related
             if (items.isEmpty()) {
                 pendingAdvanceAfterRelated = false
                 MsgUtil.showMsg(getString(R.string.text_shortvideoplayer_no_more))

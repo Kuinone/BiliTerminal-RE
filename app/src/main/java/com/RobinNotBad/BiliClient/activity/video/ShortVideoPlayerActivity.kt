@@ -539,10 +539,15 @@ class ShortVideoPagerAdapter(
 
             if (item.cover.isNotEmpty()) {
                 coverImage.visibility = View.VISIBLE
-                Glide.with(activity)
-                    .asDrawable()
-                    .load(GlideUtil.url_hq(item.cover))
-                    .into(coverImage)
+                // 页面已经销毁时 Glide.with(activity) 会直接抛
+                // "You cannot start a load for a destroyed activity"（线上实测 2 例）：
+                // 预加载线程回来、分页还没来得及回收时 onBindViewHolder 仍会被调用。
+                if (GlideUtil.canLoad(coverImage)) {
+                    Glide.with(activity)
+                        .asDrawable()
+                        .load(GlideUtil.url_hq(item.cover))
+                        .into(coverImage)
+                }
             }
 
             textTitle.text = item.title

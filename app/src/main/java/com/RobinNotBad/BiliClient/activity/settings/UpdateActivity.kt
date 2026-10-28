@@ -251,6 +251,15 @@ class UpdateActivity : BaseActivity() {
 
     private fun startDownload() {
         if (isDownloading) return
+        // 下载地址可能为空：强制更新拦截是从 SP 里取 force_update_download_url 再塞进 intent 的，
+        // 那个键没有值时读出 null（BiliTerminal.kt 的 getString(..., null)），页面照样会显示
+        // 「下载」按钮。旧代码在这里 `updateConfig!!.downloadUrl!!` 直接 NPE（线上实测 5 例，
+        // 消息为 null，正是 Kotlin `!!` 的特征）。宁可就地提示，也不要崩掉整个更新页。
+        val downloadUrl = updateConfig?.downloadUrl
+        if (downloadUrl.isNullOrBlank()) {
+            MsgUtil.showMsg(getString(R.string.msg_update_no_download_url))
+            return
+        }
         isDownloading = true
         downloadFinished = false
 
@@ -263,7 +272,7 @@ class UpdateActivity : BaseActivity() {
         progressText.text = getString(R.string.text_update_download_preparing)
 
         UpdateManager.downloadApk(
-            updateConfig!!.downloadUrl!!,
+            downloadUrl,
             this,
             { progress ->
                 val percent = (progress.progress * 100).toInt()

@@ -782,6 +782,8 @@
     <string name="text_update_beta_code_hint">纯数字内测码</string>
     <string name="msg_update_beta_code_invalid">内测码只能是数字</string>
     <string name="msg_update_beta_code_wrong">内测码错误</string>
+    <!-- 更新配置里没有下载地址时的提示；旧代码在这里会 NPE -->
+    <string name="msg_update_no_download_url">没有可用的下载地址，请重新检查更新</string>
     <string name="btn_update_beta_download">下载</string>
     <string name="text_update_beta_checking">正在解析内测包…</string>
     <string name="text_update_beta_text_loading">正在下载内测文本…</string>
