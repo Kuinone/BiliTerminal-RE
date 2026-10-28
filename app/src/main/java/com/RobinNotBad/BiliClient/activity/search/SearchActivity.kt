@@ -474,6 +474,17 @@ class SearchActivity : InstanceActivity() {
         }
 
         if (!refreshing) {
+            // 空关键词要在收起浮层之前拦下（反馈 #52）：原先先 hideDropdowns() 再判空 return，
+            // 搜索没执行、历史记录却被藏起来了，只能切走页面再回来才重新出现。
+            if (keyword.isEmpty()) {
+                if (defaultSearchContentEnabled && defaultSearchContent != null && defaultSearchContent!!.isNotEmpty()) {
+                    keyword = defaultSearchContent!!
+                } else {
+                    runOnUiThread { MsgUtil.showMsg(UiText.of("还没输入内容喵~")) }
+                    return
+                }
+            }
+
             val manager = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
             val curFocus: View?
             if (getCurrentFocus().also { curFocus = it } != null) {
@@ -485,15 +496,6 @@ class SearchActivity : InstanceActivity() {
             suggestionGeneration++
             if (suggestionRunnable != null) handler.removeCallbacks(suggestionRunnable!!)
             runOnUiThread { hideDropdowns() }
-
-            if (keyword.isEmpty()) {
-                if (defaultSearchContentEnabled && defaultSearchContent != null && defaultSearchContent!!.isNotEmpty()) {
-                    keyword = defaultSearchContent!!
-                } else {
-                    runOnUiThread { MsgUtil.showMsg(UiText.of("还没输入内容喵~")) }
-                    return
-                }
-            }
 
             hasSearched = true
             runOnUiThread { refreshSortBar() }
