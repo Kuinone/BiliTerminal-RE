@@ -4069,20 +4069,31 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
 
         val videoUrl = videoFileList[pageIndex]
         val danmakuUrl = danmakuFileList?.getOrElse(pageIndex) { "" } ?: ""
+        // 文件夹虚拟合集会带上与 videoFileList 对齐的外部音轨（未合并的 DASH 缓存，反馈 #51）
+        val audioUrl = intent.getStringArrayListExtra("audioFileList")
+            ?.getOrElse(pageIndex) { "" }?.takeIf { it.isNotEmpty() }
 
         runOnUiThread {
-            doSwitchPage(newTitle, videoUrl, danmakuUrl, pageIndex)
+            doSwitchPage(newTitle, videoUrl, danmakuUrl, pageIndex, audioUrl)
         }
     }
 
     /**
      * 执行分页切换的通用UI操作
+     *
+     * @param newAudioTrackUrl 新分页的外部音轨；在线切P与无音轨的本地文件传 null
      */
-    private fun doSwitchPage(newTitle: String, newVideoUrl: String, newDanmakuUrl: String, pageIndex: Int) {
+    private fun doSwitchPage(
+        newTitle: String,
+        newVideoUrl: String,
+        newDanmakuUrl: String,
+        pageIndex: Int,
+        newAudioTrackUrl: String? = null
+    ) {
         if (destroyed) return
 
         releaseAudioTrack()
-        audioTrackUrl = null // 新分页不能继续复用上一页的外部音轨。
+        audioTrackUrl = newAudioTrackUrl // 新分页不能继续复用上一页的外部音轨。
         ijkPlayer?.stop()
         ijkPlayer?.release()
         releaseDanmaku()
