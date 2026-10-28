@@ -97,6 +97,8 @@ public class PrivateMsgApi {
                 msgObject.msg_source = msgJson.getInt("msg_source");
                 msgObject.msgId = msgJson.getLong("msg_key");
                 msgObject.msgSeqno = msgJson.getLong("msg_seqno");
+                msgObject.msgStatus = msgJson.optInt("msg_status", PrivateMessage.STATUS_NORMAL);
+                if (!shouldDisplay(msgObject.msgStatus)) continue;
                 list.add(msgObject);
 
             }
@@ -247,6 +249,44 @@ public class PrivateMsgApi {
         // 不再以 Log.e 输出私信内容与完整请求头（含 Cookie），避免凭证/隐私进 logcat
         Logu.i("发送私信结果: " + result.optInt("code"));
         return result;
+    }
+
+    /** 撤回有效期：B 站只允许撤回 120 秒内发出的私信（private_msg_content.md「撤回消息」）。 */
+    public static final long RECALL_WINDOW_SECONDS = 120;
+
+    /**
+     * 被撤回的原消息不再显示（反馈 #57 配套）。
+     *
+     * 接口对撤回的原消息仍回原文（{@code msg_status=1}），同时另有一条 {@code msg_type=5} 的撤回通知；
+     * 原先两条都显示，等于撤回了也照样能看到原文。只过滤 1：被系统撤回（2）的接口本就不返回，
+     * 图片失效（50）的内容是一张提示图，照常显示。
+     *
+     * 过滤不会弄乱分页：撤回通知的 seqno 一定比原消息大，所以列表末尾（refresh 的起点）
+     * 永远是保留下来的消息；列表头被滤掉时 loadMore 只会多取回它一次、再被滤掉。
+     */
+    public static boolean shouldDisplay(int msgStatus) {
+        return msgStatus != PrivateMessage.STATUS_RETRACTED;
+    }
+
+    /**
+     * 这条私信能不能撤回：只能撤回自己发的、仍在 120 秒内的，撤回通知本身不能再撤回。
+     * 本地时间只用来决定显不显示入口，最终以服务端判定为准（手表时间可能不准，见 §3.72）。
+     */
+    public static boolean canRecall(PrivateMessage msg, long selfUid, long nowSeconds) {
+        if (msg == null || selfUid <= 0 || msg.uid != selfUid) return false;
+        if (msg.type == PrivateMessage.TYPE_RETRACT || msg.msgId == 0) return false;
+        // 本地时间比服务端慢时 elapsed 会是负数，照样给入口，交给服务端判
+        return nowSeconds - msg.timestamp <= RECALL_WINDOW_SECONDS;
+    }
+
+    /**
+     * 撤回一条自己发的私信：发一条 {@code msg_type=5}、内容为目标 {@code msg_key} 的私信。
+     * 成功后服务端把原消息的 {@code msg_status} 置 1，并在会话里留一条撤回通知。
+     */
+    public static JSONObject recallMsg(long senderUid, long receiverUid, long msgKey)
+            throws IOException, JSONException {
+        return sendMsg(senderUid, receiverUid, MSG_TYPE_RETRACT,
+                System.currentTimeMillis() / 1000, String.valueOf(msgKey));
     }
 
     public static JSONObject updateAck(long talkerId, int sessionType, long ackSeqno)

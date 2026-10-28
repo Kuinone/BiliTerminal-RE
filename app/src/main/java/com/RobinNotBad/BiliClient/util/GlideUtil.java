@@ -5,11 +5,14 @@ import android.app.Activity;
 import android.content.Context;
 import android.content.ContextWrapper;
 import android.graphics.drawable.Drawable;
+import android.os.Looper;
 import android.view.View;
 import android.widget.ImageView;
 
+import com.RobinNotBad.BiliClient.BiliTerminal;
 import com.RobinNotBad.BiliClient.R;
 import com.bumptech.glide.Glide;
+import com.bumptech.glide.RequestManager;
 import com.bumptech.glide.TransitionOptions;
 import com.bumptech.glide.load.DecodeFormat;
 import com.bumptech.glide.load.engine.DiskCacheStrategy;
@@ -47,11 +50,20 @@ public class GlideUtil {
         }
     }
 
+    /** 详情 / 卡片大图：宽度已按屏幕长边封顶（手表上不会再请求 1024w）。 */
     public static String url_hq(String url) {
+        return hqUrl(url, PerformanceManager.getHqImageMaxWidth());
+    }
+
+    /** 可缩放查看的大图（图片查看器）：不按屏幕封顶，放大后仍清晰。 */
+    public static String url_zoom(String url) {
+        return hqUrl(url, PerformanceManager.getZoomImageMaxWidth());
+    }
+
+    private static String hqUrl(String url, int maxWidth) {
         if (!url.startsWith("http") || url.endsWith("gif") || url.contains("@") || url.contains("afdiancdn.com"))
             return url;
         final int quality = PerformanceManager.getHqImageQuality();
-        final int maxWidth = PerformanceManager.getHqImageMaxWidth();
         if (SharedPreferencesUtil.getBoolean("image_request_jpg", false)) {
             if (url.endsWith("jpeg") || url.endsWith("jpg")) return url;
             return url + "@0e_"
@@ -124,6 +136,29 @@ public class GlideUtil {
         Activity activity = findActivity(view.getContext());
         if (activity == null) return true;
         return !activity.isFinishing() && !activity.isDestroyed();
+    }
+
+    /**
+     * 列表 / 卡片里加载图片用的 RequestManager：绑定到 View 所在 Activity 的生命周期。
+     *
+     * <p>26.10.27 性能审查：约 30 处 adapter 写的是 {@code Glide.with(BiliTerminal.context)}
+     * （Application 级），带来三个问题：离开页面后请求不取消，继续下载解码；页面退到后台也不暂停；
+     * {@link com.RobinNotBad.BiliClient.util.view.ImageAutoLoadScrollListener} 对 Activity 级
+     * RequestManager 的 pause 管不到它们，「翻动时不加载图片」开关等于没开。
+     *
+     * <p>不用 {@code Glide.with(view)}：它要在 Fragment 树里逐个找宿主，列表 bind 热路径上更慢，
+     * 而这里的页面暂停 / 恢复都是 Activity 粒度。找不到 Activity、Activity 已销毁或不在主线程时
+     * 回落 Application 级，与改动前行为一致——不会抛「destroyed activity」。
+     */
+    public static RequestManager with(View view) {
+        Context appContext = BiliTerminal.context;
+        if (view != null && Looper.myLooper() == Looper.getMainLooper()) {
+            Activity activity = findActivity(view.getContext());
+            if (activity != null && !activity.isFinishing() && !activity.isDestroyed()) {
+                return Glide.with(activity);
+            }
+        }
+        return Glide.with(appContext != null ? appContext : view.getContext().getApplicationContext());
     }
 
     /** 沿 ContextWrapper 链找宿主 Activity；不是 Activity 上下文时返回 null。 */

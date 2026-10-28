@@ -6,13 +6,11 @@ import android.view.View
 import android.widget.ImageView
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
-import com.RobinNotBad.BiliClient.BiliTerminal
 import com.RobinNotBad.BiliClient.R
 import com.RobinNotBad.BiliClient.model.ArticleCard
 import com.RobinNotBad.BiliClient.util.GlideUtil
 import com.RobinNotBad.BiliClient.util.StringUtil
 import com.RobinNotBad.BiliClient.util.ToolsUtil
-import com.bumptech.glide.Glide
 import com.bumptech.glide.load.DecodeFormat
 import com.bumptech.glide.load.engine.DiskCacheStrategy
 import com.bumptech.glide.load.resource.bitmap.RoundedCorners
@@ -48,7 +46,7 @@ class ArticleCardHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
             readTimes.visibility = View.GONE
         } else readTimes.text = articleCard.view
 
-        Glide.with(BiliTerminal.context!!).asDrawable()
+        GlideUtil.with(cover).asDrawable()
             .load(if (!TextUtils.isEmpty(articleCard.cover)) GlideUtil.url_hq(articleCard.cover) else R.mipmap.article_placeholder)
             .placeholder(R.mipmap.placeholder)
             .error(R.mipmap.placeholder)

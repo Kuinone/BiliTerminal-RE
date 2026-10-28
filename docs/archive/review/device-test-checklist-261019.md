@@ -1,5 +1,7 @@
 # 真机测试节点清单（26.10.16 → 9f644c2）
 
+> **【已归档 2026-10-27】** 一次性清单，针对 26.10.16 → `9f644c2` 那一版的 debug 包；该版已发布，后续真机回归统一走 `docs/review/real-device-regression-checklist.md`。
+
 > 用途：这一版改动量大（19 个提交、约 +2400/−700 行、跨 100+ 文件），其中「文案全量迁移」「下载/播放器容错」「API 错误码与 POST 判定」「UI 动作按身份重定位」四类必须真机回归。本文按优先级给出可直接照着点的节点，并标出**我已经在 MuMu 模拟器（Android 12 / x86，已 root）上验证过的结论**——那部分你只需抽验，重点放在标了 ⚠️ 和 🕐（手表专属）的项。
 >
 > 包：`app/build/outputs/apk/coexist/debug/app-coexist-universal-debug.apk`（19:53 重编，与 HEAD 一致）或 `standard/debug/app-standard-universal-debug.apk`。均为 **debug 包**，`versionName=26.10.16 (2610160)`，带调试桥与日志落盘。

@@ -1,5 +1,7 @@
 # 播放内核合并（方案 A + 方案 B）设计文档
 
+> **【已归档 2026-10-27】** S1–S3 已完成；S6 的 `PlayerIntegrator` / `PlayerScaleMode` 已删、`loadFromProtobuf` 已换成 `loadFromProtobufSegments`；仍开放的 S4 / S5 后半 / `PlayerControlDelegate` 去留已回迁 `docs/review/fix-progress.md` §2.2。
+
 > 制定日期：2026-09-10
 > 状态：进行中
 > 目标：**以保证播放性能为最高优先级**，把两个播放器（`PlayerActivity` / `ShortVideoPlayerActivity`）的播放内核与弹幕栈合并为一套。

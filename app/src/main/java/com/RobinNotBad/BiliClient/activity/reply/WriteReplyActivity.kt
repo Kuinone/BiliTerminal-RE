@@ -14,6 +14,7 @@ import android.widget.TextView
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import com.RobinNotBad.BiliClient.R
+import com.RobinNotBad.BiliClient.activity.ImagePickerActivity
 import com.RobinNotBad.BiliClient.activity.EmoteActivity
 import com.RobinNotBad.BiliClient.activity.base.BaseActivity
 import com.RobinNotBad.BiliClient.api.EmoteApi
@@ -206,9 +207,8 @@ class WriteReplyActivity : BaseActivity() {
                             if (imageList.size >= 9) {
                                 MsgUtil.showMsg(UiText.of("最多只能添加9张图片喵~"))
                             } else {
-                                val pickIntent = Intent(Intent.ACTION_GET_CONTENT)
-                                pickIntent.type = "image/*"
-                                imageLauncher.launch(pickIntent)
+                                // 内置选图页（反馈 #53），页内可退回系统选择器
+                                imageLauncher.launch(ImagePickerActivity.intent(this))
                             }
                         } else {
                             MsgUtil.showMsg(UiText.of("带图评论仅大会员可用喵~"))

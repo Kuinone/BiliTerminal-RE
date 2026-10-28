@@ -9,4 +9,9 @@
     <attr name="choiceCardColor" format="color|reference" />
     <!-- 次要按钮底色（原 android:backgroundTint="?attr/colorSurface" 的那类按钮） -->
     <attr name="secondaryButtonTint" format="color|reference" />
+    <!-- 点赞 / 投币 / 收藏卡片（视频详情、文章末尾）：它夹在一排玻璃按钮中间，视觉上就是按钮组的一员，
+         所以玻璃质感下底色 / 描边都取玻璃按钮那套（glass_btn_bg_fill_* / glass_btn_stroke_*），
+         而不是卡片色 + 主色实线（那样会像另一种材质）。默认值 = colorSurface / colorPrimary，关闭时观感不变。 -->
+    <attr name="actionCardColor" format="color|reference" />
+    <attr name="actionCardStroke" format="color|reference" />
 </resources>

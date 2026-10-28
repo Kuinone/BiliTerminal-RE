@@ -203,8 +203,8 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="2dp"
-            app:cardBackgroundColor="?attr/choiceCardColor"
-            app:strokeColor="?attr/colorPrimary"
+            app:cardBackgroundColor="?attr/actionCardColor"
+            app:strokeColor="?attr/actionCardStroke"
             app:strokeWidth="1dp">
 
             <LinearLayout

@@ -13,12 +13,14 @@ import com.RobinNotBad.BiliClient.util.SettingsKeys
 import com.RobinNotBad.BiliClient.util.SharedPreferencesUtil
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.sqrt
 
 /**
- * 外观模块四：**弥散光晕**（页面背景的顶部光晕 + 上→下渐变底色），可在「外观设置」开关。
+ * 外观模块四：**弥散光晕**（页面背景的边缘光晕 + 由光源向外的渐变底色），可在「外观设置」开关。
  *
- * 每套主题一份 [Spec]：顶部底色 + 1～2 团径向光晕（颜色 / 位置 / 半径各不相同），
- * 下半屏渐变回主题本来的背景色——所以列表下半部分、导航栏与关闭光晕时完全一致。
+ * 每套主题一份 [Spec]：光源处底色 + 1～2 团径向光晕（颜色 / 位置 / 半径各不相同），
+ * 远离光源的一侧渐变回主题本来的背景色——光源在顶部（默认）时，列表下半部分、导航栏与关闭光晕时完全一致。
+ * 光源位置（上 / 下 / 左 / 右 / 中）可在设置里选，[Spec] 只按「顶部」写一份，由 [placeGlow] / [baseGradient] 变换。
  *
  * ## 性能（手表优先，改这里前必读）
  * - **没有 blur**：CSS 里的 `filter: blur()` 在手表 GPU 上是整屏多次采样，代价最高的一步。
@@ -44,11 +46,40 @@ object AmbientGlow {
     /** 亮色模式的渐变终点：浅底上色差更难察觉，顶部晕染多铺一段。 */
     const val LIGHT_FADE_END = 0.62f
 
+    // ==================== 光源位置 ====================
+
+    /** 光源位置的 SharedPreferences key。 */
+    const val KEY_SOURCE = SettingsKeys.UI_AMBIENT_GLOW_SOURCE
+
+    const val SOURCE_TOP = "top"
+    const val SOURCE_BOTTOM = "bottom"
+    const val SOURCE_LEFT = "left"
+    const val SOURCE_RIGHT = "right"
+    const val SOURCE_CENTER = "center"
+
+    /** 默认贴顶：与加入本设置前的观感完全一致。 */
+    const val DEFAULT_SOURCE = SOURCE_TOP
+
+    /** 供设置页 `listChoose` 使用的候选值；显示名在 `strings.xml` 的 `ambient_glow_source_names`，顺序一一对应。 */
+    val SOURCE_VALUES = listOf(SOURCE_TOP, SOURCE_BOTTOM, SOURCE_LEFT, SOURCE_RIGHT, SOURCE_CENTER)
+
     /**
-     * 一团光晕。
+     * 居中光源时半径的缩放：贴边时光晕有一半在屏外，居中时整团都在屏内，
+     * 同样半径会显得「亮了一倍」；缩一档让观感接近贴边。
+     */
+    const val CENTER_RADIUS_SCALE = 0.8f
+
+    /** 未知值一律回落到 [DEFAULT_SOURCE]。 */
+    fun normalizeSource(saved: String?): String =
+        if (saved != null && saved in SOURCE_VALUES) saved else DEFAULT_SOURCE
+
+    fun currentSource(): String = normalizeSource(SharedPreferencesUtil.getString(KEY_SOURCE, DEFAULT_SOURCE))
+
+    /**
+     * 一团光晕。坐标按「光源在顶部」来写，其它光源位置由 [placeGlow] 旋转 / 镜像得到。
      * @param color 中心颜色（含 alpha，即参考稿的 `glow-color × glow-opacity`）
-     * @param cx 圆心横坐标，占宽度的比例
-     * @param cy 圆心纵坐标，占 `min(宽, 高)` 的比例（手表方 / 圆屏宽高相等；手机竖屏保持贴顶）
+     * @param cx 沿光源所在边的位置，占该边长度的比例（光源在顶部时即横坐标占宽度的比例）
+     * @param cy 离开光源所在边的深度，占 `min(宽, 高)` 的比例（手表方 / 圆屏宽高相等；手机竖屏保持贴边）
      * @param radius 半径，占 `min(宽, 高)` 的比例
      */
     class Glow(val color: Int, val cx: Float, val cy: Float, val radius: Float)
@@ -96,7 +127,7 @@ object AmbientGlow {
             top = 0xFFE5D0E1.toInt(),
             glows = arrayOf(
                 Glow(0x76AD6BE3.toInt(), 0.5f, 0.05f, 0.72f),
-                Glow(0x70C9A0F0, 0.88f, 0.42f, 0.46f)
+                Glow(0x70C9A0F0.toInt(), 0.88f, 0.42f, 0.46f)
             ),
             fadeEnd = LIGHT_FADE_END
         )
@@ -170,8 +201,59 @@ object AmbientGlow {
     }
 
     /** 为当前主题创建背景 drawable。每个 Activity 创建一次（冷路径），不缓存。 */
-    fun createDrawable(themeKey: String, background: Int, light: Boolean = false): Drawable =
-        AmbientGlowDrawable(specFor(themeKey, light), background)
+    fun createDrawable(
+        themeKey: String,
+        background: Int,
+        light: Boolean = false,
+        source: String = DEFAULT_SOURCE
+    ): Drawable = AmbientGlowDrawable(specFor(themeKey, light), background, normalizeSource(source))
+
+    /**
+     * 把一团光晕（按「光源在顶部」写的坐标）放到 [source] 指定的位置，返回 `[cx, cy, r]`（像素，相对 bounds 左上角）。
+     * 纯函数，供 JVM 单测。只在 `onBoundsChange` 调用，不在 draw 热路径上。
+     *
+     * - 上 / 下：沿宽度铺开，深度从上 / 下边量起；
+     * - 左 / 右：把顶部方案顺时针 / 逆时针转 90°，沿高度铺开，深度从左 / 右边量起；
+     * - 中：方案里各团光晕的**重心**移到屏幕中心、相对位置不变，半径乘 [CENTER_RADIUS_SCALE]。
+     *   用重心而不是第一团，是为了让「左红右青」这种对称双色居中后仍然左右对称。
+     */
+    internal fun placeGlow(spec: Spec, index: Int, source: String, w: Float, h: Float): FloatArray {
+        val g = spec.glows[index]
+        val unit = min(w, h)
+        val r = max(1f, unit * g.radius)
+        return when (source) {
+            SOURCE_BOTTOM -> floatArrayOf(w * g.cx, h - unit * g.cy, r)
+            SOURCE_LEFT -> floatArrayOf(unit * g.cy, h * g.cx, r)
+            SOURCE_RIGHT -> floatArrayOf(w - unit * g.cy, h * g.cx, r)
+            SOURCE_CENTER -> {
+                val meanX = spec.glows.map { it.cx }.average().toFloat()
+                val meanY = spec.glows.map { it.cy }.average().toFloat()
+                floatArrayOf(
+                    w / 2f + w * (g.cx - meanX),
+                    h / 2f + unit * (g.cy - meanY),
+                    max(1f, r * CENTER_RADIUS_SCALE)
+                )
+            }
+            else -> floatArrayOf(w * g.cx, unit * g.cy, r)
+        }
+    }
+
+    /**
+     * 底色渐变的几何，返回 `[x0, y0, x1, y1]`（像素，相对 bounds 左上角）：
+     * 从光源处的 [Spec.top] 渐变到 `x1, y1` 处的背景色。
+     * 上 / 下 / 左 / 右为线性渐变（终点在 [Spec.fadeEnd] 处）；
+     * 中为径向渐变，`x0, y0` 是圆心，`x1` 是半径（半对角线 × fadeEnd，`y1` 无意义填 0）。
+     */
+    internal fun baseGradient(spec: Spec, source: String, w: Float, h: Float): FloatArray = when (source) {
+        SOURCE_BOTTOM -> floatArrayOf(0f, h, 0f, h * (1f - spec.fadeEnd))
+        SOURCE_LEFT -> floatArrayOf(0f, 0f, w * spec.fadeEnd, 0f)
+        SOURCE_RIGHT -> floatArrayOf(w, 0f, w * (1f - spec.fadeEnd), 0f)
+        SOURCE_CENTER -> floatArrayOf(
+            w / 2f, h / 2f,
+            max(1f, sqrt(w * w + h * h) / 2f * spec.fadeEnd), 0f
+        )
+        else -> floatArrayOf(0f, 0f, 0f, h * spec.fadeEnd)
+    }
 
     /** 保留 RGB、把 alpha 乘以 [factor]。渐变终点用「同色 alpha=0」而不是透明黑，避免边缘发灰。 */
     internal fun scaleAlpha(color: Int, factor: Float): Int {
@@ -188,7 +270,8 @@ object AmbientGlow {
 
     private class AmbientGlowDrawable(
         private val spec: Spec,
-        private val bottom: Int
+        private val bottom: Int,
+        private val source: String
     ) : Drawable() {
 
         private val basePaint = Paint().apply { isDither = true }
@@ -207,17 +290,22 @@ object AmbientGlow {
             }
             val left = bounds.left.toFloat()
             val top = bounds.top.toFloat()
-            val unit = min(w, h)
 
-            basePaint.shader = LinearGradient(
-                0f, top, 0f, top + h * spec.fadeEnd,
-                spec.top, bottom, Shader.TileMode.CLAMP
-            )
+            val base = baseGradient(spec, source, w, h)
+            basePaint.shader = if (source == SOURCE_CENTER) {
+                RadialGradient(left + base[0], top + base[1], base[2], spec.top, bottom, Shader.TileMode.CLAMP)
+            } else {
+                LinearGradient(
+                    left + base[0], top + base[1], left + base[2], top + base[3],
+                    spec.top, bottom, Shader.TileMode.CLAMP
+                )
+            }
             for (i in spec.glows.indices) {
                 val g = spec.glows[i]
-                val cx = left + w * g.cx
-                val cy = top + unit * g.cy
-                val r = max(1f, unit * g.radius)
+                val p = placeGlow(spec, i, source, w, h)
+                val cx = left + p[0]
+                val cy = top + p[1]
+                val r = p[2]
                 val colors = IntArray(GLOW_ALPHAS.size) { scaleAlpha(g.color, GLOW_ALPHAS[it]) }
                 glowPaints[i].shader = RadialGradient(cx, cy, r, colors, GLOW_STOPS, Shader.TileMode.CLAMP)
                 geometry[i * 3] = cx

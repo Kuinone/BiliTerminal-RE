@@ -15,6 +15,11 @@ public class PrivateMessage {
     public long msgId = 0;
     public long msgSeqno = 0;
     public int msg_source = 0;
+    /** 0 正常；1 被撤回（接口仍会回原文）；2 被系统撤回；50 图片失效。见 private_msg.md 的 msg_status。 */
+    public int msgStatus = 0;
+
+    public static final int STATUS_NORMAL = 0;
+    public static final int STATUS_RETRACTED = 1;
 
     public static final int TYPE_TEXT = 1;
     public static final int TYPE_VIDEO = 7;

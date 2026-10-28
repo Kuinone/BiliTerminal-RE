@@ -526,6 +526,9 @@ class LocalListActivity : InstanceActivity() {
         val pagenames = ArrayList<String>()
         val videoUrlList = ArrayList<String>()
         val danmakuUrlList = ArrayList<String>()
+        // 与 videoUrlList 一一对应的外部音轨（DASH 双文件的 audio.m4a；单文件为空串）。
+        // 原先只取 mp4 主文件，没合并过的 DASH 缓存在文件夹里播放就没有声音（反馈 #51）。
+        val audioUrlList = ArrayList<String>()
         var startPageIndex = 0
 
         for ((i, v) in folderVideos.withIndex()) {
@@ -535,11 +538,13 @@ class LocalListActivity : InstanceActivity() {
             if (v.videoFileList != null) {
                 if (v.videoFileList!!.size == 1) {
                     videoUrlList.add(v.videoFileList!![0])
+                    audioUrlList.add("")
                 } else {
                     // 取第一个mp4文件作为主文件
                     val videoFile = v.videoFileList!!.firstOrNull { it.endsWith(".mp4") }
                         ?: v.videoFileList!![0]
                     videoUrlList.add(videoFile)
+                    audioUrlList.add(v.videoFileList!!.firstOrNull { it.endsWith(".m4a") } ?: "")
                 }
             }
 
@@ -560,17 +565,23 @@ class LocalListActivity : InstanceActivity() {
         // 构建 PlayerData，传入所有分页信息
         val playerData = PlayerData(PlayerData.TYPE_LOCAL)
         playerData.title = "$folderName（虚拟合集）"
-        playerData.videoUrl = videoUrlList[0]
-        playerData.danmakuUrl = danmakuUrlList[0]
+        // 起播地址必须跟 currentPageIndex 走同一个下标（反馈 #51）：原先固定取 [0]，
+        // 点 P2 时选集高亮在 P2、实际播的却是 P1
+        playerData.videoUrl = videoUrlList[startPageIndex]
+        playerData.danmakuUrl = danmakuUrlList[startPageIndex]
         playerData.pagenames = pagenames
         playerData.cids = ArrayList() // 本地视频不需要cid
         playerData.currentPageIndex = startPageIndex
 
         try {
             val player = PlayerApi.jumpToPlayer(playerData)
-            // 额外传入视频文件和弹幕文件列表，用于本地分页切换
+            // 额外传入视频 / 弹幕 / 外部音轨列表，用于本地分页切换
             player.putExtra("videoFileList", videoUrlList)
             player.putExtra("danmakuFileList", danmakuUrlList)
+            player.putExtra("audioFileList", audioUrlList)
+            if (audioUrlList[startPageIndex].isNotEmpty()) {
+                player.putExtra("audio_track_url", audioUrlList[startPageIndex])
+            }
             startActivity(player)
             MsgUtil.showMsg("已进入虚拟合集：$folderName（共${folderVideos.size}个视频）")
         } catch (e: Exception) {

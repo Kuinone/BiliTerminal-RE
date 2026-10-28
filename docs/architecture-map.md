@@ -16,7 +16,7 @@
 | `network/api/`（Retrofit + kotlinx-serialization） | 目录**空**，0 个文件 |
 | `di/`（Hilt） | 目录**空**，0 个文件 |
 | `data/repository/` | 目录**空**，0 个文件 |
-| `ui/*`（ViewModel/MVVM） | 只有 `ui/appearance/`（26.09.11 新增，现 5 个文件：`AppearanceManager.kt` / `ColorScheme.kt` / `CornerStyle.kt` / `FontStyle.kt` / `AppearanceApplier.kt`）+ `ui/widget/`（13 个文件，26.10.21 新增 `SwipePageLayout.kt`）。`ui/theme/` **已并入 `ui/appearance/`**（原 `ThemeManager.kt` → `ColorScheme.kt`）；其余 `ui/base`、`ui/player`、`ui/video/viewmodel` 等子目录**已全部删除** |
+| `ui/*`（ViewModel/MVVM） | 只有 `ui/appearance/`（26.09.11 新增，现 9 个文件：`AppearanceManager.kt` / `ColorScheme.kt` / `CornerStyle.kt` / `FontStyle.kt` / `AppearanceApplier.kt`，26.10.26~27 又加 `AmbientGlow.kt` / `ColorMode.kt` / `GlassStyle.kt` / `ThemeTint.kt`）+ `ui/widget/`（13 个文件，26.10.21 新增 `SwipePageLayout.kt`）。`ui/theme/` **已并入 `ui/appearance/`**（原 `ThemeManager.kt` → `ColorScheme.kt`）；其余 `ui/base`、`ui/player`、`ui/video/viewmodel` 等子目录**已全部删除** |
 | `BiliTerminalApp.kt`（@HiltAndroidApp）为入口 | **该类已于 26.10.02 整体删除**。Manifest 指向 `.BiliTerminal`（26.09.10 起是 Kotlin，原先为 `.java`）；它从未被实例化，只因 `SplashActivity` 的 UETool 逻辑引用其静态方法与常量而残留，那些已移入 `BiliTerminal.kt` 伴生对象 |
 
 **核实方式**：全工程 `grep '@AndroidEntryPoint|@HiltViewModel|@Inject|@Module|@InstallIn'` → **0 命中**；空目录统计 → **24 个**（26.09.11 已全部删除）。
@@ -169,7 +169,7 @@ armeabi-v7a 6,225,574 B），说明 release 全量依赖里没有别的东西要
 
 **没做的事**：本机 `D:\Program Files\android-sdk` 下没有 `emulator`、没有 `system-images`，
 **没有在 API 19~23 的设备/模拟器上做过运行验证**，以上全部是静态审计 + 依赖元数据 + `dexdump` 反汇编结论。
-真机验证清单见 `docs/review/device-test-plan.md` 的 T12。
+真机验证清单见 `docs/archive/review/device-test-plan.md` 的 T12。
 
 ---
 
@@ -686,7 +686,7 @@ CenterThreadPool.supplyAsyncWithLiveData { fetch...().getOrThrow() }
 
 - **巨型类**：`activity/player/PlayerActivity.kt` 166 KB / 3628 行、`activity/video/ShortVideoPlayerActivity.kt` 43 KB / 1017 行（26.10.10 实测）。`service/DownloadService.kt` 曾是第二条 65 KB 的巨型类，26.10.04 批次 8（E2）已拆到 **1284 行**，实现分居 `service/download/` 的 4 个文件（见 §7.27）。改播放相关功能前先想清楚在哪个位置插入；改下载相关功能请先读 §7.27 的锁与状态契约。
 - **Application 静态状态已收敛为一套**：26.10.02 起只有 `BiliTerminal.context`（`BiliTerminal.kt:47-48`，伴生对象 `@JvmField`，静态字段）与 `instance`（`:53`，`private WeakReference<InstanceActivity>`，只能经 `setInstance()`(`:85`) / `getInstanceActivityOnTop()`(`:90`) 访问），`BiliTerminalApp` 已整文件删除。**新代码一律用 `BiliTerminal`**。
-- **测试覆盖仍偏低**：`app/src/test/` 94 个 Kotlin 测试文件 + 1 个 Java 测试文件（`StringUtilTest.java`）+ 1 个共享假实现 `FakeSharedPreferences.kt`，**95 个测试类**（`CalculatorEngineTest.kt` 里有 `CalculatorEngineTest` 与 `DisguisePrefsTest` 两个类），共 **1041 个用例**（26.10.27 加举报评论后实测，两个 flavor 各 1041、0 失败）。已有：`HotSearchApiTest`、`FavoriteApiTest`、`FollowApiTest`、`OpusApiTest`、`PrivateMsgApiTest`、`BangumiApiTest`、`DynamicApiTest`、`TopicApiTest`、`NoteApiTest`、`WatchLaterApiTest`、`PlayerApiPbpTest`、`ReplyApiTest`、`ReplyParseActionTest`、`ReplySortTest`、`ReplyTranslateApiTest`、`ReplyTranslationTest`、`ReportApiTest`、`NetWorkUtilTest`、`PerformanceManagerTest`、`BangumiUpdateCheckerTest`、`MsgNotifierTest`、`ApkVerifierTest`、`SettingsKeysTest`、`UpdateReleaseTest`、`MenuConfigTest`、`MySpaceConfigTest`、`ToolsUtilTest`、`StringUtilTest`（Java）、`HotSearchAdapterTest`、`TutorialDslTest`、`MediaClockSyncTest`（DFM 侧纯函数，源在 `DanmakuFlameMaster`）、`CalculatorEngineTest`、`DisguisePrefsTest`、`SkipCancelPolicyTest`、`PlayerDefaultsTest`、`ViewPointSkipTest`、`ColorSchemeTest`、`CornerStyleTest`、`FontStyleTest`、`AppearanceManagerTest`、`ViewCapabilityProbeTest`、`DownloadPathSpecTest`、`DownloadProgressMathTest`、`DownloadBatchStatsTest`。改动解析/配置/主题/能力探测逻辑时补纯 JVM 单测——注入 `SharedPreferencesUtil.sharedPreferences`，用 `util/FakeSharedPreferences.kt`（26.09.11 从 `NetWorkUtilTest` 的私有内部类提取为共享助手，别再抄一份）。
+- **测试覆盖仍偏低**：`app/src/test/` 94 个 Kotlin 测试文件 + 1 个 Java 测试文件（`StringUtilTest.java`）+ 1 个共享假实现 `FakeSharedPreferences.kt`，**101 个测试类**（`CalculatorEngineTest.kt` 里有 `CalculatorEngineTest` 与 `DisguisePrefsTest` 两个类），共 **1078 个用例**（26.10.27 加举报评论后实测，两个 flavor 各 1078、0 失败）。已有：`HotSearchApiTest`、`FavoriteApiTest`、`FollowApiTest`、`OpusApiTest`、`PrivateMsgApiTest`、`BangumiApiTest`、`DynamicApiTest`、`TopicApiTest`、`NoteApiTest`、`WatchLaterApiTest`、`PlayerApiPbpTest`、`ReplyApiTest`、`ReplyParseActionTest`、`ReplySortTest`、`ReplyTranslateApiTest`、`ReplyTranslationTest`、`ReportApiTest`、`NetWorkUtilTest`、`PerformanceManagerTest`、`BangumiUpdateCheckerTest`、`MsgNotifierTest`、`ApkVerifierTest`、`SettingsKeysTest`、`UpdateReleaseTest`、`MenuConfigTest`、`MySpaceConfigTest`、`ToolsUtilTest`、`StringUtilTest`（Java）、`HotSearchAdapterTest`、`TutorialDslTest`、`MediaClockSyncTest`（DFM 侧纯函数，源在 `DanmakuFlameMaster`）、`CalculatorEngineTest`、`DisguisePrefsTest`、`SkipCancelPolicyTest`、`PlayerDefaultsTest`、`ViewPointSkipTest`、`ColorSchemeTest`、`CornerStyleTest`、`FontStyleTest`、`AppearanceManagerTest`、`ViewCapabilityProbeTest`、`DownloadPathSpecTest`、`DownloadProgressMathTest`、`DownloadBatchStatsTest`。改动解析/配置/主题/能力探测逻辑时补纯 JVM 单测——注入 `SharedPreferencesUtil.sharedPreferences`，用 `util/FakeSharedPreferences.kt`（26.09.11 从 `NetWorkUtilTest` 的私有内部类提取为共享助手，别再抄一份）。
 - **主题色表带缓存，失效点只有一处**：`ColorScheme.getCurrentTheme()`（26.09.11 起）缓存当前色表，**只由 `AppearanceManager.setTheme()` 经 `ColorScheme.invalidateCache()` 置空**。这是刻意的——36 个属性 getter 全走它，而列表滚动时一个 item 要调多次，此前每次都重读 SharedPreferences（热路径重复 IO）。**若将来给主题 key 增加第二个写入路径（比如直接 `SharedPreferencesUtil.putString(SettingsKeys.THEME, …)`），必须同步调用 `ColorScheme.invalidateCache()`，否则改主题后色表不跟着变且在 `onResume` 重建后依然错**。守卫测试：`ColorSchemeTest.themeCache_isInvalidatedOnEverySetTheme`、`colorGetters_doNotTouchSharedPreferencesAfterFirstRead`。
 - **主题体系有 3 个"裸 Activity"不参与**：`SplashActivity`、`GetIntentActivity` 不继承 `BaseActivity`（开屏/外链恒定 B站粉），`PlayerActivity` 自己 `setTheme` 但**不调 `applyWindowTheme`、也不参与 `onResume` 主题检测**。改主题相关行为时别以为全局都生效了。
 - **文案硬编码**：遗留页面标题/Toast 直接写中文字符串（Manifest 里 `android:label` 也是中文），只有设置页用 `desc_*` 资源。改文案按现有风格来，别顺手抽 `strings.xml`。
@@ -711,11 +711,11 @@ CenterThreadPool.supplyAsyncWithLiveData { fetch...().getOrThrow() }
 - `PlayerSurfaceBinder.kt`（26.09.10 新增）— 在用，Surface 就绪事件回调，取代 200ms 轮询 Timer。
 - `VideoPlayerCore.kt`（26.09.10 新增）— **已可用但尚无消费方**，是合并两个播放器的目标内核（多实例安全、不持 Activity、`reload()` 复用播放器）。
 - `PlayerIntegrator.kt` — ~~死代码~~ **26.09.11 已删除**（全工程无一处实例化）。
-- `PlayerControlDelegate.kt`（含 `GestureHandler`）— **仍未删除，待决策**：`PlayerIntegrator`（它唯一的引用方）已删，此后它全库零外部引用；但播放器合并方案 S6 明确把它列为"**决定去留**"（`docs/superpowers/specs/2026-09-10-player-core-merge.md:63`），且它带着 26.09.10 的手势 bug 修复（`isLongPressing` 复位），**删之前先定方案**。
+- `PlayerControlDelegate.kt`（含 `GestureHandler`）— **仍未删除，待决策**：`PlayerIntegrator`（它唯一的引用方）已删，此后它全库零外部引用；但播放器合并方案 S6 明确把它列为"**决定去留**"（`docs/archive/superpowers/specs/2026-09-10-player-core-merge.md:63`），且它带着 26.09.10 的手势 bug 修复（`isLongPressing` 复位），**删之前先定方案**。
 - `PlayerScaleMode` 枚举（原在 `IjkPlayerBridge.kt`）— **26.09.11 已删除**（无人使用）。
 - `DanmakuManager.loadFromProtobuf` / `toggleVisibility` / `setSpeedFactor` / `setTextSizeScale` / `setTransparency` — **26.09.11 已删除**（全库零调用；`loadFromProtobuf` 实现还是坏的：解压后从未把数据交给 parser）。连带 `PlayerSurfaceBinder.cancelAwait`、`DanmakuManager` 的 `Inflater`/`ByteArrayInputStream` import 一并删除。
 
-**改播放相关代码时的判断顺序**：先确认要改的是"普通播放器那套"还是"短视频那套"。合并工作正在进行（见 `docs/superpowers/specs/2026-09-10-player-core-merge.md`：S1/S2/S3 已完成，S4/S5/S6 待做），所以两边文件的归属会逐步收敛；**当前 `player/` 包仍不是公共层** —— `PlayerActivity` 只用了 `DanmakuManager` 与 `PlayerSurfaceBinder`，播放器本身还是裸 `IjkMediaPlayer`。
+**改播放相关代码时的判断顺序**：先确认要改的是"普通播放器那套"还是"短视频那套"。合并方案（已归档：`docs/archive/superpowers/specs/2026-09-10-player-core-merge.md`）S1/S2/S3 已完成，S4、S5 后半与 `PlayerControlDelegate` 去留仍未做，待办登记在 `docs/review/fix-progress.md` §2.2；**当前 `player/` 包仍不是公共层** —— `PlayerActivity` 只用了 `DanmakuManager` 与 `PlayerSurfaceBinder`，播放器本身还是裸 `IjkMediaPlayer`。
 
 **弹幕序列化的两个硬约束（踩过坑，别重犯）**：
 
@@ -861,6 +861,8 @@ CenterThreadPool.supplyAsyncWithLiveData { fetch...().getOrThrow() }
 - 档位计算是 `@JvmStatic` 纯函数（`levelFromScore` / `isLowPerfLevel` / `listImageQuality` / `listImageMaxWidth` / `hqImageQuality` / `hqImageMaxWidth`），接收 `(level, highPerformanceMode)`，因此可被 JVM 单测直接覆盖；对应的"喂当前状态"getter 只是转调。
 - **`getPageSize()` 只对 3 个接口生效**（`RecommendApi` popular/precious、`SeriesApi` 用户系列）。其余硬编码 `ps`/`page_size` **是有意为之**（`FavoriteApi.java:106 ps=100` 一次拉全、`MessageApi.java:380 page_size=35` 是 cursor 分页、`EmoteApi` 表情面板等），改它们要先确认分页语义。
 - **首次硬件检测不在主线程**：`init()` 无缓存时先置中档返回，检测在 `CenterThreadPool` 上跑完再 `applyPerformanceSettings()`。因此**冷启动最初几十毫秒内读到的是中档参数**，属于预期行为；单测 `PerformanceManagerTest.defaultsBeforeInit_areMedium` 锁住了这套默认值。
+- **列表图 / 高清图宽度再按屏幕封顶**（26.10.27）：`getImageMaxWidth()` / `getHqImageMaxWidth()` 会经过 `capWidthToScreen(tierWidth, 屏幕长边)` 处理，只会变小，按 320/480/640/720/1024 分档。图片查看器要放大看，所以走不封顶的 `getZoomImageMaxWidth()` / `GlideUtil.url_zoom()`。不要把查看器改回 `url_hq`。
+- **列表图片的 RequestManager 用 `GlideUtil.with(view)`**（26.10.27），**不要**写 `Glide.with(BiliTerminal.context!!)`，也不要写 companion 里的静态 RequestManager：Application 级请求不跟页面生命周期走，`ImageAutoLoadScrollListener` 的 `pauseRequests()` 也管不到。这个监听器只在 DRAGGING → SETTLING 时暂停，表冠的 IDLE → SETTLING 不暂停；装监听器统一用 `installIfEnabled()`。
 
 ### 7.11 更新包校验：`util/ApkVerifier.kt`（26.10.04 批次 4 新增）
 
@@ -1164,7 +1166,7 @@ CenterThreadPool.supplyAsyncWithLiveData { fetch...().getOrThrow() }
 
 **完整用法见 `docs/review/agent-test-guide.md`**，这里只记改代码时必须知道的取舍。
 
-这一批解决的是「能编译、能跑单测，但没法自动验证真机行为」——`docs/review/device-test-plan.md` 里 88 条用例一条未执行，根因就是 debug 包没给自动化留入口。四个新增物：
+这一批解决的是「能编译、能跑单测，但没法自动验证真机行为」——`docs/archive/review/device-test-plan.md` 里 88 条用例一条未执行，根因就是 debug 包没给自动化留入口。四个新增物：
 
 - **`debug/DebugBridge`（`app/src/debug/java/...`）**：exported 的 `BroadcastReceiver`，用 `am broadcast -n <包名>/.debug.DebugBridge` 驱动，命令 `ping`/`agent`/`get`/`set`/`remove`/`dump`/`start`/`activities`/`http`/`log`/`logs`/`logclear`/`trail`/`logring`/`top`。**类与清单都在 debug 源集**，release 编译时该类根本不存在（不需要 R8 规则）。
   - **`start` 是它最有价值的命令**：全应用除 `SplashActivity`/`GetIntentActivity` 外都是 `exported="false"`，adb（uid 2000、非 root）拉不起来；而**进程内 `startActivity` 不受 exported 限制**，等于把全部页面开放给 agent。但受 Android 10+ 后台启动限制，应用不可见时会被静默丢弃——需 `adb shell appops set <包名> SYSTEM_ALERT_WINDOW allow`（悬浮窗权限是该限制的豁免条件之一），`start` 的结果里会提示当前是否已授权。
@@ -1172,7 +1174,7 @@ CenterThreadPool.supplyAsyncWithLiveData { fetch...().getOrThrow() }
 - **`BiliTerminal.AGENT_TEST_MODE` + `applyLogSwitches()`**：Agent 测试模式总开关（`SettingsKeys.DEV_AGENT_MODE`）。**它是日志级别、落盘、HTTP 追踪、UETool 跳过四件事的唯一落地处**——改这些开关一律调 `applyLogSwitches()`，别在别处直接改 `Logu.*`。`agentMode = debugBuild && 开关`，`debugBuild` 是编译期常量，release 下 R8 把整段折叠，行为与改动前一致。
   - **改完即生效**是硬要求：原实现里日志开关只在 `Application.onCreate` 读一次，改完要重启——自动化流程里「重启」= 上下文丢失 + 一轮额外等待。所以 `SettingGroupActivity.buildDevGroup()` 的每个开关都带回调。
 - **`Logu`**：新增**异步落盘**（业务线程 O(1) 入队，`rebili-log-writer` 守护线程写，队列 4096 满则丢弃并计数）与单文件 2MB 上限（超限砍前半留后半）。落盘位置 `getExternalFilesDir("logs")`，回退内部 `files/logs`。文件行格式 `MM-dd HH:mm:ss.SSS 级别 调用者 | 内容`。
-  - **logcat 的 tag 一律不动，仍是 `类名>方法名`**（26.10.14 一度改成统一常量 `ReBili`，已回退）。理由：这个 tag 是**既有诊断契约**——`docs/review/device-test-plan.md` D3-11~D3-14 写死了 `adb logcat -s "PlayerActivity>onPrepared"` / `"PlayerActivity>getExtras"` / `"PlayerActivity>checkStall"`，`api/NoteApi.java` 的 `adb logcat -s BiliNote` 是同一思路，全工程 269 处 `Logu.*` 调用点都吃它。**改 tag 等于一次性作废这批排障指令。**
+  - **logcat 的 tag 一律不动，仍是 `类名>方法名`**（26.10.14 一度改成统一常量 `ReBili`，已回退）。理由：这个 tag 是**既有诊断契约**——`docs/archive/review/device-test-plan.md` D3-11~D3-14 写死了 `adb logcat -s "PlayerActivity>onPrepared"` / `"PlayerActivity>getExtras"` / `"PlayerActivity>checkStall"`，`api/NoteApi.java` 的 `adb logcat -s BiliNote` 是同一思路，全工程 269 处 `Logu.*` 调用点都吃它。**改 tag 等于一次性作废这批排障指令。**
   - 「一次抓全」用**按进程过滤**而不是改 tag：`adb logcat --pid=$(adb shell pidof -s <包名>)`；真要事后取证就读落盘日志（调试桥 `log` 命令）。
   - **别改成同步写**：`Logu.d` 会被 UI 线程调用，同步写文件等于把卡顿直接带给用户。落盘队列里放的是**任务**而非「文件名+内容」，这样写行 / flush / 清空三种操作全在同一条线程上串行，`BufferedWriter` 不会被跨线程碰。
   - 工程里还有 38 个文件、110 处直接调 `android.util.Log`（tag 五花八门，`"debug"` 占 51 处），**不受 `Logu` 开关控制、也不落盘**，属尚未收口的历史遗留。
@@ -1275,7 +1277,7 @@ CenterThreadPool.supplyAsyncWithLiveData { fetch...().getOrThrow() }
 1. **落盘必须先脱敏**：`util/Logu.java` 的 `appendToFile` 现在是「`LogSanitizer.sanitize` → shorten → enqueue」，`util/NetWorkUtil.java` 的 HTTP 追踪进 logcat 前也先脱敏。**新增任何写文件/打日志的通道要复用 `LogSanitizer`**，别再直接 `write` 原始请求体；Agent 测试模式的 `logs/http.log` 是历史泄露点，已闭环。
 2. **`LogSanitizer` 的边界**（`util/LogSanitizer.kt`）：覆盖 `键=值`、URL 编码、JSON 键值、裸 11 位手机号四形态；JSON 的数字值、以及任何 `1[3-9]` 开头 11 位数字都会被替换成 `***`（误伤是有意代价）。键表见文件里的 `EXTRA_SENSITIVE_KEYS`。
 3. **`.bak` 不是垃圾**：`DownloadService.safeReplaceTemp(..., keepBackup = true)`（`service/DownloadService.kt:798-830`）会在切清晰度重下时把旧成品改名成 `.bak`；`util/FileUtil.cleanDownloadTempFiles`（`util/FileUtil.java:85-111`）必须**成品缺失才用 `.bak` 恢复、成品存在才删**。改清理逻辑时别再一句 `delete("*.bak")`。
-4. **`reconnect_at_eof=1` 只放直播分支**：`activity/player/PlayerActivity.kt:1126-1132`，在 `isLiveMode` 内才设；点播设了会在播完后无限重连（见 `docs/superpowers/specs/2026-10-11-player-network-resilience.md` P0-1）。
+4. **`reconnect_at_eof=1` 只放直播分支**：`activity/player/PlayerActivity.kt:1126-1132`，在 `isLiveMode` 内才设；点播设了会在播完后无限重连（见 `docs/archive/superpowers/specs/2026-10-11-player-network-resilience.md` P0-1）。
 5. **`NetWorkUtil.post` 非 2xx 现在会抛 `IOException`**（`util/NetWorkUtil.java:443-447`），调用点必须按失败处理；`get` 仍不 `followRedirects`，3xx 原样返回，下载链路要自己判 `code()`（`activity/DownloadActivity.kt`）。
 6. **DebugBridge 的 `http` 默认不带应用请求头**（`appheaders` 默认 false，`app/src/debug/.../debug/DebugBridge.kt:521` 附近）：要带登录态必须显式 `--ez appheaders true`，这是为了不再无脑把 Cookie 写进 `logs/`。
 7. **`X-Install-Id` 受隐私同意闸控制**（`api/TerminalApi.java:535-547` 的 `headers()`）；反馈链路另走 `feedbackHeaders()`（`:763-778`）在未同意时补回，否则反馈无归属。改这两处前先读注释。
@@ -1532,8 +1534,8 @@ setOnLoadMoreListener { page -> load(page) } // 4. page 已由基类自增，别
 | `CornerStyle.kt` | 卡片圆角 | `ui_corner_radius` | `square`（默认）/ `rounded` |
 | `FontStyle.kt` | 自定义字体（用户从文件管理器选字体文件） | `ui_font_path` | 有 / 无（默认无） |
 | `ColorMode.kt` | 暗色 / 亮色模式：应用自己决定 `uiMode` 夜间位（暗色 `NIGHT_YES`、亮色 `NIGHT_NO`），由 `BiliTerminal.getFitDisplayContext`（Activity base context 与全局 context）和 `AppCompatDelegate.setDefaultNightMode` 两处落实；亮色资源只在 `values-notnight` / `drawable-notnight`。`PlayerActivity` / `SplashActivity` 用 `forceDark` 上下文。`ColorScheme` 亮色表 = 暗色表 + `LightPalette` 覆盖，与 `colors_light.xml` 同源（`tools/appearance/gen_light_mode.py`） | `ui_color_mode` | `dark`（默认）/ `light` |
-| `AmbientGlow.kt` | 弥散光晕：7 套主题各一份 `Spec`（顶部底色 + 1～2 团径向光晕），`ColorScheme.applyWindowTheme` 开启时把它设为**窗口背景**、content 背景置空；关闭时走原纯色路径，零开销。无 blur / 噪点层，draw 内零分配 | `ui_ambient_glow` | 开 / 关（默认关） |
-| `GlassStyle.kt` | 玻璃质感：7 份 `GlassOverlay.<X>`（`values/themes_glass.xml` + `colors_glass.xml`）只替换 `materialCardViewStyle` / `materialButtonStyle` 两个**具体样式引用**，`BaseActivity.onCreate` 在 `super.onCreate` 后 `theme.applyStyle(force=true)`；关闭零开销。卡片 / 按钮 elevation 必须为 0（半透明底下阴影会透出）。布局里内联写死底色的选择卡片 / 次要按钮改读 `?attr/choiceCardColor` / `?attr/secondaryButtonTint`（`values/attrs_glass.xml`，主主题默认值 = colorSurface）——**新增会 inflate 布局的主题必须定义这两个属性，否则 inflate 崩**。覆盖层够不着的写死 shape / 代码设色背景（播放器分P / 字幕 / 互动选项、楼中楼预览框、「UP主觉得很赞」）走 `GlassStyle.choiceBackground` / `panelBackground`，色值同源 `colors_glass.xml` | `ui_glass_components` | 开 / 关（默认关） |
+| `AmbientGlow.kt` | 弥散光晕：7 套主题各一份 `Spec`（顶部底色 + 1～2 团径向光晕），`ColorScheme.applyWindowTheme` 开启时把它设为**窗口背景**、content 背景置空；关闭时走原纯色路径，零开销。无 blur / 噪点层，draw 内零分配。`Spec` 只按顶部写，`placeGlow` / `baseGradient` 按光源位置变换（中间位置底色改径向） | `ui_ambient_glow`、`ui_ambient_glow_source` | 开 / 关（默认关）；`top` / `bottom` / `left` / `right` / `center`（默认 `top`） |
+| `GlassStyle.kt` | 玻璃质感：7 份 `GlassOverlay.<X>`（`values/themes_glass.xml` + `colors_glass.xml`）只替换 `materialCardViewStyle` / `materialButtonStyle` 两个**具体样式引用**，`BaseActivity.onCreate` 在 `super.onCreate` 后 `theme.applyStyle(force=true)`；关闭零开销。卡片 / 按钮 elevation 必须为 0（半透明底下阴影会透出）。布局里内联写死底色的选择卡片 / 次要按钮改读 `?attr/choiceCardColor` / `?attr/secondaryButtonTint`（`values/attrs_glass.xml`，主主题默认值 = colorSurface）；视频 / 文章详情的点赞投币收藏卡片读 `?attr/actionCardColor` / `?attr/actionCardStroke`（主主题 = surface + brand 描边，玻璃 = `glass_btn_bg_fill_<x>` / `glass_btn_stroke_<x>`）——**新增会 inflate 布局的主题必须定义这四个属性，否则 inflate 崩**。覆盖层够不着的写死 shape / 代码设色背景（播放器分P / 字幕 / 互动选项、楼中楼预览框、「UP主觉得很赞」）走 `GlassStyle.choiceBackground` / `panelBackground`，色值同源 `colors_glass.xml` | `ui_glass_components` | 开 / 关（默认关） |
 | `ThemeTint.kt` | 给 XML 里只能写死颜色的 drawable（API 19 不能用 `?attr/`）在设置图片时按 `ColorScheme` 着色：点赞/投币/收藏激活态、私信发送按钮、投票选中框等 | — | — |
 | `AppearanceApplier.kt` | 把外观（自定义字体等）落到视图树上：`applyToContentView`，由 `BaseActivity.kt:388` 调用 | — | — |
 
@@ -1764,9 +1766,9 @@ TTF/OTF/TTC，应用把它**拷进私有目录**（`filesDir/custom_font/custom_
 
 ---
 
-## 9. API 层映射表（44 个类，改功能时定位用）
+## 9. API 层映射表（48 个文件，改功能时定位用）
 
-按功能域分组。`api/` 下 41 个 Java + 3 个 Kotlin（`HotSearchApi.kt`、`ShortVideoFeedApi.kt`、`StoryFeedQuery.kt`）（26.10.21 实测；`BilibiliIDConverter` 已删除，见下）。
+按功能域分组。`api/` 下 42 个 Java + 6 个 Kotlin（`ApiErrorText.kt`、`HotSearchApi.kt`、`ServerTimeApi.kt`、`ShortVideoFeedApi.kt`、`StoryFeedQuery.kt`、`StorySeenStore.kt`）（26.10.27 实测；`BilibiliIDConverter` 已删除，见下）。`ApiErrorText`（共用错误文案）与 `StorySeenStore`（短视频跨会话去重记忆）不是接口类，未单独列行。
 
 ### 视频与播放
 
@@ -1834,18 +1836,20 @@ TTF/OTF/TTC，应用把它**拷进私有目录**（`filesDir/custom_font/custom_
 | `ConfInfoApi` | **WBI 签名**（全 api 层依赖） | `signWBI`、`getWBIMixinKey`、`sortUrlParams` |
 | `AppInfoApi` | 上游服务器的崩溃上报 / 赞助 / 检查更新（公告接口已于 26.10.23 移除） | `check`、`uploadStack`、`getSponsors` |
 | `TerminalApi` | **自建**服务器：公告（含上游逐条审核透传）/反馈/匿名统计/崩溃上报（见 §6.5） | `ping`、`submitFeedback`、`uploadCrash`、`checkAnnouncement`、`getOwnAnnouncementList` |
+| `ServerTimeApi.kt` | 证书时间校验失败后**明文** http 取 B 站服务器时间，只用于「设备时间错误」提示（26.10.27） | `fetchServerMillis`、`parseNowMillis` |
 | `BilibiliIDConverter` | av/bv 互转（纯函数） | ~~`bvtoaid`、`aidtobv`~~ **26.09.11 已删除**（全工程 0 调用） |
 
-### 网络出口的 4 个例外
+### 网络出口的 5 个例外
 
-44 个类里只有 4 处**绕过** `NetWorkUtil` 的 `get`/`post` 封装自己拼 `Request`，因此不受它的解压/重试/Cookie 管理保护：
+`api/` 里只有 5 处**绕过** `NetWorkUtil` 的 `get`/`post` 封装自己拼 `Request`，因此不受它的解压/重试/Cookie 管理保护：
 
 1. `ReplyApi.java:190-208` `uploadReplyImage`（multipart，不处理 br/gzip）
 2. `UserInfoApi.java:291-303` `updateUserInfo`（自带 `decompressResponse`）
 3. `UserInfoApi.java:330-348` `uploadAvatar`
 4. `ReplyTranslateApi.java` `translateReplies`（gRPC 二进制 body，手动拼帧与头；复用 `NetWorkUtil.getOkHttpInstance()` 的共享 client，故 CookieSave/HttpTrace 两个拦截器仍生效）
+5. `ServerTimeApi.kt` `fetchServerMillis`（明文 http，**独立 client、不带 Cookie、不挂任何拦截器**——绝不能改走主客户端）
 
-前三者均手工拼 Cookie 头；第 4 项是游客可用的公开接口，不带 Cookie。改这几个方法时不要假设 NetWorkUtil 的行为。
+前三者均手工拼 Cookie 头；第 4、5 项是游客可用的公开接口，不带 Cookie。改这几个方法时不要假设 NetWorkUtil 的行为。
 
 ### 纯函数可测点
 
@@ -1854,7 +1858,7 @@ TTF/OTF/TTC，应用把它**拷进私有目录**（`filesDir/custom_font/custom_
 
 **不可单测**（内部发网络 / 依赖 Context / 弹 UI）：`DynamicApi.analyzeDynamic`、`MessageApi` 全部解析（SpannableString）、`PrivateMsgApi.getPrivateMsgList`、`LikeCoinFavApi.getVideoStats`。
 
-**测试覆盖现状（26.10.27 加举报评论后实测）**：`app/src/test/` 95 个测试类 / 1041 个用例（两个 flavor 各 1041、0 失败）；api 层有 11 个类的解析函数被覆盖（`HotSearchApiTest`、`FavoriteApiTest`、`FollowApiTest`、`OpusApiTest`、`PrivateMsgApiTest`、`BangumiApiTest`、`DynamicApiTest`、`TopicApiTest`、`NoteApiTest`、`WatchLaterApiTest`、`ReplyTranslateApiTest`，另有 `PlayerApiPbpTest`、`ReplyApiTest`、`ReplySortTest`、`ReplyTranslationTest`、`ReportApiTest` 覆盖部分纯逻辑）；`ui/appearance/` 下有 4 个测试类——`ColorSchemeTest` 覆盖 7 套主题的 `key → style` / `key → 色表` / 中文显示名映射、无 key 时的默认值、以及色表缓存的失效与读取次数；`CornerStyleTest` 覆盖圆角两档与「档位 → 覆盖样式」映射；`FontStyleTest` 覆盖字体文件头校验（含 WOFF 专门拒绝）与「未配置不加载」的性能约定；`AppearanceManagerTest` 覆盖外观版本号与唯一写入入口；`PerformanceManagerTest` 覆盖档位换算与图片/分页参数（见 §7.10）；`ApkVerifierTest` 覆盖更新包校验的判定规则（见 §7.11）；`SettingsKeysTest` 把 `player`/`play_qn`/`bangumi_update_notify_enable` 三个磁盘键名钉死（见 §7.12）；`PrivateMsgApiTest` 另覆盖会话列表解析（含 `top_ts`）、`opTypeForTop` 的 0/1 映射（见 §7.13）与图片消息 content 的字段/单位换算（见 §7.14）；`MsgNotifierTest` 覆盖新消息通知的提醒判据与正文拼装（见 §7.15）以及追番更新的文案；`BangumiApiTest` 覆盖追番列表解析（见 §7.16）；`BangumiUpdateCheckerTest` 覆盖追番快照序列化与更新判定（见 §7.16）。
+**测试覆盖现状（26.10.27 加举报评论后实测）**：`app/src/test/` 101 个测试类 / 1041 个用例（两个 flavor 各 1078、0 失败）；api 层有 11 个类的解析函数被覆盖（`HotSearchApiTest`、`FavoriteApiTest`、`FollowApiTest`、`OpusApiTest`、`PrivateMsgApiTest`、`BangumiApiTest`、`DynamicApiTest`、`TopicApiTest`、`NoteApiTest`、`WatchLaterApiTest`、`ReplyTranslateApiTest`，另有 `PlayerApiPbpTest`、`ReplyApiTest`、`ReplySortTest`、`ReplyTranslationTest`、`ReportApiTest` 覆盖部分纯逻辑）；`ui/appearance/` 下有 4 个测试类——`ColorSchemeTest` 覆盖 7 套主题的 `key → style` / `key → 色表` / 中文显示名映射、无 key 时的默认值、以及色表缓存的失效与读取次数；`CornerStyleTest` 覆盖圆角两档与「档位 → 覆盖样式」映射；`FontStyleTest` 覆盖字体文件头校验（含 WOFF 专门拒绝）与「未配置不加载」的性能约定；`AppearanceManagerTest` 覆盖外观版本号与唯一写入入口；`PerformanceManagerTest` 覆盖档位换算与图片/分页参数（见 §7.10）；`ApkVerifierTest` 覆盖更新包校验的判定规则（见 §7.11）；`SettingsKeysTest` 把 `player`/`play_qn`/`bangumi_update_notify_enable` 三个磁盘键名钉死（见 §7.12）；`PrivateMsgApiTest` 另覆盖会话列表解析（含 `top_ts`）、`opTypeForTop` 的 0/1 映射（见 §7.13）与图片消息 content 的字段/单位换算（见 §7.14）；`MsgNotifierTest` 覆盖新消息通知的提醒判据与正文拼装（见 §7.15）以及追番更新的文案；`BangumiApiTest` 覆盖追番列表解析（见 §7.16）；`BangumiUpdateCheckerTest` 覆盖追番快照序列化与更新判定（见 §7.16）。
 
 ### API 层的坑
 

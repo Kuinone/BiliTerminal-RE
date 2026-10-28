@@ -3,6 +3,8 @@ package com.RobinNotBad.BiliClient.api;
 import android.text.SpannableString;
 import android.util.Pair;
 
+import com.RobinNotBad.BiliClient.BiliTerminal;
+import com.RobinNotBad.BiliClient.R;
 import com.RobinNotBad.BiliClient.model.MessageCard;
 import com.RobinNotBad.BiliClient.model.Reply;
 import com.RobinNotBad.BiliClient.model.UserInfo;
@@ -16,6 +18,8 @@ import org.json.JSONObject;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import okhttp3.Response;
 
@@ -27,6 +31,19 @@ public class MessageApi {
             return all.getJSONObject("data");
         }
         return new JSONObject();
+    }
+
+    private static final Pattern BVID_PATTERN = Pattern.compile("BV[0-9A-Za-z]{10}");
+
+    /**
+     * 从消息里的 uri 抠出 BV 号（带 "BV" 前缀），抠不到返回空串。
+     * uri 形如 `https://www.bilibili.com/video/BV1xx411c7mD?p=1#…`，后缀不固定，
+     * 所以不能像 video / reply 分支那样直接 replace 掉前缀。纯函数，见 MessageApiTest。
+     */
+    public static String parseBvid(String uri) {
+        if (uri == null) return "";
+        Matcher matcher = BVID_PATTERN.matcher(uri);
+        return matcher.find() ? matcher.group() : "";
     }
 
     public static JSONObject getUnread() throws IOException, JSONException {
@@ -161,6 +178,21 @@ public class MessageApi {
                         replyChildInfo.message = new SpannableString(item.getString("title"));
                         replyChildInfo.childCount = 0;
                         likeInfo.replyInfo = replyChildInfo;
+                        break;
+                    case "danmu":
+                        // 弹幕被点赞（反馈 #44）：原先落进 default，只显示「无法识别这个类别：danmu」。
+                        // title 是弹幕原文，uri 指向弹幕所在视频；点卡片跳视频（见 NoticeHolder）。
+                        likeInfo.content = BiliTerminal.context.getString(
+                                R.string.text_like_danmaku, object.getLong("counts"));
+                        Reply replyInfo_danmu = new Reply();
+                        replyInfo_danmu.rpid = item.getLong("item_id");
+                        replyInfo_danmu.sender = null;
+                        replyInfo_danmu.message = new SpannableString(item.optString("title", ""));
+                        replyInfo_danmu.pictureList = new ArrayList<>();
+                        replyInfo_danmu.childCount = 0;
+                        replyInfo_danmu.childMsgList = new ArrayList<>();
+                        replyInfo_danmu.ofBvid = parseBvid(item.optString("uri", ""));
+                        likeInfo.replyInfo = replyInfo_danmu;
                         break;
                     default:
                         likeInfo.content = "无法识别这个类别：" + likeInfo.itemType;

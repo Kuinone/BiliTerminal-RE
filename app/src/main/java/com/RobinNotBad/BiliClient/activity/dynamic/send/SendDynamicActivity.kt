@@ -16,6 +16,7 @@ import android.widget.TextView
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import com.RobinNotBad.BiliClient.R
+import com.RobinNotBad.BiliClient.activity.ImagePickerActivity
 import com.RobinNotBad.BiliClient.activity.EmoteActivity
 import com.RobinNotBad.BiliClient.activity.base.BaseActivity
 import com.RobinNotBad.BiliClient.adapter.dynamic.DynamicHolder
@@ -177,7 +178,8 @@ class SendDynamicActivity : BaseActivity() {
             if (editing) addVote.visibility = View.GONE
 
             addPic.setOnClickListener {
-                pickImageLauncher.launch(Intent(Intent.ACTION_GET_CONTENT).apply { type = "image/*" })
+                // 内置选图页（反馈 #53），页内可退回系统选择器
+                pickImageLauncher.launch(ImagePickerActivity.intent(this))
             }
 
             // 定时发布：手表上不方便输入日期时间，只给几个固定档 + 明天中午 + 不定时

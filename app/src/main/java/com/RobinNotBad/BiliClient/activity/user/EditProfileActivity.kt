@@ -9,6 +9,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.widget.ImageView
 import com.RobinNotBad.BiliClient.R
+import com.RobinNotBad.BiliClient.activity.ImagePickerActivity
 import com.RobinNotBad.BiliClient.activity.base.BaseActivity
 import com.RobinNotBad.BiliClient.api.UserInfoApi
 import com.RobinNotBad.BiliClient.util.CenterThreadPool
@@ -90,10 +91,8 @@ class EditProfileActivity : BaseActivity() {
             return
         }
         try {
-            val intent = Intent(Intent.ACTION_GET_CONTENT)
-            intent.type = "image/*"
-            intent.addCategory(Intent.CATEGORY_OPENABLE)
-            startActivityForResult(intent, REQUEST_CODE_PICK_IMAGE)
+            // 内置选图页（反馈 #53）；页内「系统选择器」仍是原来的 ACTION_GET_CONTENT，结果格式相同
+            startActivityForResult(ImagePickerActivity.intent(this), REQUEST_CODE_PICK_IMAGE)
         } catch (e: Exception) {
             // 精简手表 ROM 可能连 GET_CONTENT 都没人处理，抛 ActivityNotFoundException
             MsgUtil.showMsg(getString(R.string.msg_no_image_picker))

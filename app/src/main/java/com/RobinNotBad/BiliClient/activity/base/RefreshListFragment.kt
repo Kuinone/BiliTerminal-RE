@@ -71,7 +71,7 @@ open class RefreshListFragment : BaseFragment() {
                 }
             }
         })
-        ImageAutoLoadScrollListener.install(recyclerView)
+        ImageAutoLoadScrollListener.installIfEnabled(recyclerView)
     }
 
     fun setAdapter(adapter: RecyclerView.Adapter<*>) {

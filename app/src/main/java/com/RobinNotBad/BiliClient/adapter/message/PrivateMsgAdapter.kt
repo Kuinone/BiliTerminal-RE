@@ -16,7 +16,6 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
-import com.RobinNotBad.BiliClient.BiliTerminal
 import com.RobinNotBad.BiliClient.R
 import com.RobinNotBad.BiliClient.activity.CopyTextActivity
 import com.RobinNotBad.BiliClient.activity.ImageViewerActivity
@@ -28,8 +27,8 @@ import com.RobinNotBad.BiliClient.util.LinkUrlUtil
 import com.RobinNotBad.BiliClient.util.MsgUtil
 import com.RobinNotBad.BiliClient.util.SharedPreferencesUtil
 import com.RobinNotBad.BiliClient.util.TerminalContext
+import com.RobinNotBad.BiliClient.util.TerminalDialog
 import com.RobinNotBad.BiliClient.ui.appearance.ColorScheme
-import com.bumptech.glide.Glide
 import com.bumptech.glide.load.DecodeFormat
 import com.bumptech.glide.load.engine.DiskCacheStrategy
 import com.google.android.material.card.MaterialCardView
@@ -141,7 +140,7 @@ class PrivateMsgAdapter(
                     holder.videoCard.visibility = View.GONE
                     try {
                         val picUrl = msg.content.getString("url")
-                        Glide.with(BiliTerminal.context!!)
+                        GlideUtil.with(holder.picMsg)
                             .asDrawable()
                             .load(GlideUtil.url(picUrl))
                             .transition(GlideUtil.getTransitionOptions())
@@ -186,7 +185,7 @@ class PrivateMsgAdapter(
                     holder.upNameTv.text = shareContent.optString("author", "")
                     holder.videoTitleTv.text =
                         if (headline.isNotEmpty()) headline else shareContent.optString("title", "")
-                    Glide.with(BiliTerminal.context!!)
+                    GlideUtil.with(holder.videoCover)
                         .asDrawable()
                         .load(if (thumb.isEmpty()) null else GlideUtil.url(thumb))
                         .transition(GlideUtil.getTransitionOptions())
@@ -251,7 +250,7 @@ class PrivateMsgAdapter(
                     holder.videoCard.visibility = View.GONE
                     try {
                         val picUrl = msg.content.getString("pic_url")
-                        Glide.with(BiliTerminal.context!!)
+                        GlideUtil.with(holder.picMsg)
                             .asDrawable()
                             .load(GlideUtil.url(picUrl))
                             .transition(GlideUtil.getTransitionOptions())
@@ -301,7 +300,7 @@ class PrivateMsgAdapter(
                             holder.textContentTv.text = UiText.of("暂时无法显示该消息")
                         } else {
                             val coverUrl = firstCard.optString("cover_url", "")
-                            Glide.with(BiliTerminal.context!!)
+                            GlideUtil.with(holder.videoCover)
                                 .asDrawable()
                                 .load(if (coverUrl.isEmpty()) null else GlideUtil.url(coverUrl))
                                 .transition(GlideUtil.getTransitionOptions())
@@ -340,18 +339,56 @@ class PrivateMsgAdapter(
             }
 
             holder.textContentCard.setOnLongClickListener {
-                try {
-                    val intent = Intent(context, CopyTextActivity::class.java)
-                    intent.putExtra("content", msg.content.getString("content"))
-                    context.startActivity(intent)
-                } catch (err: Exception) {
-                    err.printStackTrace()
-                }
-                false
+                onMessageLongPress(msg, canCopy = true)
+                true
+            }
+            // 图片消息原先没有长按；自己发的要能撤回（反馈 #57），所以也挂上
+            holder.picMsg.setOnLongClickListener {
+                if (!PrivateMsgApi.canRecall(msg, selfUid, System.currentTimeMillis() / 1000)) return@setOnLongClickListener false
+                onMessageLongPress(msg, canCopy = false)
+                true
             }
         } catch (err: JSONException) {
             Log.e(PrivateMessage::class.java.name, err.toString())
         }
+    }
+
+    /** 撤回由页面执行（要发请求、刷新列表），适配器只负责弹菜单。 */
+    var onRecall: ((PrivateMessage) -> Unit)? = null
+
+    /**
+     * 长按消息。自己发的、仍在撤回有效期内的弹「复制 / 撤回」菜单；
+     * 其余情况保持原来的直接进复制页（不多弹一层菜单）。
+     */
+    private fun onMessageLongPress(msg: PrivateMessage, canCopy: Boolean) {
+        val text = msg.content.optString("content", "")
+        val recallable = onRecall != null &&
+            PrivateMsgApi.canRecall(msg, selfUid, System.currentTimeMillis() / 1000)
+        if (!recallable) {
+            if (canCopy && text.isNotEmpty()) openCopy(text)
+            return
+        }
+        val items = ArrayList<String>()
+        if (canCopy && text.isNotEmpty()) items.add(context.getString(R.string.btn_private_msg_copy))
+        items.add(context.getString(R.string.btn_private_msg_recall))
+        val recallIndex = items.lastIndex
+        TerminalDialog.menu(context, null, items, danger = setOf(recallIndex)) { which ->
+            if (which == recallIndex) onRecall?.invoke(msg) else openCopy(text)
+        }.show()
+    }
+
+    private fun openCopy(text: String) {
+        val intent = Intent(context, CopyTextActivity::class.java)
+        intent.putExtra("content", text)
+        context.startActivity(intent)
+    }
+
+    /** 撤回成功后从列表里摘掉原消息（服务端的撤回通知随下一次 refresh 进来）。 */
+    fun removeMessage(msg: PrivateMessage) {
+        val index = mPrivateMsgList.indexOf(msg)
+        if (index < 0) return
+        (mPrivateMsgList as MutableList).removeAt(index)
+        notifyItemRemoved(index)
     }
 
     fun addItem(list: ArrayList<PrivateMessage>) {

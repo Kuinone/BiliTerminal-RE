@@ -1,5 +1,7 @@
 # 下载引擎优化方案（对标 PiliPlus / bilimiao2 / BBDown / DownKyi）
 
+> **【已归档 2026-10-27】** §3.4「不做合并」已被 `docs/superpowers/specs/2026-10-25-dash-merge-single-file.md` 反转；分片看门狗 / Range 校验已于 26.10.25 落地（fix-progress §3.63）。仍未做的断点续传、仅 WiFi、磁盘预检、弹幕分段已回迁 `docs/review/fix-progress.md` §2.2。
+
 - **调研日期**：2026-10-13
 - **范围**：ReBiliClient 视频缓存链路（`service/DownloadService.kt` + `service/download/*` + `api/PlayerApi.java`）的**下载引擎**层面缺陷盘点，与同类 B 站客户端/下载器做对照，给出分优先级改造方案。
 - **不在范围**：UI 交互、本地播放器解码、番剧/直播业务逻辑、APK 更新下载链路（`util/UpdateManager.kt`，与视频缓存无关）。

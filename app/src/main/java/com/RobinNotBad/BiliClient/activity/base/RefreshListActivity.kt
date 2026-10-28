@@ -98,7 +98,7 @@ open class RefreshListActivity : BaseActivity() {
         recyclerView.setRecycledViewPool(viewPool)
 
         recyclerView.layoutManager = getLayoutManager()
-        ImageAutoLoadScrollListener.install(recyclerView)
+        ImageAutoLoadScrollListener.installIfEnabled(recyclerView)
 
         // 设置GAP Worker预加载（Android 5.0+）
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {

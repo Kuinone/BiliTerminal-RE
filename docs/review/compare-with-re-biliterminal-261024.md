@@ -264,7 +264,7 @@ implementation 'com.squareup.okhttp3:okhttp:4.12.0'
 
 这不是「对方落后」：对方是在为老设备有意选保守栈。我方要么在 API 19/20 上实测 OkHttp 4.12（可能因 `Platform`/TLS API 缺失崩），要么把 minSdk 抬到 21/22 并在 readme 如实写，要么对 4.4/5.0 设备降级到 OkHttp 3.12 兼容分支。三条路都比「假设它能跑」稳。
 
-历史事故证明「静态看着没事」不够：`docs/architecture-map.md` 记录 `PasswordEncryptUtil` 用了 API 33 的 `String.strip()`，导致 API 19~32 登录静默失败，直到 26.10.10 才修。建议：按 `docs/review/device-test-plan.md` T12 用 API 19 x86 模拟器 + 一台 API 21/22 真表跑「登录/首页/播放/下载」四链路；或把 readme 改为「Android 5.0+ 已验证 / 4.4 实验性支持」。
+历史事故证明「静态看着没事」不够：`docs/architecture-map.md` 记录 `PasswordEncryptUtil` 用了 API 33 的 `String.strip()`，导致 API 19~32 登录静默失败，直到 26.10.10 才修。建议：按 `docs/archive/review/device-test-plan.md` T12 用 API 19 x86 模拟器 + 一台 API 21/22 真表跑「登录/首页/播放/下载」四链路；或把 readme 改为「Android 5.0+ 已验证 / 4.4 实验性支持」。
 
 ### 4.5 其余兼容性问题（P2）
 

@@ -49,6 +49,7 @@ import com.RobinNotBad.BiliClient.util.GlideUtil
 import com.RobinNotBad.BiliClient.util.StringUtil
 import com.RobinNotBad.BiliClient.util.VideoPreloadManager
 import com.RobinNotBad.BiliClient.player.DanmakuManager
+import com.RobinNotBad.BiliClient.player.PlayerDefaults
 import com.RobinNotBad.BiliClient.player.IjkOption
 import com.RobinNotBad.BiliClient.player.IjkPlayerBridge
 import com.bumptech.glide.Glide
@@ -84,6 +85,17 @@ class ShortVideoPlayerActivity : InstanceActivity() {
     var screenWidth = 0
     var screenHeight = 0
     internal var isBottomControlVisible = true
+
+    /**
+     * 弹幕开关（反馈 #55，原先每个 PageHolder 写死 true，设置里的「播放默认值 → 弹幕」不生效）。
+     *
+     * 放在 Activity 而不是 PageHolder：刷到下一条时用户刚关掉的弹幕要保持关闭，
+     * 每条各存一份就会「关了这条、下一条又开了」。开播值与长视频同一套三态 + 上次记录。
+     */
+    internal var isDanmakuVisible = PlayerDefaults.resolveTriState(
+        SharedPreferencesUtil.getString(SettingsKeys.PLAYER_DEFAULT_DANMAKU, SettingsKeys.PLAYER_DEFAULT_MODE_LAST),
+        SharedPreferencesUtil.getBoolean(SettingsKeys.PLAYER_LAST_DANMAKU, true)
+    )
 
     /**
      * 圆屏适配开关（与 `BaseActivity.setRound()`、`PlayerActivity.initUI()` 读同一个 key）。
@@ -504,7 +516,10 @@ class ShortVideoPagerAdapter(
         private var isSeeking = false
         private var isActive = false         // 当前页面是否为活跃状态
         private var isLoadingDanmaku = false // 是否正在加载弹幕
-        private var isDanmakuVisible = true  // 弹幕是否可见
+        // 弹幕开关在 Activity 上（跨条保持），见 ShortVideoPlayerActivity.isDanmakuVisible
+        private var isDanmakuVisible: Boolean
+            get() = activity.isDanmakuVisible
+            set(value) { activity.isDanmakuVisible = value }
 
         private val speedOptions = listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f)
         private var currentSpeedIndex = 2
@@ -702,6 +717,7 @@ class ShortVideoPagerAdapter(
                 controlVideo()
             }
 
+            buttonDanmaku.setImageResource(if (isDanmakuVisible) R.mipmap.danmakuon else R.mipmap.danmakuoff)
             buttonDanmaku.setOnClickListener {
                 toggleDanmaku()
             }
@@ -797,6 +813,8 @@ class ShortVideoPagerAdapter(
                 danmakuManager?.hide()
                 buttonDanmaku.setImageResource(R.mipmap.danmakuoff)
             }
+            // 「播放默认值 → 弹幕 = 沿用上次」的记录位，与长视频共用
+            SharedPreferencesUtil.putBoolean(SettingsKeys.PLAYER_LAST_DANMAKU, isDanmakuVisible)
         }
 
         private fun togglePlayPause() {
@@ -956,6 +974,11 @@ class ShortVideoPagerAdapter(
                     )
                 }
                 danmakuManager?.init()
+                // 每条视频都会新建 DanmakuManager（默认可见），要把当前开关带过去；
+                // prepare 前的 hide() 只记状态，真正隐藏由 DanmakuManager.prepared() 补上
+                if (!isDanmakuVisible) danmakuManager?.hide()
+                // 相邻页可能在用户切换开关之前就 bind 过，图标以开播这一刻为准
+                buttonDanmaku.setImageResource(if (isDanmakuVisible) R.mipmap.danmakuon else R.mipmap.danmakuoff)
                 // 弹幕 View 是 initPlayer 里才取到的，此时补一次圆屏留白（bind 时它还可能是 null）
                 applyRoundInsets()
 
@@ -1320,7 +1343,7 @@ class ShortVideoPagerAdapter(
             IjkOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "min-frames", 5),
             // 原有一条 "max_cached_duration" = 3000 已删：实测本工程两个 .so（libijkplayer /
             // libijkffmpeg，arm64-v8a）里都找不到这个选项名，设了也不会生效，留着只会误导后来人
-            // （依据见 docs/superpowers/specs/2026-10-11-player-network-resilience.md 的 §2.4）。
+            // （依据见 docs/archive/superpowers/specs/2026-10-11-player-network-resilience.md 的 §2.4）。
             // 也不再设 infbuf=1：它是给"实时流"准备的（ff_ffplay_options.h:79-80），会短路
             // max-buffer-size 与 min-frames 两道闸门、让缓存无上限（同文档 §1 第 5 条）。短视频是
             // 点播语义，保留上面的 8MB 上限，宁可多等一点也不要内存随播放时长上涨。

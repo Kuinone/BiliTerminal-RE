@@ -1,5 +1,7 @@
 # 下载链路缺陷逐一排查（进度不准 / 音频重复 / 完整性）
 
+> **【已归档 2026-10-27】** C3、B1 播放侧、A1/A2（DASH 分段进度常量 + 分片实时计数，§3.36）、A5（按任务取阶段文案）已修；26.10.25 起 DASH 下载合并成单文件，B1/B2/B3 只在旧缓存或合并失败的双文件目录上仍可达。剩余项已回迁 `docs/review/fix-progress.md` §2.2。
+
 - **排查日期**：2026-10-13
 - **触发**：用户反馈「下载进度不准确」「替换后音频重复」等多项问题。
 - **范围**：`service/DownloadService.kt`、`service/download/*`、`activity/video/local/*`、`adapter/video/CacheListAdapter.kt`、`activity/player/PlayerActivity.kt`（外部音轨部分）。

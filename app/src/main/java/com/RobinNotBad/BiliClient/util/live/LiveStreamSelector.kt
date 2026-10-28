@@ -5,7 +5,7 @@ import com.RobinNotBad.BiliClient.model.LivePlayInfo
 /**
  * 直播取流候选选择：把直播间播放信息里的所有可取地址摊平成一个**有序候选表**。
  *
- * 背景（详见 docs/superpowers/specs/2026-10-11-player-network-resilience.md 的 P0-2/P2-3）：
+ * 背景（详见 docs/archive/superpowers/specs/2026-10-11-player-network-resilience.md 的 P0-2/P2-3）：
  * 原实现固定取 `stream[0].format[0].codec[0].url_info[selectedHost]`，即永远是
  * 「HTTP-FLV 的第一条 CDN 线路」。B 站会把 HLS 那一路（`stream[1]`，format_name = ts/fmp4）
  * 一起下发，代码却从不用它；某条 CDN 挂掉时也没有任何自动换线路的能力。

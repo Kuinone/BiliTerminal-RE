@@ -1,6 +1,6 @@
 # 文档总索引
 
-> 整理时间：2026-10-20（基线 `versionName 26.10.19` / `versionCode 2610190`）。
+> 整理时间：2026-10-27（基线 `versionName 26.10.27` / `versionCode 2610270`）。
 > **规则**：本目录只放**活文档**（描述现状 / 承载未完成工作）。一次性审查、已执行完毕的方案、过程流水一律进 `docs/archive/`（索引见 [`archive/README.md`](archive/README.md)）。
 > 引用文档前先确认它是不是归档的——**归档文档只代表当时**。
 
@@ -9,14 +9,12 @@
 | 你要做的事 | 读这份 | 说明 |
 | --- | --- | --- |
 | 改任何非平凡代码 | [`../AGENTS.md`](../AGENTS.md) → [`architecture-map.md`](architecture-map.md) | AGENTS 是每次都要遵守的最小约定 + 按场景索引；领域细则在 [`agents/`](agents/)；架构地图是真实分层 + 逐条坑 |
-| 找「现在的状态 / 还没做的事」 | [`review/fix-progress.md`](review/fix-progress.md) | **唯一活台账**：当前版本状态、未完成待办（§2，含 §2.4 视觉技术债）、最新两版快照、历史章节索引 |
+| 找「现在的状态 / 还没做的事」 | [`review/fix-progress.md`](review/fix-progress.md) | **唯一活台账**：当前版本状态、未完成待办（§2，含播放器合并 / 弱网 / 下载链路的剩余项与 §2.4 视觉技术债）、26.10.22 起的状态快照、历史章节索引 |
 | 改网络 / 接口 / 风控相关 | [`bilibili-api-notes.md`](bilibili-api-notes.md) | 接口常识与风控硬约束（错误码语义、取流有效期、弹幕协议取舍） |
-| 发版前上真机 | [`review/real-device-regression-checklist.md`](review/real-device-regression-checklist.md) | 与发行版同维护的回归清单（248 条），每条的来源小节都标在标题里 |
-| 补真机 / 联网联调 | [`review/device-test-plan.md`](review/device-test-plan.md) | T0–T15 + D0–D8，**88 条全部未执行**，是待执行计划 |
+| 发版前上真机 | [`review/real-device-regression-checklist.md`](review/real-device-regression-checklist.md) | 与发行版同维护的回归清单（249 条），每条的来源小节都标在标题里 |
 | 用 adb / AI agent 驱动 Debug 包测试 | [`review/agent-test-guide.md`](review/agent-test-guide.md) | 调试桥（可编程控制通道）命令表、日志与 HTTP 追踪、UETool 干扰规避、用哪个 flavor |
 | 写新功能 | [`superpowers/plans/2026-08-27-new-features-roadmap.md`](superpowers/plans/2026-08-27-new-features-roadmap.md) | 功能 backlog（含实测过的接口地址、判据与仍未落地项） |
-| 改播放器 | [`superpowers/specs/2026-09-10-player-core-merge.md`](superpowers/specs/2026-09-10-player-core-merge.md) | 播放器核合并 S1–S3 已完成，**S4/S5/S6 未做** |
-| 优化播放器弱网 / 直播 / 长视频 | [`superpowers/specs/2026-10-11-player-network-resilience.md`](superpowers/specs/2026-10-11-player-network-resilience.md) | 同类产品与官方做法调研（ijkplayer 选项语义、FLV vs HLS、Media3 参数）+ P0–P2 建议清单，**尚未实施** |
+| 改播放器 / 弱网 / 下载 | [`architecture-map.md`](architecture-map.md) §7.4 / §7.27 / §7.54 + [`review/fix-progress.md`](review/fix-progress.md) §2.2 | 现状与坑看架构地图，剩余待办看台账；原合并方案、弱网调研、下载排查与引擎方案已归档（ijkplayer 选项语义与 `.so` 实测仍可在 `archive/superpowers/specs/` 里查） |
 | 改教程系统 | [`tutorial-system-redesign.md`](tutorial-system-redesign.md) | 重做进行中，旧链路未删完——**动之前先读它** |
 | 改菜单设置 / 启动页 | [`superpowers/specs/2026-10-20-menu-start-page.md`](superpowers/specs/2026-10-20-menu-start-page.md) | 启动页单选（默认推荐、失效写回）与说明块折叠/长按隐藏的需求、验收与设计 |
 | 改短视频取流 | [`superpowers/specs/2026-10-21-short-video-feed-protocol.md`](superpowers/specs/2026-10-21-short-video-feed-protocol.md) | 取流参数、分页状态归属、横屏过滤与跨批去重、降级池策略；动 `ShortVideoFeedApi` 前先读 |
@@ -44,17 +42,14 @@
 
 | 文件 | 内容 | 维护时机 |
 | --- | --- | --- |
-| [`architecture-map.md`](architecture-map.md) | 架构通读：§6 网络层、§7 改前必查的坑（7.1–7.36）、§8 UI 基建与外观、§9 API 类映射（43 个类）、§10 检查清单 | 改架构 / 基建 / 新增基类时 |
+| [`architecture-map.md`](architecture-map.md) | 架构通读：§6 网络层、§7 改前必查的坑（7.1–7.55）、§8 UI 基建与外观、§9 API 层映射（48 个文件）、§10 检查清单 | 改架构 / 基建 / 新增基类时 |
 | [`FEATURES.md`](FEATURES.md) | 用户可见功能总表（20 章） | 新增用户可见功能时 |
 | [`bilibili-api-notes.md`](bilibili-api-notes.md) | 接口与风控常识（来源与可信度、速查表、11 条硬约束、值得做/不做） | 核实出新接口结论时 |
-| [`review/fix-progress.md`](review/fix-progress.md) | 活台账：当前状态 + 未完成待办 + 最新快照 + §一~§四十三 索引 | 修完 bug / 关掉待办 / 每轮真机验证后 |
-| [`review/real-device-regression-checklist.md`](review/real-device-regression-checklist.md) | 发版前真机回归清单（248 条，含第十三节视觉面；条目只增不改，失效就地标注作废） | 每个发行版 |
-| [`review/device-test-plan.md`](review/device-test-plan.md) | 待执行的真机/联网测试计划（T/D 两组） | 执行时勾选 |
+| [`review/fix-progress.md`](review/fix-progress.md) | 活台账：当前状态 + 未完成待办 + 26.10.22 起的快照（更早的 §3.0~§3.51 已归档）+ 历史章节索引 | 修完 bug / 关掉待办 / 每轮真机验证后 |
+| [`review/real-device-regression-checklist.md`](review/real-device-regression-checklist.md) | 发版前真机回归清单（249 条，含第十三节视觉面；条目只增不改，失效就地标注作废） | 每个发行版 |
 | [`review/agent-test-guide.md`](review/agent-test-guide.md) | Debug 包的 agent 测试手册：调试桥命令、可观测性设施、已知限制与设计原则 | 增删调试能力 / 调试桥命令时 |
 | [`review/compare-with-re-biliterminal-261024.md`](review/compare-with-re-biliterminal-261024.md) | 与同源分支 `cyq114514/Re-BiliTerminal`（1.2.3fix）的六维对比审计：91 条问题（P0×2 / P1×20 / P2×69）、定量总表、P0–P2 路线图、四轮核验；**按目标设备口径（旧版安卓手表）评分** | 再次对比 / 排期取建议时；结论基于 2026-10-24 双方 HEAD |
 | [`superpowers/plans/2026-08-27-new-features-roadmap.md`](superpowers/plans/2026-08-27-new-features-roadmap.md) | 功能路线图 + 从各报告回迁的仍未落地项 | 排期 / 落地后 |
-| [`superpowers/specs/2026-09-10-player-core-merge.md`](superpowers/specs/2026-09-10-player-core-merge.md) | 播放器核合并设计与 S4/S5/S6 待做项 | 动播放器时 |
-| [`superpowers/specs/2026-10-11-player-network-resilience.md`](superpowers/specs/2026-10-11-player-network-resilience.md) | 播放器弱网 / 直播 / 长视频：同类产品与官方做法调研 + P0–P2 建议清单（§2.4 是本仓库 `.so` 的选项存在性实测） | 动播放器网络 / 缓冲参数时 |
 | [`superpowers/specs/2026-10-20-menu-start-page.md`](superpowers/specs/2026-10-20-menu-start-page.md) | 菜单启动页与菜单设置说明改造：需求、验收标准、存储键与行结构设计 | 改菜单设置 / 启动流程时 |
 | [`superpowers/specs/2026-10-21-short-video-feed-protocol.md`](superpowers/specs/2026-10-21-short-video-feed-protocol.md) | 竖屏短视频取流协议修订：参数约定、会话级分页状态、横屏过滤、跨批去重、降级池与验收标准 | 改短视频取流 / 排查短视频页内容异常时 |
 | [`superpowers/specs/2026-10-22-disguise-mode.md`](superpowers/specs/2026-10-22-disguise-mode.md) | 伪装与安全：双击顶栏触发、两种样式与各自退出方式、三个存储键、手势层三个接线点、验收标准与已知取舍 | 改伪装页 / 顶栏双击手势时 |

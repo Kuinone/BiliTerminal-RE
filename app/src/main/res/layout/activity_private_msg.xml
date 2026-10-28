@@ -1,5 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<!--
+  顶栏不铺底色、列表排在顶栏下方（而不是全屏列表 + 不透明顶栏盖在上面）：
+  原先的 ?android:attr/colorBackground 在开启弥散光晕时会把顶部最亮的那块光晕盖成一条纯色横带，
+  而且经典终端下它取主题 XML 的 #1B1B24，与运行时背景 #000000 本就不一致。
+-->
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_height="match_parent"
     android:layout_width="match_parent">
@@ -8,15 +13,16 @@
         android:id="@+id/msg_view"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
+        android:layout_below="@+id/top"
         android:clipToPadding="false"
-        android:paddingTop="24dp"
+        android:paddingTop="4dp"
         android:paddingBottom="40dp" />
 
     <RelativeLayout
         android:id="@+id/top"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:background="?android:attr/colorBackground">
+        android:layout_alignParentTop="true">
 
         <TextView
             android:id="@+id/pageName"
@@ -47,7 +53,7 @@
 
     <RelativeLayout
         android:id="@+id/layout_input"
-        android:layout_gravity="bottom"
+        android:layout_alignParentBottom="true"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:paddingHorizontal="4dp"
@@ -92,4 +98,4 @@
             android:layout_alignParentEnd="true" />
 
     </RelativeLayout>
-</FrameLayout>
+</RelativeLayout>

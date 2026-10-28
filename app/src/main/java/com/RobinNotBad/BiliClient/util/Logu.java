@@ -35,7 +35,7 @@ public class Logu {
      * **不要**把 logcat 的 tag 改成统一常量（26.10.14 一度这么改过，已回退）。
      *
      * <p>`getCaller()` 返回的 `类名>方法名` **本身就是既有诊断契约**，被写死在一堆文档与源码注释里：
-     * `docs/review/device-test-plan.md` D3-11~D3-14 的 `adb logcat -s "PlayerActivity>onPrepared"`
+     * `docs/archive/review/device-test-plan.md` D3-11~D3-14 的 `adb logcat -s "PlayerActivity>onPrepared"`
      * / `"PlayerActivity>getExtras"` / `"PlayerActivity>checkStall"`，以及 `api/NoteApi.java` 的
      * `adb logcat -s BiliNote` 同一套思路。全工程 269 处 `Logu.*` 调用点都吃这套约定，
      * 统一 tag 会把它们一次性作废。

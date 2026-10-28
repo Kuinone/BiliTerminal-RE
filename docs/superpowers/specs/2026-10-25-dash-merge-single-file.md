@@ -19,7 +19,7 @@ MP4，播放器直接能放；DASH 双文件则要播放器额外挂一条外部
 - 2026-08-18 的 `25893f3`（DASH 下载优化）把它移除，改成「下载完保留双文件直供播放器」，
   同时引入临时文件替换、成对替换、暂停恢复等机制；
 - 2026-09-11 的 `183523f` 删掉了 `MediaMerger.kt` 本体；
-- `docs/superpowers/specs/2026-10-13-download-engine-optimization.md:144` 明确写「本项目已明确删除
+- `docs/archive/superpowers/specs/2026-10-13-download-engine-optimization.md:144` 明确写「本项目已明确删除
   MediaMerger、不做合并……不应照搬」——**本设计把该结论反转**，理由：当时的实现有
   「合并阶段无进度、卡在 85%」「旧实现先删视频再改名有丢数据风险」两个硬伤，这两点在
   `25893f3` 之后已经有现成解法（进度分段常量、`safeReplaceTemp` 备份替换），可以安全地重做。

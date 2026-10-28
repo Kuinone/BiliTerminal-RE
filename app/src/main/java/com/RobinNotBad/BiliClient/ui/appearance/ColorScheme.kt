@@ -709,7 +709,9 @@ object ColorScheme {
         if (AmbientGlow.isEnabled()) {
             // 弥散光晕画在窗口背景上（DecorView 整屏，含「界面边距」留出的外圈，不会在边距处断层），
             // content 自己不再铺纯色，否则会把光晕整块盖住。关闭时走下面的原路径，零额外开销。
-            window.setBackgroundDrawable(AmbientGlow.createDrawable(getCurrentThemeName(), BACKGROUND, ColorMode.isLight()))
+            window.setBackgroundDrawable(
+                AmbientGlow.createDrawable(getCurrentThemeName(), BACKGROUND, ColorMode.isLight(), AmbientGlow.currentSource())
+            )
             rootView?.background = null
         } else {
             // 窗口底色也换成主题背景：*.NoSwipe.AppCompat 主题的 windowBackground 是纯黑，

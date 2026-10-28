@@ -14,7 +14,6 @@ import android.view.View
 import android.widget.ImageView
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
-import com.RobinNotBad.BiliClient.BiliTerminal
 import com.RobinNotBad.BiliClient.R
 import com.RobinNotBad.BiliClient.activity.video.JumpToPlayerActivity
 import com.RobinNotBad.BiliClient.activity.video.info.VideoInfoActivity
@@ -178,15 +177,19 @@ class VideoCardHolder(@androidx.annotation.NonNull itemView: View) : RecyclerVie
     @SuppressLint("SetTextI18n")
     fun showVideoCard(videoCard: VideoCard, context: Context) {
         val strUpName = videoCard.upName
+        // 两个分支都要显式设可见性：holder 会被复用，上一条置了 GONE、这一条有值时不恢复就一直不显示
         if (strUpName == null || strUpName.isEmpty()) {
             upName.visibility = View.GONE
-        } else
+        } else {
+            upName.visibility = View.VISIBLE
             upName.text = strUpName
+        }
 
         val strViewCount = videoCard.view
         if (strViewCount == null || strViewCount.isEmpty()) {
             viewCount.visibility = View.GONE
         } else {
+            viewCount.visibility = View.VISIBLE
             viewCount.text = strViewCount
         }
 
@@ -196,7 +199,7 @@ class VideoCardHolder(@androidx.annotation.NonNull itemView: View) : RecyclerVie
             val coverUrl = GlideUtil.url_hq(videoCard.cover)
             if (coverUrl != lastCoverUrl) {
                 lastCoverUrl = coverUrl
-                requestManager.asDrawable().load(coverUrl)
+                GlideUtil.with(cover).asDrawable().load(coverUrl)
                     .transition(GlideUtil.getTransitionOptions())
                     .placeholder(R.mipmap.placeholder)
                     .error(R.mipmap.placeholder)
@@ -248,7 +251,6 @@ class VideoCardHolder(@androidx.annotation.NonNull itemView: View) : RecyclerVie
     }
 
     companion object {
-        private val requestManager = Glide.with(BiliTerminal.context!!)
         private val TITLE_COLOR_SPAN = ForegroundColorSpan(ColorScheme.PRIMARY)
 
         /** 多选模式下标题前缀，两者都是 2 个字符宽（后者是全角空格，用来保持对齐） */

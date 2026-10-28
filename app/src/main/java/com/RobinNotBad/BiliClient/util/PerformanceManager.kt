@@ -292,21 +292,49 @@ object PerformanceManager {
     fun hqImageMaxWidth(level: Int, highPerformanceMode: Boolean): Int =
         if (isLowPerfLevel(level, highPerformanceMode)) 512 else 1024
 
+    /**
+     * 按屏幕长边封顶请求宽度（26.10.27 性能审查，纯函数）。
+     *
+     * 档位里的 1024w 是给 1080p 手机定的；466px 的手表上封面再大也就占满屏宽，多出来的像素只是白下、白解码。
+     * 屏幕长边向上取到固定梯度（320 / 480 / 640 / 720 / 1024），让同类设备请求同一个 URL，CDN 与 Glide 磁盘缓存都能复用。
+     * 用长边而不是短边：横屏时卡片可能更宽，不能因此变糊。屏幕尺寸未知（≤0）时不封顶。
+     */
+    @JvmStatic
+    fun capWidthToScreen(tierWidth: Int, screenLongSidePx: Int): Int {
+        if (screenLongSidePx <= 0) return tierWidth
+        val bucket = SCREEN_WIDTH_BUCKETS.firstOrNull { it >= screenLongSidePx } ?: return tierWidth
+        return minOf(tierWidth, bucket)
+    }
+
+    private val SCREEN_WIDTH_BUCKETS = intArrayOf(320, 480, 640, 720, 1024)
+
+    /** 屏幕长边像素；拿不到 Context 时返回 0（= 不封顶）。 */
+    private fun screenLongSidePx(): Int {
+        val metrics = BiliTerminal.context?.resources?.displayMetrics ?: return 0
+        return maxOf(metrics.widthPixels, metrics.heightPixels)
+    }
+
     /** 列表/卡片图质量（供 GlideUtil.url 调用） */
     @JvmStatic
     fun getImageQuality(): Int = listImageQuality(currentPerfLevel, highPerformanceMode)
 
-    /** 列表/卡片图最大宽度（供 GlideUtil.url 调用） */
+    /** 列表/卡片图最大宽度（供 GlideUtil.url 调用），已按屏幕封顶 */
     @JvmStatic
-    fun getImageMaxWidth(): Int = listImageMaxWidth(currentPerfLevel, highPerformanceMode)
+    fun getImageMaxWidth(): Int =
+        capWidthToScreen(listImageMaxWidth(currentPerfLevel, highPerformanceMode), screenLongSidePx())
 
     /** 大图质量（供 GlideUtil.url_hq 调用） */
     @JvmStatic
     fun getHqImageQuality(): Int = hqImageQuality(currentPerfLevel, highPerformanceMode)
 
-    /** 大图最大宽度（供 GlideUtil.url_hq 调用） */
+    /** 大图最大宽度（供 GlideUtil.url_hq 调用），已按屏幕封顶 */
     @JvmStatic
-    fun getHqImageMaxWidth(): Int = hqImageMaxWidth(currentPerfLevel, highPerformanceMode)
+    fun getHqImageMaxWidth(): Int =
+        capWidthToScreen(hqImageMaxWidth(currentPerfLevel, highPerformanceMode), screenLongSidePx())
+
+    /** 可缩放大图（图片查看器）的最大宽度：**不**按屏幕封顶，放大 6 倍时还要看得清 */
+    @JvmStatic
+    fun getZoomImageMaxWidth(): Int = hqImageMaxWidth(currentPerfLevel, highPerformanceMode)
 
     /** 是否启用硬件位图解码 */
     fun isHardwareBitmapEnabled(): Boolean = isEffectiveHighPerf()
