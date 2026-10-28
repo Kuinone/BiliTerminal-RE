@@ -109,7 +109,7 @@ class SettingPrefActivity : RefreshListActivity() {
 
             add(SettingSection("title", "表冠适配", "", "", ""))
             add(SettingSection("switch", "启用表冠适配", SettingsKeys.UI_ROTATORY_ENABLE,
-                getString(R.string.setting_lab_ui_rotatory), RotaryEncoderSupport.DEFAULT_ENABLED.toString()))
+                getString(R.string.setting_lab_ui_rotatory), "false"))
             add(SettingSection("input_float", "表冠适配灵敏度（Recycler）", SettingsKeys.UI_ROTATORY_RECYCLER, "",
                 RotaryEncoderSupport.DEFAULT_MULTIPLE))
             add(SettingSection("input_float", "表冠适配灵敏度（Scroll）", SettingsKeys.UI_ROTATORY_SCROLL, "",

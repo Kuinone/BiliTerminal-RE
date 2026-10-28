@@ -682,7 +682,7 @@
 - **#52 空关键词搜索后历史记录消失**：`SearchActivity.searchKeyword` 先 `hideDropdowns()` 再判空 `return`。判空挪到最前。
 - **#51 文件夹里点 P2 从 P1 开始播 / 老缓存没声音**：`LocalListActivity.playVirtualCollection` 的起播地址固定取 `[0]`，`startPageIndex` 只写进了选集高亮。改成按 `startPageIndex` 取；双文件（未合并 DASH）缓存原来只传 mp4，现在另传与 `videoFileList` 对齐的 `audioFileList`，起播带 `audio_track_url`，`PlayerActivity.switchToLocalPage` 切 P 时把对应音轨交给 `doSwitchPage`（新增 `newAudioTrackUrl` 参数，原来这里固定置 null）。
 - **#38 图片查看页仍响应右滑**：清单里的 `Theme.NoSwipe` 被 `BaseActivity.onCreate` 的 `setTheme` 覆盖。`ImageViewerActivity` 覆写 `forceNoSwipeTheme = true`（与短视频页同一钩子），退出走顶栏 / 返回键。
-- **#20 表冠默认转得很慢**：`RotaryEncoderSupport` 总开关默认 `false`，用户要自己去设置里开。新增 `DEFAULT_ENABLED = true`，设置页默认值共用此常量，说明文案改为「默认开启，关掉可换回系统手感与震动」。只处理 `SOURCE_ROTARY_ENCODER` 事件，无表冠设备不受影响。
+- **#20 表冠默认转得很慢**：原本打算把 `RotaryEncoderSupport` 总开关默认改成开启（`DEFAULT_ENABLED = true`），**用户看过改动后要求回退**，已用 `revert` 撤销，保持默认关闭与原文案。反馈 #20 仍未解决——系统自带表冠滚动在多数页面偏慢，且维护者没有表冠设备可调手感；真正要改需要先拿到原版终端的滚动倍率做对照。
 - **#57 私信撤回（新功能）**：长按自己 120 秒内发出的文字 / 图片 → 菜单「复制文字 / 撤回」，撤回即发一条 `msg_type=5`、内容为目标 `msg_key` 的私信（`private_msg_content.md`「撤回消息」）。入口判据 `PrivateMsgApi.canRecall` 纯函数（自己发的、非撤回通知、本地时间看来未超 120 秒；本地时间比消息早时仍给入口，交服务端判，见 §3.72 的时间问题）。顺带：接口对被撤回的原消息仍回原文（`msg_status=1`），原先原文和「撤回了一条消息」两条都显示，现在 `shouldDisplay` 过滤掉原消息；撤回通知 seqno 必大于原消息，过滤不影响 refresh / loadMore 的分页起点。`PrivateMsgRecallTest` 5 例。
 - **#53 内置选图页（新功能）**：新增 `activity/ImagePickerActivity`（不导出）+ 纯逻辑 `util/ImagePickerAlbums`（相册分组 / 过滤 / 读图权限名，`ImagePickerAlbumsTest` 4 例）。读 MediaStore 按 `DATE_ADDED` 倒序铺三列缩略图（Glide 按格子尺寸、RGB_565 解码），可按相册筛选；顶部「系统选择器」退回原 `ACTION_GET_CONTENT` 并把结果原样转交。**结果格式与 `ACTION_GET_CONTENT` 相同**（`data.data` 为 content Uri），私信 / 写评论 / 发动态 / 换头像四个调用点只换了 Intent。清单新增 `READ_MEDIA_IMAGES`（Android 13+；13 以下沿用已有的 `READ_EXTERNAL_STORAGE`），只在打开选图页时申请，拒绝后显示说明并可走系统选择器。
 - **验证**：双 flavor `assembleDebug` 通过；`testStandardDebugUnitTest` 99 类 / 1039 例 / 0 失败。MuMu（Android 12L / SDK 32，共存版，已登录）：
@@ -693,7 +693,7 @@
   - #44 弹幕点赞的 `type` 值 `danmu` 来自 B 站网页端「收到的赞」的已知取值，接口文档快照里没有，测试账号也没有弹幕点赞记录，**未用真实数据确认**；若真实值不同，表现与改前一样落到「无法识别这个类别：xxx」，从文案就能看出该改成什么。
   - #51 没在模拟器上跑：伪造双文件缓存需要往 `Android/media/<包名>/` 写文件，这一步被会话权限拦下。需要真机用一条未合并的 1080P+ 老缓存验证「文件夹点 P2 从 P2 起播、有声音、切到 P1 也有声音」。
   - #57 没在模拟器上实测撤回（会真的给对方发私信），只有判据单测；需要真机给自己的小号发一条再撤回。
-  - #38 / #20 的手势本身只能在真手表上确认（MuMu 没有窗口层右滑返回，也没有表冠）。
+  - #38 的手势本身只能在真手表上确认（MuMu 没有窗口层右滑返回）。
 
 ## 4. 历史章节索引
 
