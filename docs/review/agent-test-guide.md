@@ -269,6 +269,40 @@ adb shell am broadcast -n <包名>/com.RobinNotBad.BiliClient.debug.DebugBridge 
 
 判据：`tracks=2`、两条轨的 `samples` 与源文件一致、`durationUs` 接近视频时长；`progress` 里能看到整十档回调说明合并阶段在推进进度条。**返回 `OK` 但 `tracks<2` 或采样数为 0，就是容器层回归**（产物会被删除，调用方保留双文件）。若 `out` 落在 `/sdcard/Android/data/...` 报文件不存在，可把样本先 `run-as` 拷进应用私有目录（`/data/data/<包名>/files/`）再传绝对路径。
 
+### 4.9 验证「文件夹合集」分 P 起播与外部音轨（不需要登录）
+
+「点文件夹里的第 2 条却从第 1 条开始播」「未合并的 DASH 缓存播起来没声音」这两类问题，**不需要真机、也不需要登录**——`adb root`（MuMu 自带）就能往 `Android/media/<包名>/` 造夹具，媒体用 ffmpeg 现造：
+
+```bash
+PKG=com.RobinNotBad.BiliClient.coexist
+R=/sdcard/Android/media/$PKG
+
+# ① 造两条「只有视频轨」的 mp4 + 独立 m4a（这是未合并 DASH 缓存的形态）
+ffmpeg -y -f lavfi -i "color=c=red:s=320x240:d=6"  -an -c:v libx264 -pix_fmt yuv420p a.mp4
+ffmpeg -y -f lavfi -i "sine=frequency=440:duration=6" -c:a aac b.m4a
+
+# ② 目录约定（见 DownloadPathSpec）：每个视频一个目录，双文件就在目录里，
+#    .video_meta.json 的 folderName 决定它归属哪个文件夹
+adb shell mkdir -p $R/第一个视频 $R/第二个视频
+adb push a.mp4 $R/第一个视频/video.mp4 ; adb push b.m4a $R/第一个视频/audio.m4a
+adb push a.mp4 $R/第二个视频/video.mp4 ; adb push b.m4a $R/第二个视频/audio.m4a
+# .folders_info.json -> [{"name":"测试合集","createTime":0,"videoTitles":["第一个视频","第二个视频"]}]
+# .video_meta.json    -> {"folderName":"测试合集","title":"…","downloadType":"video"}
+# .quality            -> 64（只影响列表上显示的清晰度标签）
+```
+
+**两个必踩的坑**：
+
+1. **JSON 不能带 BOM**。PowerShell 的 `Out-File -Encoding utf8` / `Set-Content` 会加 BOM，`JSONArray` 解析直接抛异常且被 `catch` 吞掉 → 现象是「文件夹列表空、未分类 0 个」。用 Python 写（`io.open(..., encoding="utf-8")`）或 `[IO.File]::WriteAllText`。
+2. **必须装本次构建的包**。改完代码只 `assembleDebug` 不 `adb install` 的话，测的是设备上那个旧包 —— 26.10.29 就因此得出过「修复无效」的错误结论。装完用 `pm dump <包名> | grep -i <本次新增的类名>` 确认一下。
+
+判据（都看 logcat，不需要截图）：
+
+- 点文件夹里**排第二**的那条 → `PlayerApi>jumpToPlayer: 视频地址>.../<那条>/video.mp4`。为了排除「列表顺序恰好相同」的假通过，**两条都要点一次**。
+- `PlayerActivity>initAudioTrack: AudioTrack>主文件轨道=[VIDEO]，外部文件可用=true，选择=EXTERNAL` → 紧接 `已启用唯一的外部音频轨道`。
+- 打开选集面板切到另一 P → `PlayerActivity>setDisplay: url>` 变成另一条、`initAudioTrack` 再走一遍。
+- 想确认真的打开了哪个音频文件：**别查 `/proc/<pid>/fd`**——`android.media.MediaPlayer` 的 fd 在 mediaserver 侧，应用进程里看不到；以 `选择=EXTERNAL` + 文件可读为准，音质差异用不同频率的 `sine` 造样本靠耳朵区分。
+
 ---
 
 ## 5. 日志与落盘
