@@ -37,6 +37,28 @@ public class FavoriteApi {
     /** 用户自建收藏夹的视频上限（v3 接口不返回上限，按服务端约定） */
     public static final int MAX_COUNT_CUSTOM_FOLDER = 1000;
 
+    /** 收藏内容类型：视频稿件。resources 拼成 {@code av:2}，内容 id 是 avid */
+    public static final int FAV_TYPE_VIDEO = 2;
+    /** 收藏内容类型：音频。resources 拼成 {@code au:12}，内容 id 是 auid */
+    public static final int FAV_TYPE_AUDIO = 12;
+    /** 收藏内容类型：视频合集。resources 拼成 {@code ss:21}，内容 id 是合集 id */
+    public static final int FAV_TYPE_COLLECTION = 21;
+
+    /**
+     * 只认 2/12/21 三种收藏内容类型，其它（含 0、缺失、脏数据）一律按视频稿件 2 处理。
+     *
+     * <p>类型定义见 {@code bilibili-API/docs/fav/action.md}（resources 参数：
+     * {@code {内容id}:{内容类型}}，2=视频稿件 / 12=音频 / 21=视频合集）。
+     * 拼 resources 前必须过一遍这个函数：类型值写错不会报错，只会把音频 auid、
+     * 合集 id 当成视频 avid 发过去，服务端静默按错误内容处理。
+     *
+     * <p>纯函数，方便单测。
+     */
+    public static int normalizeFavType(int type) {
+        if (type == FAV_TYPE_AUDIO || type == FAV_TYPE_COLLECTION) return type;
+        return FAV_TYPE_VIDEO;
+    }
+
     /**
      * 收藏夹的默认标记：{@code attr} 二进制第 1 位为 0 表示默认收藏夹。
      *
@@ -264,7 +286,10 @@ public class FavoriteApi {
             if (cntInfo != null) {
                 view = StringUtil.toWan(cntInfo.optLong("play", 0)) + "观看";
             }
-            videoList.add(new VideoCard(title, upName, view, cover, aid, video.optString("bvid", "")));
+            VideoCard card = new VideoCard(title, upName, view, cover, aid, video.optString("bvid", ""));
+            // id 可能是 avid / auid / 合集 id，类型决定后续批量操作怎么拼 resources
+            card.favType = normalizeFavType(video.optInt("type", FAV_TYPE_VIDEO));
+            videoList.add(card);
         }
         return data.optBoolean("has_more", false) ? 0 : 1;
     }
@@ -407,7 +432,8 @@ public class FavoriteApi {
 
     /**
      * 收藏内容批量写操作：{@code add_media_ids} 是要加的收藏夹，{@code del_media_ids} 是要删的收藏夹，
-     * 两者可同时传（服务端一次完成）；{@code resources} 是 {@code aid:2} 逗号串。
+     * 两者可同时传（服务端一次完成）；{@code resources} 是 {@code {内容id}:{内容类型}} 逗号串
+     * （类型 2=视频稿件 / 12=音频 / 21=视频合集，见 {@link #buildResources(List)}）。
      *
      * <p>替代已废弃的 {@code medialist/gateway/coll/resource/deal}（老「收藏」）与
      * {@code medialist/gateway/coll/resource/batch/del}（老「取消收藏」）。
@@ -435,13 +461,50 @@ public class FavoriteApi {
     }
 
     /**
-     * 从指定收藏夹取消收藏。
+     * 从指定收藏夹取消收藏（按视频稿件类型）。
      *
      * @param mediaId 目标收藏夹 media_id（来自 v3 列表接口，不再按 fid 手拼）
+     * @see #deleteFavorite(long, int, long)
      */
     public static int deleteFavorite(long aid, long mediaId) throws IOException, JSONException {
+        return deleteFavorite(aid, FAV_TYPE_VIDEO, mediaId);
+    }
+
+    /**
+     * 按内容类型从指定收藏夹取消收藏。
+     *
+     * <p>收藏夹里可能混着音频（id 是 auid）和视频合集（id 是合集 id），
+     * 只传 aid 会让它们被当成视频 avid 发出去，所以要把 {@link VideoCard#favType} 带上。
+     *
+     * @param aid     收藏内容 id（视频稿件为 avid，音频为 auid，合集为合集 id）
+     * @param favType 收藏内容类型，取 {@link #FAV_TYPE_VIDEO} / {@link #FAV_TYPE_AUDIO} /
+     *                {@link #FAV_TYPE_COLLECTION}，其它值按视频稿件处理
+     * @param mediaId 目标收藏夹 media_id（来自 v3 列表接口，不再按 fid 手拼）
+     */
+    public static int deleteFavorite(long aid, int favType, long mediaId) throws IOException, JSONException {
         if (aid <= 0) return -400;
-        return dealFavorites(mediaId, aid + ":2", "", String.valueOf(mediaId));
+        return dealFavorites(mediaId, aid + ":" + normalizeFavType(favType), "", String.valueOf(mediaId));
+    }
+
+    /**
+     * 清空收藏夹里所有失效内容（已被删除/不可见的稿件、音频、合集）。
+     *
+     * <p>接口：{@code POST https://api.bilibili.com/x/v3/fav/resource/clean}，
+     * 正文只有 {@code media_id} + {@code csrf}，依据
+     * {@code bilibili-API/docs/fav/action.md} 的「清空所有失效内容」小节。
+     *
+     * @param mediaId 目标收藏夹 media_id
+     * @return 服务端 code（0 成功；-400 表示参数不合法，未发请求）
+     */
+    public static int cleanInvalidResources(long mediaId) throws IOException, JSONException {
+        if (mediaId <= 0) return -400;
+        String url = "https://api.bilibili.com/x/v3/fav/resource/clean";
+        NetWorkUtil.FormData formData = new NetWorkUtil.FormData()
+                .put("media_id", mediaId)
+                .put("csrf", NetWorkUtil.currentCsrf());
+        JSONObject result = new JSONObject(Objects.requireNonNull(NetWorkUtil.post(url, formData.toString(), NetWorkUtil.webHeaders).body()).string());
+        Log.e("debug-收藏操作", result.toString());
+        return result.getInt("code");
     }
 
     public static int addFolder(String title, String intro, int privacy) throws IOException, JSONException {
@@ -484,8 +547,11 @@ public class FavoriteApi {
     }
 
     /**
-     * 拼批量操作要的 resources 参数：`{aid}:2`（2 = 视频稿件），多项用英文逗号连接。
-     * 跳过 aid &lt;= 0 的脏数据；空表返回空串。纯函数，方便单测。
+     * 拼批量操作要的 resources 参数：{@code {内容id}:{内容类型}}，多项用英文逗号连接。
+     *
+     * <p>类型取自 {@link VideoCard#favType}（经 {@link #normalizeFavType(int)} 归一化，
+     * 只会是 2/12/21）；只有视频稿件是 {@code aid:2}，音频是 {@code auid:12}，
+     * 视频合集是 {@code 合集id:21}。跳过 aid &lt;= 0 的脏数据；空表返回空串。纯函数，方便单测。
      */
     public static String buildResources(List<VideoCard> cards) {
         if (cards == null || cards.isEmpty()) return "";
@@ -493,7 +559,7 @@ public class FavoriteApi {
         for (VideoCard card : cards) {
             if (card == null || card.aid <= 0) continue;
             if (builder.length() > 0) builder.append(',');
-            builder.append(card.aid).append(":2");
+            builder.append(card.aid).append(':').append(normalizeFavType(card.favType));
         }
         return builder.toString();
     }

@@ -154,6 +154,44 @@ class FavoriteApiTest {
         assertEquals("", FavoriteApi.buildResources(emptyList()))
     }
 
+    // ==================== 收藏内容类型（favType） ====================
+
+    /**
+     * 类型定义见 bilibili-API/docs/fav/action.md 的 resources 参数：
+     * 2=视频稿件 / 12=音频 / 21=视频合集。只有这三种合法，其它一律落回视频稿件。
+     */
+    @Test
+    fun normalizeFavType_keepsKnownTypes() {
+        assertEquals("视频稿件", 2, FavoriteApi.normalizeFavType(2))
+        assertEquals("音频", 12, FavoriteApi.normalizeFavType(12))
+        assertEquals("视频合集", 21, FavoriteApi.normalizeFavType(21))
+        assertEquals("常量与字面量必须一致", FavoriteApi.FAV_TYPE_VIDEO, 2)
+        assertEquals("常量与字面量必须一致", FavoriteApi.FAV_TYPE_AUDIO, 12)
+        assertEquals("常量与字面量必须一致", FavoriteApi.FAV_TYPE_COLLECTION, 21)
+    }
+
+    /** 0（字段缺失的默认值）、1/3（别的接口里的 type 值）、99（脏数据）都必须回退 2 */
+    @Test
+    fun normalizeFavType_fallsBackToVideo() {
+        assertEquals("0 回退视频稿件", 2, FavoriteApi.normalizeFavType(0))
+        assertEquals("1 回退视频稿件", 2, FavoriteApi.normalizeFavType(1))
+        assertEquals("3 回退视频稿件", 2, FavoriteApi.normalizeFavType(3))
+        assertEquals("99 回退视频稿件", 2, FavoriteApi.normalizeFavType(99))
+    }
+
+    /** 音频的 auid、合集的 id 必须带对自己的类型，否则会被当成视频 avid 发出去 */
+    @Test
+    fun buildResources_keepsMixedTypes() {
+        val cards = listOf(card(1L), card(2L).also { it.favType = 12 }, card(3L).also { it.favType = 21 })
+        assertEquals("1:2,2:12,3:21", FavoriteApi.buildResources(cards))
+    }
+
+    @Test
+    fun buildResources_dirtyTypeFallsBackToVideo() {
+        val cards = listOf(card(4L).also { it.favType = 7 })
+        assertEquals("4:2", FavoriteApi.buildResources(cards))
+    }
+
     @Test
     fun resourceErrorMsg_mapsKnownCodes() {
         assertEquals("成功无文案", "", FavoriteApi.resourceErrorMsg(0))

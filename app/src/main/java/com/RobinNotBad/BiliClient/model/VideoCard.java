@@ -31,6 +31,13 @@ public class VideoCard implements Parcelable, Serializable {
      * 会填，用来把「已看完」和「没看完」分开；其它来源保持 0（未知）。
      */
     public long duration = 0;
+    /**
+     * 收藏内容类型（x/v3/fav/resource/list 每条 media 的 type 字段）：
+     * 2=视频稿件 / 12=音频 / 21=视频合集。只有收藏夹列表会填，其它来源默认 2。
+     * 批量操作（batch-deal / copy / move）的 resources 参数必须带它，
+     * 否则音频的 auid、合集的 id 会被当成视频 avid 发出去。
+     */
+    public int favType = 2;
 
     public VideoCard(String title, String upName, String view, String cover, long aid, String bvid, String type) {
         this.title = title;
@@ -78,6 +85,8 @@ public class VideoCard implements Parcelable, Serializable {
         epid = in.readLong();
         progress = in.readInt();
         duration = in.readLong();
+        // 与 writeToParcel 末尾一一对应：新增字段一律追加在最后，顺序错位不会崩，只会静默串数据
+        favType = in.readInt();
     }
 
     public static final Creator<VideoCard> CREATOR = new Creator<>() {
@@ -112,5 +121,6 @@ public class VideoCard implements Parcelable, Serializable {
         parcel.writeLong(epid);
         parcel.writeInt(progress);
         parcel.writeLong(duration);
+        parcel.writeInt(favType);
     }
 }
