@@ -1873,6 +1873,18 @@ TTF/OTF/TTC，应用把它**拷进私有目录**（`filesDir/custom_font/custom_
 
 ---
 
+### 7.56 收藏夹管理页：内容管理入口 + 资源类型 + 清空失效（26.10.29）
+
+- **入口换了语义**：长按收藏夹打开的 `activity/user/favorite/FavoriteFolderEditActivity.kt` 从「编辑收藏夹」升级成「收藏夹管理」（顶栏与 manifest `label` 共用 `text_activityfavoritefolderedit_06`，值已改成「收藏夹管理」）。`adapter/favorite/FavoriteFolderAdapter.kt` 的长按**不再拦默认收藏夹**（原来 `!folder.isDefault` 直接 toast 拒绝）——因为内容管理只在这个页面有入口，而默认收藏夹的内容同样要能管理。默认夹进来只显示 `hintDefault` 提示，隐藏 `groupInfo`（改名/简介/隐私/保存）与 `groupDanger`（删除夹），也**不再弹**「默认收藏夹不能编辑或删除」的 toast（改成常驻文案，少一次打扰）。
+- **页面结构（`res/layout/activity_favorite_folder_edit.xml` 整文件重写）**：照 `activity_edit_user_info.xml` 的单卡片编辑页模板——顶栏 `pageName`+`timeText` 不变；`RotaryScrollView` 内依次 `hintDefault` → `groupInfo`（12sp `?android:attr/textColorSecondary` 小标题 + `editTitle`/`editIntro` 裸 `@drawable/background_edittext` + `radioPrivacy` + `btnSave` 卡片行）→ 「内容管理」小标题 → `btnBatchDelete` / `btnCleanInvalid` 两张单行卡片（`xxxTitle` + `xxxDesc` 走 `MarqueeTextView` + `xxxArrow`）→ 「危险操作」小标题 + `btnDelete` 卡片行（`@color/status_error`）。**卡片不写 `cardBackgroundColor`**：7 套主题的 `materialCardViewStyle` 已经统一了底色/圆角/描边，布局里再写死颜色就会在亮色主题下翻车。
+- **新增行没有图标**：`drawable/icon_*.xml` 的 stroke/fill 全部硬编码 `#ebe0e2`，亮色主题下对比度极低，且 `cell_setting_nav` 不自带 tint——所以内容管理两行只用「标题 + 描述 + 箭头」，不做「图标 + 标题」。
+- **「批量删除内容」= 跳到夹内内容页并直接进多选**：`openContentManager()` 用 `startActivityForResult(..., REQUEST_CONTENT = 3)` 打开 `FavoriteVideoListActivity`，extras 传 `mid`/`name`/`mediaId`/`readOnly=false`/**`selectMode=true`**。内容页新增 `pendingSelectMode`：`loadFirstPage()` 成功回调里若 `writable && videoList.isNotEmpty()` 才 `enterSelectionMode()`，随即清标记——空夹/只读夹不硬进多选，切排序重拉不会重复进，**首屏失败时不标记**（用户下拉重试仍能进多选）。返回时管理页 `setResult(RESULT_OK)`，让收藏夹列表重拉数量。
+- **资源的类型位必须按真实类型拼（这是一个真 bug 的修复）**：`resources` 的 `{id}:{type}` 里 `2`=视频稿件（avid）/`12`=音频（auid）/`21`=视频合集（合集 id），原来 `buildResources()` 一律写 `:2`，对音频/合集条目就是错的 id 语义。`model/VideoCard.java` 末尾追加 `public int favType = 2;`（Parcelable **只能追加在末尾**，见 §7.20 的顺序警告），`getFolderVideosNew()` 用 `normalizeFavType(video.optInt("type"))` 填它，`buildResources()` 按卡片类型拼串，`deleteFavorite(aid, favType, mediaId)` 新增三参重载（两参旧重载委托它，`FolderChooseAdapter` 调用点不用改）。**没有引入 `x/v3/fav/resource/batch-del`**：项目既定策略是写操作全部收口 `batch-deal`（见 §7.24），两者能力重叠。
+- **「清空失效内容」只认 media_id**：`api/FavoriteApi.cleanInvalidResources(mediaId)` → `POST x/v3/fav/resource/clean`，form 只有 `media_id` + `csrf`，`mediaId <= 0` 直接返回 `-400`；成功 `data` 是 `0` 而非条数，所以**提示只说「清理完成」，不谎报清了几条**，也不做「可清理数量」预检（接口快照里没有 `folder/clean-state`）。UI 侧 `confirmCleanInvalid()` 走 `TerminalDialog.confirm(...)`（确认文案强调不可恢复），成功提示后同样 `setResult(RESULT_OK)`。
+- **文档同步**：能力表在 `docs/FEATURES.md` §8.1/§8.2/§8.3/§8.5，接口结论（类型位、clean 的 `data=0`、batch-del 仍不接）在 `docs/bilibili-api-notes.md` §6。
+
+---
+
 ## 10. 动手前的检查清单
 
 1. 确认要改的类属于哪一层：`activity/`（UI）→ `api/`（网络+解析）→ `util/`（基建）→ `model/`（数据）。

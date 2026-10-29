@@ -1479,6 +1479,9 @@
     <string name="uitext_favoritefoldereditactivity_001">再次点击删除按钮确认删除</string>
     <string name="uitext_favoritefoldereditactivity_002">保存成功</string>
     <string name="uitext_favoritefoldereditactivity_003">默认收藏夹不能编辑或删除</string>
+    <string name="uitext_favoritefoldereditactivity_004">确定清空这个收藏夹里的失效内容吗？清理后不可恢复。</string>
+    <string name="uitext_favoritefoldereditactivity_005">清理完成</string>
+    <string name="uitext_favoritefoldereditactivity_007">清空</string>
     <string name="uitext_favoritefolderlistactivity_001">无法获取收藏夹信息，请稍后重试</string>
     <string name="uitext_favoritefolderlistactivity_002">收藏</string>
     <string name="uitext_favoritevideolistactivity_001">收藏夹为空</string>
@@ -2059,7 +2062,14 @@
     <string name="hint_activityfavoritefolderedit_03">请输入收藏夹简介（可选）</string>
     <string name="text_activityfavoritefolderedit_04">收藏夹简介</string>
     <string name="text_activityfavoritefolderedit_05">收藏夹名称</string>
-    <string name="text_activityfavoritefolderedit_06">编辑收藏夹</string>
+    <string name="text_activityfavoritefolderedit_06">收藏夹管理</string>
+    <string name="text_activityfavoritefolderedit_10">内容管理</string>
+    <string name="text_activityfavoritefolderedit_11">批量删除内容</string>
+    <string name="text_activityfavoritefolderedit_12">清空失效内容</string>
+    <string name="text_activityfavoritefolderedit_13">危险操作</string>
+    <string name="text_activityfavoritefolderedit_14">默认收藏夹仅支持管理内容，不能改名或删除</string>
+    <string name="text_activityfavoritefolderedit_15">勾选要移除的内容后删除</string>
+    <string name="text_activityfavoritefolderedit_16">清理已失效（被删除或不可见）的收藏</string>
     <string name="text_activityfeedback_01">最近的应用运行日志（已脱敏），便于定位问题</string>
     <string name="text_activityfeedbackdetail_01">补充复现步骤或说明，开发者会看到</string>
     <string name="text_activityimageviewer_01">第0/0张</string>

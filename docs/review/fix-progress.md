@@ -9,7 +9,7 @@
 - **版本号**：`26.10.27`（`app/build.gradle` 的 `versionName`），`versionCode 2610270`；`strings.xml` 的 `update_log_current` 锚点是「【26.10.27 本次更新】」，`:app:verifyVersionConsistency` 以该锚点校验。tag `26.10.27` 已占用（发版记录见 §4 的 §五十八）。
 - **上一版**：`26.10.26` / tag `26.10.26`。
 - **本轮改动（26.10.27）**：暗色 / 亮色模式、弥散光晕背景、玻璃质感（默认关闭）；设置新增「布局适配」二级页，与「外观设置」同在「界面与外观」下；搜索排序入口收进搜索框左侧图标（§3.71）；控制栏收起后字幕随之下沉；Android 7.1 及以下内测码更新报 Trust anchor（§3.70）。明细见 `strings.xml` 的 `update_log_current`（5 条编号条目，另 1 条为版本锚点）。
-- **26.10.27 发版后的未发版改动**：系统时间错误防呆（启动与证书时间错误时提示改时间，§3.72）、点赞投币收藏卡片适配玻璃质感（§3.73）、弥散光晕可选光源位置（§3.76）。下次发版时 `update_log_current` 要补这三条。
+- **26.10.27 发版后的未发版改动**：系统时间错误防呆（启动与证书时间错误时提示改时间，§3.72）、点赞投币收藏卡片适配玻璃质感（§3.73）、弥散光晕可选光源位置（§3.76）、收藏夹管理页的内容管理（批量删除 / 清空失效）与版式重做（§3.80）。下次发版时 `update_log_current` 要补这四条。
 - **下次递增**：先看 `app/build.gradle:23-24`；release immutability 下被 Release 用过的 tag **永久不可复用**，同版本名补丁版只能用 `26.10.24.1` 这种后缀形式，`versionCode` 递增、`versionName` 可不变。改了版本号还要同步 `strings.xml` 里 `update_log_current` 的「【YY.MM.DD 本次更新】」锚点，否则 `:app:verifyVersionConsistency` 会失败。
 - **构建命令**（单测任务名**带 flavor 前缀**，`testDebugUnitTest` 自 26.10.11 引入 flavor 后已不存在）：
 
@@ -41,6 +41,8 @@
 ## 2. 未完成待办
 
 ### 2.1 真机未验证（无设备 / 无登录态）
+
+- [ ] **收藏夹管理页新版式 + 内容管理入口（§3.80）部分设备验证**：已在 SDK AVD `wear5`（Android 14 / 466×466）上用 `coexistDebug` universal 包核对了**结构与文案**（默认夹与非默认夹两种版式、两行内容管理入口、点「批量删除内容」能开出夹内容页）。**仍未验的**：①点「批量删除内容」后是否真的**直达多选态**（要先登录拉到列表，空列表按设计不进多选）；②「清空失效内容」的确认框与 `data=0` 成功提示；③真手表/圆屏上的实际观感。**注意**：删除与清空都是真实账号的破坏性写操作，真机验证要做好心理准备，别拿主号试。
 
 - [ ] **DASH 下载合并单文件（§3.66）端到端未验证**：需要登录态 + 选 1080P，本机只有模拟器且未登录。容器层已用两条现成 m4s 走 DebugBridge `merge` 实测通过（`result=OK`、`tracks=2`、采样数与源一致），**但「真实下载 → 合并 → 本地列表只剩视频 → 内置播放器有声」整条链路没跑过**。真机用例：登录后下载一个 1080P 视频，观察进度走完 0.88–1.00 的「合并音视频」阶段、目录里只有 `video.mp4`（无 `audio.m4a`、无 `video_merging.tmp`）、本地页直接播放有声；再故意制造合并失败（如把磁盘写满）确认保留双文件且下载不报错。
 
@@ -694,6 +696,19 @@
   - #51 没在模拟器上跑：伪造双文件缓存需要往 `Android/media/<包名>/` 写文件，这一步被会话权限拦下。需要真机用一条未合并的 1080P+ 老缓存验证「文件夹点 P2 从 P2 起播、有声音、切到 P1 也有声音」。
   - #57 没在模拟器上实测撤回（会真的给对方发私信），只有判据单测；需要真机给自己的小号发一条再撤回。
   - #38 的手势本身只能在真手表上确认（MuMu 没有窗口层右滑返回）。
+
+### 3.80 收藏夹管理页：内容管理（批量删除 / 清空失效）+ 视觉统一（26.10.29，用户要求）
+
+- **缘起**：用户给了 B 站「批量删除内容」（`x/v3/fav/resource/batch-del`）与「清空所有失效内容」（`x/v3/fav/resource/clean`）两份接口文档，要求把功能做在「长按收藏夹跳转出的管理页面」上，并顺手把这个管理页的视觉风格与配色统一到全站口径。
+- **入口语义变更**：`FavoriteFolderEditActivity` 从「编辑收藏夹」升级为「收藏夹管理」（顶栏 + manifest label 共用 `text_activityfavoritefolderedit_06`，值改成「收藏夹管理」）。`FavoriteFolderAdapter` 的长按不再拦默认收藏夹（原 `!folder.isDefault` + toast），因为内容管理只在这个页面有入口；默认夹进来改显示常驻提示 `hintDefault`、隐藏改名/删除两块，且不再每次弹 toast。
+- **批量删除内容**：管理页新增一行 → 打开 `FavoriteVideoListActivity` 并带 `selectMode=true`，内容页在首屏加载成功后若 `writable && 列表非空` 自动 `enterSelectionMode()`（空夹/只读夹不硬进；切排序不重复进；首屏失败不标记，重试仍可进）。返回时管理页 `setResult(RESULT_OK)` 让收藏夹列表重拉数量。
+- **修掉一个真 bug（资源类型位）**：`resources` 的 `{id}:{type}` 里 `2`=视频稿件 / `12`=音频 / `21`=视频合集，原来 `buildResources()` 一律写 `:2`，音频与合集条目删的是错 id 语义。`VideoCard` 末尾追加 `favType`（Parcelable 只能末尾追加）、`getFolderVideosNew` 用 `normalizeFavType(media.optInt("type"))` 填、`buildResources` 按卡片类型拼串、新增 `deleteFavorite(aid, favType, mediaId)` 重载（旧两参委托它）。**没有引入 `batch-del`**：项目既定写操作全部收口 `x/v3/fav/resource/batch-deal`，两者能力重叠（`bilibili-api-notes.md` §6 已记录这条判断）。
+- **清空失效内容**：`FavoriteApi.cleanInvalidResources(mediaId)` → `POST x/v3/fav/resource/clean`（form 只有 `media_id`+`csrf`，`mediaId<=0` 直接 `-400`）。成功 `data` 是 `0` 不是条数，所以只提示「清理完成」**不谎报清了几条**；快照里没有 `folder/clean-state`，因此不做「可清理数量」预检。
+- **视觉统一**：`activity_favorite_folder_edit.xml` 整文件照 `activity_edit_user_info.xml` 的单卡片编辑页模板重写——12sp `?android:attr/textColorSecondary` 小标题、输入框裸 `@drawable/background_edittext`、保存行是卡片行 `textEnd`+`arrow_forward`、内容管理两行是「标题 + 描述 + 箭头」单行卡片（**不加图标**：`drawable/icon_*.xml` 硬编码浅色 `#ebe0e2`，亮色主题下对比度不足）、危险操作用 `@color/status_error`。卡片一律不写 `cardBackgroundColor`，交给主题的 `materialCardViewStyle`。
+- **验证**：`./gradlew.bat :app:assembleDebug` 通过（两 flavor，2m11s）；`testStandardDebugUnitTest` + `testCoexistDebugUnitTest` 通过，`FavoriteApiTest` 20 例全绿（含新增 `normalizeFavType_*` / `buildResources_*` 4 例）。
+- **设备侧（SDK AVD `wear5`，`sdk_gwear_x86_64` / Android 14 / 466×466 圆屏 / 320dpi，装 `coexistDebug` universal 包）**：经 DebugBridge 拉起 `FavoriteFolderEditActivity` 核对结构与文案——默认夹（extras `mediaId=1;isDefault=true;title=DemoFolder`）顶栏「收藏夹管理」、`hintDefault` 显示「默认收藏夹仅支持管理内容，不能改名或删除」、`groupInfo`/`groupDanger` 均不在 dump 里（已隐藏）、内容管理小标题 + 「批量删除内容 / 勾选要移除的内容后删除」「清空失效内容 / 清理已失效（被删除或不可见）的收藏」两行卡片；非默认夹（`mediaId=123456;isDefault=false`）`groupInfo` 可见、标题回填 `DemoFolder`、滚动后「保存」行与两行内容管理入口都在；点「批量删除内容」成功开出 `FavoriteVideoListActivity`，顶栏显示 `DemoFolder`（`name` extra 透传成功）。**没有登录态**，故列表拉不到、多选态与两个写操作的成功提示未验。另记一条环境结论：该 AVD 上**所有页面**（含未改动的 `SettingMainActivity`）都渲染成内容放大溢出、左侧与底部被裁的样子，所以只能用来核对结构与文本，**不能做像素级版式对照**；同时 `android_find_text` 在本机不可用（无 Tesseract），`uiautomator dump` 是唯一可靠的判读手段。
+- **调试踩坑（对后续设备测试有用）**：PowerShell 5.1 往原生程序传参时会吃掉内嵌双引号，`adb shell 'am broadcast ... --es extras "a=1;b=2"'` 到设备端只剩 `a=1`（分号被设备 shell 当命令分隔符）。可靠写法是 `adb --% shell "am broadcast ... --es extras 'mediaId=1;isDefault=true'"`——`--%` 停止 PowerShell 解析、内层改用**单引号**给设备 shell。
+- **遗留**：① 「批量删除内容」是否**直达多选态**、「清空失效内容」的确认框与「清理完成」提示要在登录态下再验（空列表/只读夹按设计不进多选）；② 真手表/圆屏上的实际观感未看，AVD 渲染本身不可信；③ 音频/合集卡片点击仍按视频处理（`aid` 里装 auid/合集 id 走详情/虚拟合集），是改动前既有行为，本次未扩大范围。
 
 ## 4. 历史章节索引
 

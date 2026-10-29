@@ -33,6 +33,13 @@ class FavoriteVideoListActivity : RefreshListActivity() {
     /** 自己的收藏夹且拿得到 media_id：长按弹管理菜单 */
     private var writable: Boolean = false
 
+    /**
+     * 从「收藏夹管理页」带 {@code selectMode=true} 进来时置位：首屏加载完成后自动进多选，
+     * 省掉「长按条目 → 菜单里点『多选』」这一步。
+     * 只用一次——排序切换会重拉第一页，届时不能第二次自动进多选。
+     */
+    private var pendingSelectMode: Boolean = false
+
     private var videoList: ArrayList<VideoCard> = ArrayList()
     private var videoCardAdapter: VideoCardAdapter? = null
 
@@ -77,6 +84,7 @@ class FavoriteVideoListActivity : RefreshListActivity() {
         // readOnly 由调用方显式指定，没指定时按「有 media_id 就是他人收藏夹」兜底
         readOnly = intent.getBooleanExtra("readOnly", mediaId > 0)
         writable = !readOnly && mediaId > 0
+        pendingSelectMode = intent.getBooleanExtra("selectMode", false)
 
         setupSortBar()
         setupManageBar()
@@ -243,6 +251,12 @@ class FavoriteVideoListActivity : RefreshListActivity() {
                         videoCardAdapter!!.notifyDataSetChanged()
                     }
                     if (videoList.isEmpty()) showEmptyView() else hideEmptyView()
+                    // 带 selectMode 进来：首屏有内容就直接进多选。空收藏夹保持空态提示，别进一个没东西可选的多选态。
+                    // 标记在这里就清掉（无论是否真的进了多选），排序切换重拉第一页时才不会再次自动进多选。
+                    if (pendingSelectMode) {
+                        pendingSelectMode = false
+                        if (writable && videoList.isNotEmpty()) enterSelectionMode()
+                    }
                     setRefreshing(false)
                 }
             } catch (e: Exception) {
@@ -380,7 +394,8 @@ class FavoriteVideoListActivity : RefreshListActivity() {
         ) {
             CenterThreadPool.run {
                 try {
-                    val code = FavoriteApi.deleteFavorite(card.aid, mediaId)
+                    // 带上 favType：收藏夹里可能有音频/视频合集，写死 2 会把它们的 id 当成 avid 发出去
+                    val code = FavoriteApi.deleteFavorite(card.aid, card.favType, mediaId)
                     runOnUiThread {
                         if (code == 0) {
                             MsgUtil.showMsg(UiText.of("已取消收藏"))

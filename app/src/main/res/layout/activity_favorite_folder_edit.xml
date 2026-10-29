@@ -31,10 +31,10 @@
             android:id="@+id/timeText"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginEnd="8dp"
-            android:layout_marginVertical="3dp"
             android:layout_alignParentRight="true"
-            android:layout_alignParentEnd="true" />
+            android:layout_alignParentEnd="true"
+            android:layout_marginVertical="3dp"
+            android:layout_marginEnd="8dp" />
 
     </RelativeLayout>
 
@@ -46,125 +46,274 @@
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:orientation="vertical"
             android:paddingHorizontal="@dimen/activity_padding_horizontal"
-            android:divider="@drawable/empty"
-            android:showDividers="middle"
-            android:paddingVertical="2dp"
-            android:orientation="vertical">
+            android:paddingVertical="2dp">
 
+            <!-- 默认收藏夹不能改名/改简介/删除，这里给一行说明，代替原来的弹吐司 -->
             <TextView
+                android:id="@+id/hintDefault"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dp"
                 android:layout_marginBottom="4dp"
-                android:text="@string/text_activityfavoritefolderedit_05"
-                android:textSize="13sp" />
+                android:text="@string/text_activityfavoritefolderedit_14"
+                android:textColor="?android:attr/textColorSecondary"
+                android:textSize="12sp"
+                android:visibility="gone" />
 
-            <EditText
-                android:id="@+id/editTitle"
+            <!-- 收藏夹信息编辑区：默认收藏夹整块隐藏 -->
+            <LinearLayout
+                android:id="@+id/groupInfo"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:background="@drawable/background_edittext"
-                android:hint="@string/uitext_favoritefoldercreateactivity_002"
-                android:inputType="text"
-                android:minHeight="@dimen/touch_min"
-                android:padding="8dp"
-                android:textSize="13sp"
-                android:maxLines="1" />
+                android:orientation="vertical">
 
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:layout_marginBottom="4dp"
+                    android:text="@string/text_activityfavoritefolderedit_05"
+                    android:textColor="?android:attr/textColorSecondary"
+                    android:textSize="12sp" />
+
+                <EditText
+                    android:id="@+id/editTitle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:background="@drawable/background_edittext"
+                    android:inputType="text"
+                    android:maxLines="1"
+                    android:padding="8dp"
+                    android:textSize="13sp" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:layout_marginBottom="4dp"
+                    android:text="@string/text_activityfavoritefolderedit_04"
+                    android:textColor="?android:attr/textColorSecondary"
+                    android:textSize="12sp" />
+
+                <EditText
+                    android:id="@+id/editIntro"
+                    android:layout_width="match_parent"
+                    android:layout_height="80dp"
+                    android:background="@drawable/background_edittext"
+                    android:gravity="top|start"
+                    android:hint="@string/hint_activityfavoritefolderedit_03"
+                    android:inputType="textMultiLine"
+                    android:maxLines="3"
+                    android:padding="8dp"
+                    android:textSize="13sp" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:layout_marginBottom="4dp"
+                    android:text="@string/text_activityfavoritefolderedit_07"
+                    android:textColor="?android:attr/textColorSecondary"
+                    android:textSize="12sp" />
+
+                <RadioGroup
+                    android:id="@+id/radioPrivacy"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+
+                    <com.google.android.material.radiobutton.MaterialRadioButton
+                        android:id="@+id/radioPublic"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:paddingStart="8dp"
+                        android:paddingEnd="8dp"
+                        android:text="@string/text_activityfavoritefolderedit_08"
+                        android:textColor="?android:attr/textColorPrimary"
+                        android:textSize="13sp" />
+
+                    <com.google.android.material.radiobutton.MaterialRadioButton
+                        android:id="@+id/radioPrivate"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:paddingStart="8dp"
+                        android:paddingEnd="8dp"
+                        android:text="@string/text_activityfavoritefolderedit_09"
+                        android:textColor="?android:attr/textColorPrimary"
+                        android:textSize="13sp" />
+                </RadioGroup>
+
+                <com.google.android.material.card.MaterialCardView
+                    android:id="@+id/btnSave"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="16dp">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="35dp"
+                        android:layout_marginHorizontal="8dp"
+                        android:gravity="center_vertical"
+                        android:text="@string/text_activityfavoritefolderedit_02"
+                        android:textAlignment="textEnd"
+                        android:textSize="13sp"
+                        app:drawableEndCompat="@drawable/arrow_forward"
+                        tools:ignore="RtlCompat" />
+                </com.google.android.material.card.MaterialCardView>
+
+            </LinearLayout>
+
+            <!-- 内容管理：与「改名」无关，默认收藏夹也能用 -->
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="16dp"
                 android:layout_marginBottom="4dp"
-                android:text="@string/text_activityfavoritefolderedit_04"
-                android:textSize="13sp" />
-
-            <EditText
-                android:id="@+id/editIntro"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:background="@drawable/background_edittext"
-                android:hint="@string/hint_activityfavoritefolderedit_03"
-                android:inputType="textMultiLine"
-                android:minHeight="80dp"
-                android:padding="8dp"
-                android:textSize="13sp"
-                android:maxLines="3"
-                android:gravity="top|start" />
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
-                android:layout_marginBottom="4dp"
-                android:text="@string/text_activityfavoritefolderedit_07"
-                android:textSize="13sp" />
-
-            <RadioGroup
-                android:id="@+id/radioPrivacy"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal">
-
-                <com.google.android.material.radiobutton.MaterialRadioButton
-                    android:id="@+id/radioPublic"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="@string/text_activityfavoritefolderedit_08"
-                    android:textColor="?android:attr/textColorPrimary"
-                    android:textSize="13sp" />
-
-                <com.google.android.material.radiobutton.MaterialRadioButton
-                    android:id="@+id/radioPrivate"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="@string/text_activityfavoritefolderedit_09"
-                    android:textColor="?android:attr/textColorPrimary"
-                    android:textSize="13sp" />
-            </RadioGroup>
+                android:text="@string/text_activityfavoritefolderedit_10"
+                android:textColor="?android:attr/textColorSecondary"
+                android:textSize="12sp" />
 
             <com.google.android.material.card.MaterialCardView
-                android:id="@+id/btnSave"
+                android:id="@+id/btnBatchDelete"
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="16dp">
+                android:layout_height="wrap_content">
 
-                <TextView
+                <androidx.constraintlayout.widget.ConstraintLayout
                     android:layout_width="match_parent"
-                    android:layout_height="35dp"
-                    app:drawableEndCompat="@drawable/arrow_forward"
-                    android:layout_marginHorizontal="8dp"
-                    android:gravity="center_vertical"
-                    android:text="@string/text_activityfavoritefolderedit_02"
-                    android:textAlignment="textEnd"
-                    android:textSize="13sp"
-                    android:visibility="visible"
-                    tools:ignore="RtlCompat" />
+                    android:layout_height="wrap_content">
+
+                    <TextView
+                        android:id="@+id/batchDeleteTitle"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="8dp"
+                        android:layout_marginTop="8dp"
+                        android:lines="1"
+                        android:text="@string/text_activityfavoritefolderedit_11"
+                        android:textSize="@dimen/text_subtitle"
+                        app:layout_constraintBottom_toTopOf="@+id/batchDeleteDesc"
+                        app:layout_constraintEnd_toStartOf="@+id/batchDeleteArrow"
+                        app:layout_constraintStart_toStartOf="parent"
+                        app:layout_constraintTop_toTopOf="parent" />
+
+                    <com.RobinNotBad.BiliClient.ui.widget.MarqueeTextView
+                        android:id="@+id/batchDeleteDesc"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="8dp"
+                        android:layout_marginBottom="8dp"
+                        android:singleLine="true"
+                        android:text="@string/text_activityfavoritefolderedit_15"
+                        android:textColor="?android:attr/textColorSecondary"
+                        android:textSize="@dimen/text_caption"
+                        app:layout_constraintBottom_toBottomOf="parent"
+                        app:layout_constraintEnd_toStartOf="@+id/batchDeleteArrow"
+                        app:layout_constraintStart_toStartOf="parent"
+                        app:layout_constraintTop_toBottomOf="@+id/batchDeleteTitle" />
+
+                    <ImageView
+                        android:id="@+id/batchDeleteArrow"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginEnd="8dp"
+                        android:src="@drawable/arrow_forward"
+                        app:layout_constraintBottom_toBottomOf="parent"
+                        app:layout_constraintEnd_toEndOf="parent"
+                        app:layout_constraintTop_toTopOf="parent" />
+
+                </androidx.constraintlayout.widget.ConstraintLayout>
             </com.google.android.material.card.MaterialCardView>
 
             <com.google.android.material.card.MaterialCardView
-                android:id="@+id/btnDelete"
+                android:id="@+id/btnCleanInvalid"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="8dp">
+                android:layout_marginTop="6dp">
+
+                <androidx.constraintlayout.widget.ConstraintLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content">
+
+                    <TextView
+                        android:id="@+id/cleanInvalidTitle"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="8dp"
+                        android:layout_marginTop="8dp"
+                        android:lines="1"
+                        android:text="@string/text_activityfavoritefolderedit_12"
+                        android:textSize="@dimen/text_subtitle"
+                        app:layout_constraintBottom_toTopOf="@+id/cleanInvalidDesc"
+                        app:layout_constraintEnd_toStartOf="@+id/cleanInvalidArrow"
+                        app:layout_constraintStart_toStartOf="parent"
+                        app:layout_constraintTop_toTopOf="parent" />
+
+                    <com.RobinNotBad.BiliClient.ui.widget.MarqueeTextView
+                        android:id="@+id/cleanInvalidDesc"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="8dp"
+                        android:layout_marginBottom="8dp"
+                        android:singleLine="true"
+                        android:text="@string/text_activityfavoritefolderedit_16"
+                        android:textColor="?android:attr/textColorSecondary"
+                        android:textSize="@dimen/text_caption"
+                        app:layout_constraintBottom_toBottomOf="parent"
+                        app:layout_constraintEnd_toStartOf="@+id/cleanInvalidArrow"
+                        app:layout_constraintStart_toStartOf="parent"
+                        app:layout_constraintTop_toBottomOf="@+id/cleanInvalidTitle" />
+
+                    <ImageView
+                        android:id="@+id/cleanInvalidArrow"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginEnd="8dp"
+                        android:src="@drawable/arrow_forward"
+                        app:layout_constraintBottom_toBottomOf="parent"
+                        app:layout_constraintEnd_toEndOf="parent"
+                        app:layout_constraintTop_toTopOf="parent" />
+
+                </androidx.constraintlayout.widget.ConstraintLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- 危险操作：默认收藏夹隐藏 -->
+            <LinearLayout
+                android:id="@+id/groupDanger"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
 
                 <TextView
                     android:layout_width="match_parent"
-                    android:layout_height="35dp"
-                    android:layout_marginHorizontal="8dp"
-                    android:gravity="center"
-                    android:text="@string/text_activityfavoritefolderedit_01"
-                    android:textColor="@color/status_warning"
-                    android:textSize="13sp"
-                    android:visibility="visible" />
-            </com.google.android.material.card.MaterialCardView>
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="16dp"
+                    android:layout_marginBottom="4dp"
+                    android:text="@string/text_activityfavoritefolderedit_13"
+                    android:textColor="?android:attr/textColorSecondary"
+                    android:textSize="12sp" />
+
+                <com.google.android.material.card.MaterialCardView
+                    android:id="@+id/btnDelete"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="35dp"
+                        android:layout_marginHorizontal="8dp"
+                        android:gravity="center_vertical|start"
+                        android:text="@string/text_activityfavoritefolderedit_01"
+                        android:textColor="@color/status_error"
+                        android:textSize="13sp" />
+                </com.google.android.material.card.MaterialCardView>
+
+            </LinearLayout>
 
         </LinearLayout>
-
     </com.RobinNotBad.BiliClient.ui.widget.RotaryScrollView>
 
 </RelativeLayout>
-

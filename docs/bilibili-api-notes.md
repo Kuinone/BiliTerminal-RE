@@ -170,13 +170,15 @@
 
 - 读收藏夹列表：`GET x/v3/fav/folder/created/list?up_mid=&pn=&ps=100`（自己/他人同一接口，按 `has_more` 分页）。每项 `id` 就是 media_id、`fid` 只是展示用的旧 id、`attr` bit0=1 私密 / bit1=0 默认、`cover` 直接给。
 - 读收藏夹内容：`GET x/v3/fav/resource/list?media_id=&platform=web&pn=&ps=20&order=`（`order` 取 `mtime`/`view`/`pubtime`）。
-- 写收藏/取消/多选删除：统一 `POST x/v3/fav/resource/batch-deal`，form `resources`（`{avid}:2` 逗号串）+ `add_media_ids` + `del_media_ids` + `csrf`（可同时加/删）。
-- 已弃用（本项目不再调用）：`space.bilibili.com/ajax/fav/getBoxList`、`x/space/fav/arc`、`medialist/gateway/coll/resource/deal`、`medialist/gateway/coll/resource/batch/del`、`x/v3/fav/resource/batch-del`、`x/v3/fav/resource/deal`。
+- 写收藏/取消/多选删除：统一 `POST x/v3/fav/resource/batch-deal`，form `resources`（`{内容id}:{内容类型}` 逗号串）+ `add_media_ids` + `del_media_ids` + `csrf`（可同时加/删）。
+- **`resources` 的类型位不只是 `2`**（26.10.29 核实 `bilibili-API/docs/fav/action.md`）：`2`=视频稿件（id 用 avid）、`12`=音频（auid）、`21`=视频合集（合集 id）。`x/v3/fav/resource/list` 每条 media 的 `type` 字段就是它，所以删除音频/合集收藏必须按真实类型拼，不能一律写 `:2`。本项目 `FavoriteApi.normalizeFavType()` 只放行 2/12/21，其余回落 2；`VideoCard.favType` 承载该值（`buildResources` 按卡片类型拼串）。
+- 清空夹内失效：`POST x/v3/fav/resource/clean`，form 只有 `media_id` + `csrf`，成功 `{code:0,message:"0",ttl:1,data:0}`——**`data` 是 0 而不是清理条数**，服务端不告诉清了几条；本项目的接口快照里**没有** `folder/clean-state` 章节，所以不做「可清理数量」预检（26.10.29 已接入，见 `FavoriteApi.cleanInvalidResources`）。tab 级全量清理是 `x/v3/fav/tab/clean_invalid`，仍未接。
+- 已弃用（本项目不再调用）：`space.bilibili.com/ajax/fav/getBoxList`、`x/space/fav/arc`、`medialist/gateway/coll/resource/deal`、`medialist/gateway/coll/resource/batch/del`、`x/v3/fav/resource/batch-del`、`x/v3/fav/resource/deal`。**注意**：官方文档里专门有一条「批量删除内容」`x/v3/fav/resource/batch-del`（form `resources`+`media_id`+`platform=web`+`csrf`），能力与 `batch-deal` 的删除半边重复，本项目继续走 `batch-deal`，不引入它。
 - 图文收藏：`x/polymer/web-dynamic/v1/opus/feed/fav`（`page_size=20&page=`，`items[].cover` 是对象 `{url}`），旧 `x/polymer/web-dynamic/v1/opus/favlist` 仅兜底。
 
 **上限字段的坑（26.10.16 历史，迁移后已不存在）**：老 `getBoxList` 对自建收藏夹恒返回 `max_count = 999`（实际上限 1000），「我的收藏夹」页因此显示过 `1000/999`；v3 系（`created/list`、`list-all`）**完全不返回上限**。现在上限按服务端约定本地算：默认收藏夹 50000、自建 1000（`FavoriteApi.maxCountOf()`）；默认收藏夹用 `attr & 2 == 0` 判断（不再用 `index == 0`，`index` 判据只对已删除的 `getBoxList` 成立）。详见 `docs/architecture-map.md` §7.34。
 
-**已知但未接的收藏接口**（逐条能力表见 `docs/FEATURES.md` §8.5）：`x/v3/fav/resource/sort`（夹内手动排序）、`x/v3/fav/folder/sort`（收藏夹本身排序）、`x/v3/fav/resource/clean` + `x/v3/fav/tab/clean_invalid`（清理失效）、`x/v3/fav/thump/up`、`x/v3/fav/tab/report`、`resource/infos|ids`、`folder/space|space/v2|whitelist`、`x/v3/fav/tab` 族、`x/v3/fav/season/unfav`。前两个需 APP 签名（`appkey` + `ts` + `sign = md5(query + appsec)`）。
+**已知但未接的收藏接口**（逐条能力表见 `docs/FEATURES.md` §8.5）：`x/v3/fav/resource/sort`（夹内手动排序）、`x/v3/fav/folder/sort`（收藏夹本身排序）、`x/v3/fav/tab/clean_invalid`（清理所有夹的失效）、`x/v3/fav/thump/up`、`x/v3/fav/tab/report`、`resource/infos|ids`、`folder/space|space/v2|whitelist`、`x/v3/fav/tab` 族、`x/v3/fav/season/unfav`。前两个需 APP 签名（`appkey` + `ts` + `sign = md5(query + appsec)`）。
 
 **批量写接口要带 `x-bili-gaia-vtoken`**（9.16.1 客户端静态分析）：`POST x/v3/fav/resource/batch-deal` 的请求头里有一个人机校验 token（`BiliApiException.mCode == 11211` 时官方客户端会单独处理、不弹通用错误）。这个 token 由风控链路下发，第三方拿不到——所以本项目走 `batch-deal` 时**偶发失败要优先怀疑它**，退路是逐条打 `x/v3/fav/resource/deal`（官方也保留着这条）。单条 `deal` 不需要该头。
 
