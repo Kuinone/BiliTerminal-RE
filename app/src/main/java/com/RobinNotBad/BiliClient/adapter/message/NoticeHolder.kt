@@ -110,6 +110,12 @@ class NoticeHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
                 try {
                     if (message.itemType == "reply" || message.getType == MessageCard.GET_TYPE_REPLY) {
                         val seekReply = if (message.rootId == 0L) message.sourceId else message.rootId
+                        // 弹幕回复（type=danmu）既没有 business_id 也没有可定位的 rpid：
+                        // 服务端只给「弹幕所在视频」的 uri，跳到视频即可（与「弹幕被点赞」一致）。
+                        if (message.itemType == "danmu") {
+                            jumpToDanmuVideo(context, childReply)
+                            return@setOnClickListener
+                        }
                         when (message.businessId) {
                             ReplyApi.REPLY_TYPE_VIDEO_CHILD -> {
                                 MsgUtil.showMsg(UiText.of("视频的子评论暂时无法定位，也许以后会做吧……"))
@@ -145,12 +151,8 @@ class NoticeHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
                                         TerminalContext.getInstance().enterArticleDetailPage(context, message.subjectId)
                                     }
                                     "danmu" -> {
-                                        // 弹幕点赞：跳到弹幕所在视频（BV 号由 MessageApi.parseBvid 从 uri 抠出）
-                                        if (childReply.ofBvid.isNullOrEmpty()) {
-                                            MsgUtil.showMsg(context.getString(R.string.msg_like_danmaku_no_video))
-                                        } else {
-                                            TerminalContext.getInstance().enterVideoDetailPage(context, 0, childReply.ofBvid)
-                                        }
+                                        // 弹幕点赞：跳到弹幕所在视频（BV 号由 MessageApi.parseDanmuBvid 抠出）
+                                        jumpToDanmuVideo(context, childReply)
                                     }
                                     else -> {
                                         MsgUtil.showMsg(UiText.fmt(UiText.of("不支持这个类型喵：%1\$s"), message.itemType))
@@ -168,6 +170,21 @@ class NoticeHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
 
     companion object {
         private val CIRCLE_OPTIONS = RequestOptions.circleCropTransform()
+
+        /**
+         * 跳到「弹幕所在视频」。
+         *
+         * 「弹幕被点赞」与「有人回复了我的弹幕」是两条不同的消息，但服务端给的都只有
+         * 弹幕所在视频的 uri（没有可定位的 rpid），所以行为完全一致；抽出来免得只改一处。
+         */
+        private fun jumpToDanmuVideo(context: Context, childReply: Reply) {
+            val bvid = childReply.ofBvid
+            if (bvid.isNullOrEmpty()) {
+                MsgUtil.showMsg(context.getString(R.string.msg_like_danmaku_no_video))
+            } else {
+                TerminalContext.getInstance().enterVideoDetailPage(context, 0, bvid)
+            }
+        }
         private val avatarSize: Int = ToolsUtil.dp2px(32f)
         private val avatarSpacing: Int = ToolsUtil.dp2px(3f)
     }
