@@ -9,11 +9,13 @@ class MenuConfigTest {
 
     @Test
     fun defaultEnabled_matchesSpec() {
+        // 可选私有项（OPTIONAL_ITEMS）在私有构建里会追加到末尾；公开构建里它是空列表，
+        // 所以这条断言对两种构建都成立，不需要分叉。
         assertEquals(
             listOf(
                 "recommend", "short_video", "popular", "hotsearch", "search",
                 "dynamic", "myspace", "message", "local", "settings"
-            ),
+            ) + MenuConfig.OPTIONAL_ITEMS,
             MenuConfig.DEFAULT_ENABLED
         )
     }
@@ -34,7 +36,7 @@ class MenuConfigTest {
             listOf(
                 "recommend", "short_video", "popular", "hotsearch", "live",
                 "search", "dynamic", "myspace", "message", "local", "settings"
-            ),
+            ) + MenuConfig.OPTIONAL_ITEMS,
             MenuConfig.resolveEnabledList(oldSort, switches)
         )
     }
@@ -62,7 +64,12 @@ class MenuConfigTest {
         )
         val result = MenuConfig.resolveEnabledList(oldSort, switches)
         assertTrue("固定项必须全部在结果中", MenuConfig.FIXED_ITEMS.all { it in result })
-        assertEquals("缺失的固定项追加到末尾", "settings", result.last())
+        // 缺失项（固定项与可选私有项）追加在末尾；固定项排在可选私有项之前。
+        assertEquals(
+            "缺失的固定项追加到末尾（其后只剩可选的私有项）",
+            "settings",
+            result[result.size - 1 - MenuConfig.OPTIONAL_ITEMS.size]
+        )
     }
 
     @Test
@@ -100,7 +107,13 @@ class MenuConfigTest {
     @Test
     fun loadEnabled_existingValidValue_returnsWithoutWrite() {
         var wrote = false
-        val valid = "recommend;short_video;popular;hotsearch;search;dynamic;myspace;message;local;settings"
+        // 「合法」的定义包含可选私有项：私有构建下缺了它们要走一次迁移（见 MenuConfig.loadEnabled）。
+        val valid = MenuConfig.serialize(
+            listOf(
+                "recommend", "short_video", "popular", "hotsearch", "search",
+                "dynamic", "myspace", "message", "local", "settings"
+            ) + MenuConfig.OPTIONAL_ITEMS
+        )
         val result = MenuConfig.loadEnabled(
             readString = { if (it == SharedPreferencesUtil.MENU_ENABLED) valid else null },
             readBoolean = { false },

@@ -11,11 +11,29 @@ package com.RobinNotBad.BiliClient.util
 object MenuConfig {
 
     /** 全量菜单 key，顺序即默认展示顺序（对应 MenuActivity.btnNames 的全部 key）。 */
-    val ALL_ITEMS = listOf(
+    private val BASE_ITEMS = listOf(
         "recommend", "short_video", "popular", "precious", "ranking",
         "hotsearch", "live", "timeline", "search", "dynamic",
         "myspace", "message", "local", "settings"
     )
+
+    /**
+     * 可选菜单 key：只有带私有功能的构建才有，由 [OptionalFeatures] 反射问出来（详见
+     * `docs/optional-features.md`）。公共构建里恒为空列表 —— 于是 ALL_ITEMS / 默认值 /
+     * 老用户迁移 / 单测行为与从前完全一致。
+     * 包在 try/catch 里：连 OptionalFeatures 这个类都加载不了时也退化为空列表。
+     */
+    val OPTIONAL_ITEMS: List<String> by lazy {
+        try {
+            listOfNotNull(OptionalFeatures.menuKey())
+        } catch (e: Throwable) {
+            emptyList()
+        }
+    }
+
+    /** 全量菜单 key = 公共项 + 可选私有项（顺序即默认展示顺序）。 */
+    val ALL_ITEMS: List<String>
+        get() = BASE_ITEMS + OPTIONAL_ITEMS
 
     /** 固定不可隐藏的菜单项。 */
     val FIXED_ITEMS = setOf("recommend", "search", "local", "settings")
@@ -67,7 +85,7 @@ object MenuConfig {
             else true
         }.toMutableList()
         for (key in ALL_ITEMS) {
-            if (key in FIXED_ITEMS && key !in enabled) enabled.add(key)
+            if ((key in FIXED_ITEMS || key in OPTIONAL_ITEMS) && key !in enabled) enabled.add(key)
         }
         return enabled
     }
@@ -77,8 +95,9 @@ object MenuConfig {
         ALL_ITEMS.filter { it !in enabled }
 
     /**
-     * 读取启用列表配置：合法且固定项齐全则直接用；否则从旧数据迁移并写回。
-     * [readBoolean] 返回开关键的实际存储值，缺失（null）时使用 [SWITCH_DEFAULTS]。
+     * 读取启用列表：合法且固定项齐全则直接用；否则从旧数据迁移并写回。
+     * 可选私有项（[OPTIONAL_ITEMS]）也要求齐全：老用户在带私有功能的版本之前存下的
+     * menu_enabled 里没有那些 key，必须走一次迁移把它们补进来，而不是当作配置合法直接返回。
      */
     fun loadEnabled(
         readString: (String) -> String?,
@@ -86,7 +105,9 @@ object MenuConfig {
         writeString: (String, String) -> Unit
     ): List<String> {
         val parsed = parse(readString(SharedPreferencesUtil.MENU_ENABLED))
-        if (parsed != null && FIXED_ITEMS.all { it in parsed }) return parsed
+        if (parsed != null && FIXED_ITEMS.all { it in parsed } && OPTIONAL_ITEMS.all { it in parsed }) {
+            return parsed
+        }
         val oldSwitches = SWITCHABLE_KEYS.associateWith {
             readBoolean("menu_$it") ?: SWITCH_DEFAULTS.getValue(it)
         }

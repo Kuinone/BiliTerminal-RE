@@ -32,6 +32,7 @@ import com.RobinNotBad.BiliClient.activity.video.ShortVideoPlayerActivity
 import com.RobinNotBad.BiliClient.activity.video.TimelineActivity
 import com.RobinNotBad.BiliClient.activity.video.local.LocalListActivity
 import com.RobinNotBad.BiliClient.util.PerformanceManager
+import com.RobinNotBad.BiliClient.util.OptionalFeatures
 import com.RobinNotBad.BiliClient.util.SharedPreferencesUtil
 import com.bumptech.glide.Glide
 import com.google.android.material.button.MaterialButton
@@ -59,6 +60,30 @@ class MenuActivity : BaseActivity() {
             put("message", Pair(UiText.of("消息"), MessageActivity::class.java))
             put("local", Pair(UiText.of("缓存"), LocalListActivity::class.java))
             put("settings", Pair(UiText.of("设置"), SettingMainActivity::class.java))
+        }
+
+        /**
+         * 反射注入可选的私有菜单项（没有私有注入时一项都不加）。
+         *
+         * 公共构建里 OptionalFeatures.menuKey() 为 null，这里**一项都不加**，
+         * 于是 btnNames 与从前的 14 项完全一致；菜单设置页（SettingMenuActivity）和
+         * 启动页（SplashActivity）都从 btnNames 取显示名与 Class，所以这里注入一次即可全链路生效。
+         * 机制见 `docs/optional-features.md`。
+         */
+        init {
+            try {
+                val context = BiliTerminal.context
+                val key = OptionalFeatures.menuKey()
+                val label = if (context != null) OptionalFeatures.menuLabel(context) else null
+                @Suppress("UNCHECKED_CAST")
+                val page = OptionalFeatures.menuActivity() as? Class<out InstanceActivity>
+                if (key != null && label != null && page != null) {
+                    @Suppress("UNCHECKED_CAST")
+                    (btnNames as MutableMap<String, Pair<String, Class<out InstanceActivity>>>)[key] = Pair(label, page)
+                }
+            } catch (e: Throwable) {
+                // 私有功能不可用绝不能影响菜单本身
+            }
         }
     }
 

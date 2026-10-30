@@ -60,6 +60,7 @@ import com.RobinNotBad.BiliClient.util.FileUtil
 import com.RobinNotBad.BiliClient.util.GlideUtil
 import com.RobinNotBad.BiliClient.util.Logu
 import com.RobinNotBad.BiliClient.util.MsgUtil
+import com.RobinNotBad.BiliClient.util.OptionalFeatures
 import com.RobinNotBad.BiliClient.ui.appearance.ColorScheme
 import com.RobinNotBad.BiliClient.util.SharedPreferencesUtil
 import com.RobinNotBad.BiliClient.util.StringUtil
@@ -596,6 +597,17 @@ class VideoInfoFragment : BaseFragment() {
                     .putExtra("aid", videoInfo!!.aid)
             )
         }
+
+        // 可选私有功能的挂点：在动作区插一整行按钮（插在「笔记」之前）。
+        // 公共构建里 OptionalFeatures 是空操作，这里连按钮都不会出现；私有构建才插入。
+        // 不跟下面的未登录隐藏逻辑走：这个入口不依赖登录态。
+        OptionalFeatures.attachDetailActionRow(
+            rootview.findViewById(R.id.video_actions),
+            note,
+            videoInfo!!.bvid ?: "",
+            videoInfo!!.aid,
+            videoInfo!!.title ?: ""
+        )
 
         if (SharedPreferencesUtil.getLong(SharedPreferencesUtil.mid, 0) == 0L) {
             addWatchlater.visibility = View.GONE
