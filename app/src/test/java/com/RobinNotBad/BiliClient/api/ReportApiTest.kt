@@ -16,6 +16,12 @@ import org.junit.Test
  */
 class ReportApiTest {
 
+    // 评论区类型码（`replyType`）：1 视频、17 动态。举报的 metadata 与提交都按它区分。
+    private companion object {
+        const val REPLY_TYPE_VIDEO = 1
+        const val REPLY_TYPE_DYNAMIC = 17
+    }
+
     @After
     fun tearDown() {
         // fetchReasons 会写进程级缓存，别让用例之间互相污染
@@ -71,8 +77,64 @@ class ReportApiTest {
     @Test
     fun cachedOrDefaultReasons_fallsBackToStaticTable() {
         ReportApi.clearReasonCache()
-        assertNull(ReportApi.cachedReasons())
-        assertEquals(ReportApi.defaultReasons().size, ReportApi.cachedOrDefaultReasons().size)
+        assertNull(ReportApi.cachedReasons(REPLY_TYPE_VIDEO))
+        assertEquals(ReportApi.defaultReasons().size, ReportApi.cachedOrDefaultReasons(REPLY_TYPE_VIDEO).size)
+    }
+
+    // ---- 缓存必须按评论区类型分槽 ----
+    // 线上 bug 现场：理由表只存一份全局缓存，而 metadata 请求和举报提交都带 type。
+    // 先打开视频评论区（1）再打开动态评论区（17），动态那边会直接复用视频的理由表，
+    // 于是「弹窗里显示的理由」与「提交时 type 对应的分类」对不上。
+
+    @Test
+    fun reasonCache_keepsEachCommentTypeSeparate() {
+        ReportApi.clearReasonCache()
+        ReportApi.putReasonCache(REPLY_TYPE_VIDEO, listOf(ReportApi.Reason(9, "视频违法违规", false)))
+        ReportApi.putReasonCache(
+            REPLY_TYPE_DYNAMIC,
+            listOf(ReportApi.Reason(9, "动态违法违规", false), ReportApi.Reason(2, "色情", false))
+        )
+
+        assertEquals(
+            listOf("视频违法违规"),
+            ReportApi.cachedOrDefaultReasons(REPLY_TYPE_VIDEO).map { it.label }
+        )
+        assertEquals(
+            listOf("动态违法违规", "色情"),
+            ReportApi.cachedOrDefaultReasons(REPLY_TYPE_DYNAMIC).map { it.label }
+        )
+    }
+
+    @Test
+    fun reasonCache_otherTypeFallsBackInsteadOfBorrowing() {
+        ReportApi.clearReasonCache()
+        ReportApi.putReasonCache(REPLY_TYPE_VIDEO, listOf(ReportApi.Reason(9, "视频违法违规", false)))
+
+        // 动态评论区没缓存过 -> 必须回到兜底表，绝不能拿视频那份
+        assertNull(ReportApi.cachedReasons(REPLY_TYPE_DYNAMIC))
+        assertEquals(
+            ReportApi.defaultReasons().map { it.code },
+            ReportApi.cachedOrDefaultReasons(REPLY_TYPE_DYNAMIC).map { it.code }
+        )
+    }
+
+    @Test
+    fun reasonCache_emptyListDoesNotPoisonTheSlot() {
+        ReportApi.clearReasonCache()
+        ReportApi.putReasonCache(REPLY_TYPE_VIDEO, emptyList())
+
+        assertNull("空表不该进缓存", ReportApi.cachedReasons(REPLY_TYPE_VIDEO))
+        assertEquals(ReportApi.defaultReasons().size, ReportApi.cachedOrDefaultReasons(REPLY_TYPE_VIDEO).size)
+    }
+
+    @Test
+    fun clearReasonCache_clearsEveryType() {
+        ReportApi.putReasonCache(REPLY_TYPE_VIDEO, listOf(ReportApi.Reason(9, "a", false)))
+        ReportApi.putReasonCache(REPLY_TYPE_DYNAMIC, listOf(ReportApi.Reason(9, "b", false)))
+        ReportApi.clearReasonCache()
+
+        assertNull(ReportApi.cachedReasons(REPLY_TYPE_VIDEO))
+        assertNull(ReportApi.cachedReasons(REPLY_TYPE_DYNAMIC))
     }
 
     // ---- metadata 解析（服务端下发） ----

@@ -25,7 +25,7 @@
 - **依赖仓库**：`settings.gradle` 已把 aliyun 的 `google` / `public` / `gradle-plugin` 三个镜像前置，`google()`/`mavenCentral()`/jitpack 仅作兜底。
 - **改了 `res/` 文件集合时**：`:app:clean` 与后续命令**必须分两次 Gradle 调用**，且带 `--no-build-cache --no-configuration-cache`，否则会回放陈旧资源（症状是 `Unresolved reference 'R.layout.xxx'`）。
 - **版本一致性**：`:app:verifyVersionConsistency` 以 `strings.xml` 的 `update_log_current` 为锚点校验版本一致性；发版说明也由 CI 从它抽取（抽不到直接拒绝发版）。
-- **单测（26.10.30 合并上游 6 个提交后实测，`testStandardDebugUnitTest`）**：**104 suites / 1108 tests**，两个 flavor 完全相同（同源码），0 失败 0 错误 0 跳过。计数方式：`app/src/test/` 下 `*Test.kt|java` 计源文件（另有共享假实现 `util/FakeSharedPreferences.kt`，合并后计得 104 个），`app/build/test-results/testStandardDebugUnitTest/TEST-*.xml` 的 `tests=` 求和。用例数一律以机器产出为准，队友口述数字不进入文档。
+- **单测（26.10.30 修完理由表缓存串味后实测，`testStandardDebugUnitTest`）**：**104 suites / 1112 tests**，两个 flavor 完全相同（同源码），0 失败 0 错误 0 跳过。计数方式：`app/src/test/` 下 `*Test.kt|java` 计源文件（另有共享假实现 `util/FakeSharedPreferences.kt`，合并后计得 104 个），`app/build/test-results/testStandardDebugUnitTest/TEST-*.xml` 的 `tests=` 求和。用例数一律以机器产出为准，队友口述数字不进入文档。
 - **26.10.10 那一轮的构建记录（历史，留作「改 minSdk / 重跑 release 链路」时的验证口径）**：`minSdk 24 → 19` 全部改动（含 jsoup 1.16.1、7 个 `res/drawable-v21` 资源）落盘后，按「`clean` → `assembleRelease` → `lintRelease` → 单测」四步跑完（均带 `--no-configuration-cache`，`clean` 与 `assemble` 分两次调用），四步全 `BUILD SUCCESSFUL`（37s / 2m13s / 1m25s / 39s）。当时单测汇总 **49 suites / 460 tests / 0 failures**（任务名当时还是 `testDebugUnitTest`，现已带 flavor 前缀），最新 XML 时间 `2026-10-09T22:59:04`（晚于当轮 APK 出包时间 22:56:58，覆盖了当轮全部源码改动）。`:app:lintRelease` 的 **`NewApi` 从 22 条降到 2 条**，且这 2 条就是 `PlayerActivity.kt:1981` 的已知假阳性。发版前仍建议再跑一次确认。
 - **「自动跳过片头片尾」已恢复上线（26.10.22）**：26.10.10 的紧急撤回**已解除**，`SkipOpEdPrefs.FEATURE_ENABLED` 回到 `true`，设置入口与搜索索引均已恢复；口径按用户拍板改为**默认关闭**（`DEFAULT_ENABLED = false`，老用户存档里显式写的值仍然优先）。恢复细节见 §3.3「恢复记录」，乱跳的三个根因修复见 §3.55。
 - **本轮基建改动（26.10.10）**：**`minSdk 24 → 21 → 19（Android 4.4）`**，唯一落点是 `app/build.gradle:21`。两级下调的成本不同，分开记：
@@ -773,6 +773,11 @@
   - **评审跟进（同日，代码评审意见）**：
     - 「错误码没覆盖 -102/-403/12008/12009/12019/12077」→ 已补齐（见改法第 2 条），`ReportApiTest` 相应新增 4 例（12008 说清「举报过」、12077 与 12008 可区分、12019/12026 两句不重复、-102 不写成「未登录」），共 24 例（理由表重做后总数为 30 例）。
     - 「快照列了理由码 9~17，客户端没开放」→ **查证后决定暂不开放**，三条证据：①服务端先风控后校验参数，`reason=99` 与 `reason=1` 都回 -352，离线拿不到合法/非法信号；②APK 里「违法违规/赌博诈骗/侵犯隐私/抢楼」字符串确实存在，但按 `public.xml` 的资源 id 反查 `jadx` 全部代码**0 命中**，是历史遗留资源，不能判定仍在使用；③未知 `reason` 服务端是回 -400 还是降级成「其他」无证据。定论方法（登录后逐码试 `9..17`）写进 `docs/bilibili-api-notes.md` §8 与 `ReportApi` 类注释，验完补两个数组即可，UI 不用动。
+  - **评审跟进二（26.10.30，理由表缓存串味）**：评审指出 `ReportApi.java:124` / `:220` 与 `ReplyAdapter.kt:684` 存在真缺陷——**理由表缓存只有全局一份，而 `metadata` 请求和举报提交都带评论区 `type`**。失败路径：先在视频评论区（`type=1`）打开举报，缓存写满视频那套理由；再去动态评论区（`type=17`），`cachedOrDefaultReasons()` 命中缓存，弹窗显示的是**视频的分类**，而 `reportReply(...)` 带的是 `type=17`，于是「用户看到的理由」与「服务端按该 type 解读的理由码」对不上。第一次打开用兜底表、之后用服务端表的预热逻辑同理，`warmReportReasons()` 里 `cachedReasons() != null` 会让动态评论区永远等不到自己那份。
+    - `cachedReasons` 改为 `ConcurrentHashMap<Integer, List<Reason>>`（后台线程写、主线程读）；`cachedReasons(int type)` / `cachedOrDefaultReasons(int type)` 都加 `type` 参数；`clearReasonCache()` 清整张表；新增包内可见 `putReasonCache(type, reasons)`（供 `fetchReasons` 与单测注入，避免单测真发网络请求），空表不入缓存、类型数超 16 时整表清空（防御异常 `type` 撑爆内存）。
+    - `ReplyAdapter` 两处调用改为按 `replyType` 取：`cachedOrDefaultReasons(replyType)` / `cachedReasons(replyType)`。
+    - **不按 `oid` 再细分**的判断依据写进字段注释：举报分类是**评论区类型级**的平台配置，官方 H5 的静态兜底表也只按分类组织、不区分稿件；若将来发现确实按稿件差异化，把 key 换成 `type + ":" + oid` 即可，调用方签名不用动。
+    - 单测 +4 例（30 → 34）：不同类型各存一份互不串味、未缓存的类型必须回退兜底表而不是借用别人的、空表不污染槽位、`clearReasonCache` 清干净所有类型。
 - **遗留**：①**登录态下的成功提交（code=0）没验**——模拟器没有可用登录态，登录要扫码，只能等真机；已验证到「请求体正确、服务端确实在回业务码」这一步；②视频/弹幕举报未做（各有明确理由，见 api notes §8）；③举报后列表不会变（服务端审核结果不回写列表，也不打算轮询）。
 
 ### 3.84 按线上崩溃报告修 7 类缺陷（26.10.28，用户要求，mapping 还原后定位）

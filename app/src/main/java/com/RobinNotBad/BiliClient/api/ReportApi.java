@@ -10,7 +10,9 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 举报（评论）。
@@ -120,8 +122,25 @@ public class ReportApi {
             new Reason(0, "其他", true),
     };
 
-    /** 服务端下发、当前进程内缓存（举报理由一天也不会变，没必要每次开弹窗都拉一遍）。 */
-    private static volatile List<Reason> cachedReasons;
+    /**
+     * 服务端下发的理由表，**按评论区类型分槽缓存**。
+     *
+     * <p>为什么必须按 type 分开：`metadata` 接口是带 {@code type} 请求的
+     * （{@code /x/v2/reply/report/metadata?oid=…&type=…}），视频（1）、动态（17）、专栏（12）
+     * 等不同类型的评论区允许的举报分类本来就可能不同。原先只存一份全局缓存，
+     * 用户先打开视频评论区的举报、再去动态评论区，弹窗里显示的是**视频的那份理由**，
+     * 而提交时带的是动态的 {@code type} —— 理由与分类对不上，服务端只能按自己的解释处理。
+     *
+     * <p>为什么不按 {@code oid} 再细分：举报分类是**评论区类型级**的平台配置，
+     * H5 侧的静态兜底表也只按分类组织、不区分稿件。万一将来发现确实按稿件差异化，
+     * 把 key 换成 {@code type + ":" + oid} 即可，调用方签名不用动。
+     *
+     * <p>用 {@link ConcurrentHashMap}：`fetchReasons` 在后台线程写、弹窗在主线程读。
+     */
+    private static final Map<Integer, List<Reason>> cachedReasons = new ConcurrentHashMap<>();
+
+    /** 评论区类型的取值是有限枚举（1/11/12/17…），加个上限纯粹是防御异常 type 撑爆内存。 */
+    private static final int MAX_CACHE_TYPES = 16;
 
     /** 静态兜底表；返回不可变副本，防止调用方改到内部状态。 */
     public static List<Reason> defaultReasons() {
@@ -130,20 +149,42 @@ public class ReportApi {
         return Collections.unmodifiableList(list);
     }
 
-    /** 已缓存的服务端理由表；没有就返回 {@code null}。 */
-    public static List<Reason> cachedReasons() {
-        return cachedReasons;
+    /** 该评论区类型已缓存的服务端理由表；没有就返回 {@code null}。 */
+    public static List<Reason> cachedReasons(int type) {
+        return cachedReasons.get(type);
     }
 
-    /** 缓存命中就用服务端的，否则用静态兜底表——弹窗打开时同步调用它，不能有网络等待。 */
-    public static List<Reason> cachedOrDefaultReasons() {
-        List<Reason> cached = cachedReasons;
+    /**
+     * 该评论区类型有服务端缓存就用它，否则用静态兜底表。
+     *
+     * <p>弹窗打开时同步调用，不能有网络等待，所以**一定要把 {@code type} 传进来**——
+     * 传错类型等于拿到别的评论区的理由表。
+     */
+    public static List<Reason> cachedOrDefaultReasons(int type) {
+        List<Reason> cached = cachedReasons.get(type);
         return cached != null && !cached.isEmpty() ? cached : defaultReasons();
     }
 
-    /** 仅供测试与「退出登录」这类场景清缓存。 */
+    /**
+     * 清空整张缓存表（所有评论区类型）。
+     *
+     * <p>举报分类是平台级配置，换号也不用清；这个方法实际只服务单测的用例隔离。
+     */
     public static void clearReasonCache() {
-        cachedReasons = null;
+        cachedReasons.clear();
+    }
+
+    /**
+     * 写某个评论区类型的理由表缓存。包内可见：{@link #fetchReasons} 内部用，单测靠它构造
+     * 「不同类型各有一份」的现场而不用真的发网络请求。
+     */
+    static void putReasonCache(int type, List<Reason> reasons) {
+        if (reasons == null || reasons.isEmpty()) return;
+        // 类型数是有限枚举，这里纯粹防御异常 type 值把 Map 撑大
+        if (!cachedReasons.containsKey(type) && cachedReasons.size() >= MAX_CACHE_TYPES) {
+            cachedReasons.clear();
+        }
+        cachedReasons.put(type, reasons);
     }
 
     private static boolean isTruthy(JSONObject obj, String key) {
@@ -208,7 +249,7 @@ public class ReportApi {
     }
 
     /**
-     * 拉服务端理由表并写缓存。**需要登录**（匿名实测回 {@code -101 账号未登录}）。
+     * 拉服务端理由表并按 {@code type} 写缓存。**需要登录**（匿名实测回 {@code -101 账号未登录}）。
      *
      * <p>失败不抛给调用方处理——返回值就是「本次能不能用上」：{@code null} 表示照旧用静态兜底表。
      * 失败原因（网络异常 / code != 0 / 解析不出东西）都吞掉，理由表拿不到不该打断举报流程。
@@ -217,7 +258,7 @@ public class ReportApi {
         try {
             String url = "https://api.bilibili.com/x/v2/reply/report/metadata?oid=" + oid + "&type=" + type;
             List<Reason> reasons = parseReasons(NetWorkUtil.getJson(url).toString());
-            if (reasons != null) cachedReasons = reasons;
+            if (reasons != null) putReasonCache(type, reasons);
             return reasons;
         } catch (Exception ignored) {
             return null;
@@ -266,7 +307,7 @@ public class ReportApi {
      * @param oid        评论区 oid（视频 aid / 动态 id 等，随 {@code type} 变）
      * @param type       评论区类型代码（视频=1，见 {@code bilibili-API/docs/comment/readme.md}）
      * @param rpid       目标评论 rpid
-     * @param reason     理由，来自 {@link #cachedOrDefaultReasons()} / {@link #fetchReasons}
+     * @param reason     理由，来自 {@link #cachedOrDefaultReasons(int)} / {@link #fetchReasons}
      * @param content    需要正文时的内容；其它理由忽略
      * @return 服务端 code，0 表示成功；文案见 {@link #errorMsg(int)}
      */

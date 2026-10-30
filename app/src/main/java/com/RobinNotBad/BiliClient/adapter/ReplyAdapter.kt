@@ -650,6 +650,9 @@ class ReplyAdapter(
      * [ReportApi.cachedOrDefaultReasons]，同时在后台预热一次缓存——第一次打开用兜底表，
      * 之后就是服务端的最新表。
      *
+     * <p>缓存与请求都要带 [replyType]：不同评论区类型的理由表不同（视频 1 / 动态 17 / 专栏 12…），
+     * 拿错类型的表会让「显示的理由」与「提交时带 type 的解读」对不上。
+     *
      * <p>哪些理由要正文也看服务端下发的 `content_required`，不再自己假设「只有其他要」。
      *
      * <p>`TerminalDialog.singleChoice` **不会自己 show、回调里也不自动 dismiss**，两者都得自己来。
@@ -662,7 +665,7 @@ class ReplyAdapter(
             return
         }
         warmReportReasons()
-        val reasons = ReportApi.cachedOrDefaultReasons()
+        val reasons = ReportApi.cachedOrDefaultReasons(replyType)
         TerminalDialog.singleChoice(
             context = context,
             title = context.getString(R.string.title_report_reason),
@@ -676,12 +679,12 @@ class ReplyAdapter(
     }
 
     /**
-     * 后台预热理由表缓存（只在还没缓存过时拉一次；失败就继续用兜底表，不打扰用户）。
+     * 后台预热理由表缓存（只在这个评论区类型还没缓存过时拉一次；失败就继续用兜底表，不打扰用户）。
      *
      * <p>metadata 接口需要登录，所以未登录时不发这个请求。
      */
     private fun warmReportReasons() {
-        if (ReportApi.cachedReasons() != null) return
+        if (ReportApi.cachedReasons(replyType) != null) return
         CenterThreadPool.run { ReportApi.fetchReasons(oid, replyType) }
     }
 
