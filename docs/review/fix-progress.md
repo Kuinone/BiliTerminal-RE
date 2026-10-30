@@ -9,7 +9,7 @@
 - **版本号**：`26.10.27`（`app/build.gradle` 的 `versionName`），`versionCode 2610270`；`strings.xml` 的 `update_log_current` 锚点是「【26.10.27 本次更新】」，`:app:verifyVersionConsistency` 以该锚点校验。tag `26.10.27` 已占用（发版记录见 §4 的 §五十八）。
 - **上一版**：`26.10.26` / tag `26.10.26`。
 - **本轮改动（26.10.27）**：暗色 / 亮色模式、弥散光晕背景、玻璃质感（默认关闭）；设置新增「布局适配」二级页，与「外观设置」同在「界面与外观」下；搜索排序入口收进搜索框左侧图标（§3.71）；控制栏收起后字幕随之下沉；Android 7.1 及以下内测码更新报 Trust anchor（§3.70）。明细见 `strings.xml` 的 `update_log_current`（5 条编号条目，另 1 条为版本锚点）。
-- **26.10.27 发版后的未发版改动**：系统时间错误防呆（启动与证书时间错误时提示改时间，§3.72）、点赞投币收藏卡片适配玻璃质感（§3.73）、弥散光晕可选光源位置（§3.76）、收藏夹管理页的内容管理（批量删除 / 清空失效）与版式重做（§3.80）。下次发版时 `update_log_current` 要补这四条。
+- **26.10.27 发版后的未发版改动**：系统时间错误防呆（启动与证书时间错误时提示改时间，§3.72）、点赞投币收藏卡片适配玻璃质感（§3.73）、弥散光晕可选光源位置（§3.76）、收藏夹管理页的内容管理（批量删除 / 清空失效）与版式重做（§3.80）、搜索彩蛋第 4 组由「8 个特定人名」换成「紫色空灵 + 纳西妲」专属彩蛋（§3.85）。下次发版时 `update_log_current` 要补这五条。
 - **下次递增**：先看 `app/build.gradle:23-24`；release immutability 下被 Release 用过的 tag **永久不可复用**，同版本名补丁版只能用 `26.10.24.1` 这种后缀形式，`versionCode` 递增、`versionName` 可不变。改了版本号还要同步 `strings.xml` 里 `update_log_current` 的「【YY.MM.DD 本次更新】」锚点，否则 `:app:verifyVersionConsistency` 会失败。
 - **构建命令**（单测任务名**带 flavor 前缀**，`testDebugUnitTest` 自 26.10.11 引入 flavor 后已不存在）：
 
@@ -805,6 +805,19 @@
   - **没能复现验证的部分（如实记录）**：①`clearView` 的崩溃依赖「拖拽结束恰好落在 smoothScroll 期间」，adb 手势造不出来，只改了 1 行 `post`；②`PlayerActivity` 的方向异常要设备处于分屏/悬浮窗口才触发，单窗口模拟器造不出；③DPI 框的中文输入无法用 `adb input text` 复现（走 KeyEvent，被 `DigitsKeyListener` 挡掉），改由 `UiScaleInputTest` 覆盖。
 - **遗留**：①仍 6 条无法定位（3 条 26.10.16 的 NPE、3 条 26.10.19 的 Fragment not attached）——需要按对应版本再编一次 release 取 mapping；②`Inconsistency detected`（4 例）与第 1 条同源但无法定位到具体 notify 点；③全仓仍有 ~58 处裸 `Glide.with(...)`，建议后续统一收敛到 `GlideUtil.request*`（已自带 `canLoad`）或 `AccountSwitchActivity` 那种「一次取 RequestManager」的写法。
 - **另一条结构性建议**：`mapping.txt` 现在是构建副产物，`build/` 一清就没了，下次再有人报崩溃又回到解不出来的状态。建议在 `build-release.yml` 里把它作为 artifact 按 `versionCode` 归档。
+
+### 3.85 搜索彩蛋第 4 组换成「紫色空灵 + 纳西妲」专属彩蛋（26.10.30，用户要求）
+
+- **缘起**：用户要求删掉搜索页第 4 组彩蛋（「8 个特定真人姓名」那一组），换成「关键词同时包含 `紫色空灵` 和 `纳西妲`」触发的新彩蛋，文案由用户本人提供。
+- **改法**：
+  - `app/src/main/java/com/RobinNotBad/BiliClient/activity/search/SearchActivity.kt`：删掉 `specialNamesList` 字段与 `searchKeyword()` 里的遍历分支；在同一位置（心理援助词表之后）新增 `if (keyword.contains("紫色空灵") && keyword.contains("纳西妲"))` → `MsgUtil.showText(UiText.of("特殊彩蛋"), getString(R.string.egg_zisekongling_nahida))`。**放在暖心词之后是故意的**：心理危机词的安全兜底优先于玩梗。判定用 `contains`，所以「紫色空灵 纳西妲」中间夹别的字也能命中。
+  - `app/src/main/res/values/strings.xml`：删除 `egg_special_names`，新增 `egg_zisekongling_nahida`，13 行按用户原文逐行 `\n`，一字未改（含结尾「会见~」）。无触发方式说明行（用户没写，不与 3、4 组原条目统一）。
+  - 文档：`docs/copy-inventory/07-eggs.md` 的搜索彩蛋表（触发代码行号同步到 `450-474`）与 `E-050` 条目、`docs/FEATURES.md:268` 的彩蛋描述。搜索彩蛋仍是 4 组，`README.md` 的 50 条合计不变。
+- **验证**：
+  - `./gradlew.bat :app:assembleDebug :app:testStandardDebugUnitTest :app:testCoexistDebugUnitTest` 通过（两 flavor）；两 flavor 各 **104 suites / 1112 tests / 0 失败**。
+  - 设备侧（emulator-5554 / Android 12 / `coexistDebug` universal 包）：经 DebugBridge `start SearchActivity --es extras 'keyword=紫色空灵 纳西妲;auto_search=true'` → 顶层 `ShowTextActivity`，截图与用户原文逐行一致，13 行一屏内放得下。
+  - **回归**：`严炜` 不再弹彩蛋、正常留在 `SearchActivity` 拉真实搜索（旧组已删）；`Robin 纳西妲` 仍弹彩蛋 2、`抑郁` 仍弹暖心词；单搜 `紫色空灵` 不触发（正常搜索）。
+  - 说明：DebugBridge 的 intent 入口与真实 UI 提交走的是同一个 `searchKeyword()`（`SearchActivity.kt:329-331` 调用点），故 intent 验证对 UI 路径等效。
 
 ## 4. 历史章节索引
 

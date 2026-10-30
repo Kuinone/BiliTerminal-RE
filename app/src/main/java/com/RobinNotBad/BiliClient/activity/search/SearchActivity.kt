@@ -93,11 +93,10 @@ class SearchActivity : InstanceActivity() {
     // 默认搜索类别顺序（番剧紧跟视频，与上游一致）
     private val defaultCategoryOrder = arrayOf("video", "bangumi", "article", "user", "live")
 
-    // 这两组是「关键词匹配表」，不是展示文案：它们只参与 keyword.contains 判定，
+    // 这组是「关键词匹配表」，不是展示文案：它只参与 keyword.contains 判定，
     // 一旦被 UiText 包成资源文案，判定键就跟着改名一起漂，彩蛋会静默失效。
     // 依据 docs/copy-inventory/STRINGS-MIGRATION.md §4「用作 key 的字符串不要迁移」。
     var specialList = arrayOf("心理疾病", "自杀", "自尽", "自残", "抑郁", "双相", "安眠药")
-    var specialNamesList = arrayOf("严炜", "陈学峰", "徐波", "易德元", "舒微函", "张自东", "杨国明", "张俊胜")
 
     @SuppressLint("MissingInflatedId", "NotifyDataSetChanged", "InflateParams")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -466,11 +465,10 @@ class SearchActivity : InstanceActivity() {
                 return
             }
         }
-        for (name in specialNamesList) {
-            if (keyword.contains(name)) {
-                MsgUtil.showText(UiText.of("特殊彩蛋"), getString(R.string.egg_special_names))
-                return
-            }
+        // 「紫色空灵」（RE 版主开发者）的专属彩蛋：要求同时带角色名，避免单搜开发者名误触
+        if (keyword.contains("紫色空灵") && keyword.contains("纳西妲")) {
+            MsgUtil.showText(UiText.of("特殊彩蛋"), getString(R.string.egg_zisekongling_nahida))
+            return
         }
 
         if (!refreshing) {

@@ -899,16 +899,16 @@
 
 ## 三、搜索框关键词彩蛋（4 条）
 
-**共用上下文**：在搜索页输入关键词后**提交搜索**，若命中下表中任意一组，就**不发起搜索请求**，直接弹出标题为「特殊彩蛋」的对话框（`SearchActivity.kt:419-442`）。
+**共用上下文**：在搜索页输入关键词后**提交搜索**，若命中下表中任意一组，就**不发起搜索请求**，直接弹出标题为「特殊彩蛋」的对话框（`SearchActivity.kt:450-474`）。
 
 | 关键词条件 | 触发代码 |
 | --- | --- |
-| 同时包含 `Robin`（或 `robin`）+ `撅` | `SearchActivity.kt:421-425` |
-| 同时包含 `Robin`（或 `robin`）+ `纳西妲` | `SearchActivity.kt:426-429` |
-| 包含 `心理疾病` / `自杀` / `自尽` / `自残` / `抑郁` / `双相` / `安眠药` 任一 | `SearchActivity.kt:431-436`（词表见 `:78`） |
-| 包含 8 个特定人名之一 | `SearchActivity.kt:437-442`（词表见 `:79`） |
+| 同时包含 `Robin`（或 `robin`）+ `撅` | `SearchActivity.kt:454-457` |
+| 同时包含 `Robin`（或 `robin`）+ `纳西妲` | `SearchActivity.kt:458-461` |
+| 包含 `心理疾病` / `自杀` / `自尽` / `自残` / `抑郁` / `双相` / `安眠药` 任一 | `SearchActivity.kt:463-468`（词表见 `:99`） |
+| 同时包含 `紫色空灵` + `纳西妲` | `SearchActivity.kt:470-474` |
 
-> ⚠ 第 4 组（8 个人名，`SearchActivity.kt:79`：`严炜 / 陈学峰 / 徐波 / 易德元 / 舒微函 / 张自东 / 杨国明 / 张俊胜`）是真人姓名，触发的是 E-049 那条「如果你怀念那段日子」的文案。**改写这一条时请谨慎**，它涉及具体真人。
+> ⚠ 第 4 组是 RE 版（本仓库）主开发者「紫色空灵」的专属彩蛋，要求两个词同时出现，单搜开发者名不会触发。原先的「8 个特定真人姓名」组已删除（涉及具体真人，不再保留）。
 
 ### E-047 撅 Robin
 
@@ -1017,16 +1017,28 @@
 >
 > "你不需要变成飞鸟或者游鱼，只要你努力地生活，你所珍视的一切都会是你幸福的源泉。"[extra_insert]{"type":"video","content":"BV13b411t7KW","title":"听听这首歌吧，让我们【手牵手】……"}
 
-### E-050 怀念那段日子（涉及真名，改写需谨慎）
+### E-050 紫色空灵与纳西妲
 
-- **位置**：`app/src/main/res/values/strings.xml:29`（`R.string.egg_special_names`）
-- **出现在哪**：搜索框提交含 8 个特定人名之一 → 「特殊彩蛋」对话框
-- **用途**：指向某段特定网络事件的玩梗文案，对不了解该事件的人是纯困惑
+- **位置**：`app/src/main/res/values/strings.xml:46`（`R.string.egg_zisekongling_nahida`）
+- **出现在哪**：搜索框提交同时含「紫色空灵」和「纳西妲」的关键词 → 「特殊彩蛋」对话框
+- **用途**：RE 版主开发者「紫色空灵」对角色纳西妲的私人感想（由开发者本人撰写）
 - **原文**：
 
-> 恭喜你触发了这个彩蛋。如果你怀念那段日子，那你就真是神人了。你居然会心血来潮想起他们。看来你是很闲的人了，但我希望你也不要忘记我
+> 你知道吗，RE:哔哩终端的作者和哔哩终端的作者Robin一样，喜欢纳西妲
+> 我语文也不是很好，不太会写这种文案hhh
+> 纳西妲是一个很可爱的小萝莉
+> 她的经历与自身的性格形成了很大的反差
+> 被囚禁500年，到最后被迫忘记了大慈树王
+> 我记得很清楚，她亲手抹除大慈树王存在的时候是哭着的，但当她从世界树里出来的时候
+> 她却不知道为什么要哭......那个滋味......让我这个坐在屏幕外的玩家都不由得心酸起来......
+> 但是——她依旧保持自己的童心与坚韧的性格，在治理好须弥的同时，又获得了民众和众神的认可，真的很不容易
+> 纳西妲不必成为大慈树王，又或者......在抹除了大慈树王存在的世界线里，她即是大慈树王
+> 这种成年人的责任和童心的反差，正是他与其他角色的不同之处。
+> 所以——纳西妲，请你继续好好生活下去
+> emm....逻辑可能有些混乱哈，，，我又瞎感慨了hhh。不打扰你看视频了哈
+> 会见~
 
-- **改写**：恭喜你触发了这个彩蛋。如果你怀念那段日子，那你就真是神人了。你居然会心血来潮想起他们。看来你是很闲的人了，但我希望你也不要忘记我
+- **改写**：保留作者原文，不做口吻统一（属开发者本人视角的私人表达）。
 
 ---
 
@@ -1038,6 +1050,6 @@
 
 ## 覆盖性自查
 
-- 已扫描：`strings.xml:27-33`（egg_special / egg_warmwords_warmworld / egg_special_names / egg_robin_nahida）、`strings.xml:75-124`（egg_about_author_words / egg_about_to_uncle / eggs 数组全 44 条）、`activity/settings/AboutActivity.kt`（全文）、`activity/settings/SettingGroupActivity.kt:514-550`、`activity/search/SearchActivity.kt:76-79, 405-449`。
+- 已扫描：`strings.xml:44-47`（egg_special / egg_warmwords_warmworld / egg_zisekongling_nahida / egg_robin_nahida）、`strings.xml:75-124`（egg_about_author_words / egg_about_to_uncle / eggs 数组全 44 条）、`activity/settings/AboutActivity.kt`（全文）、`activity/settings/SettingGroupActivity.kt:514-550`、`activity/search/SearchActivity.kt:99, 450-474`。
 - 明确排除：`special_login_desc` / `special_login_export`（不是彩蛋，归 `01-app-identity.md`）；`egg_special` 之外的 `dev_catgirl_prompt`（开发者猫娘功能，归 `01`）。
 - 存疑：`eggs` 数组实际 44 条（我按 `<item>` 逐个数过）；`strings.xml:77` 的 `string-array` 缩进不规则但 XML 合法。若后续新增投稿，最后一条（E-044）必须保持在数组末尾，否则「没有更多了」会出现在中间。
