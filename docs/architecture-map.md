@@ -1900,6 +1900,13 @@ TTF/OTF/TTC，应用把它**拷进私有目录**（`filesDir/custom_font/custom_
 - **倍速必须同步到音轨**：DASH 双流下两路各走各的，倍速只给视频会持续漂移（`progressChange` 每 800ms 强行 seek 一次，听感是「一顿一顿」）。新增 `applyAudioSpeed()` 用 `PlaybackParams`（API 23+），接在 `applySpeedFromSeekbar` / 倍速滑条 / 长按三倍速 / `endLongPressBoost` / 两处音轨 `onPrepared`；**API < 23 没有 `PlaybackParams`，只能靠 800ms 偏差校正**。
 - **两个仍在的坑**：① `fnval=1` 的合一 MP4 自带音轨，**绝不能再挂外部音轨**（会两轨同时出声，见 §7.4 的 B1）；② DASH 流地址约 120 分钟过期（§7.35），超长视频中途 `reconnect_streamed` 重连用的是同一条过期 URL，可能 403 —— 目前未处理，属已知遗留。
 - **模拟器验证边界**（`emulator-5554`，AVD `wear5`，未登录）：`play_qn=80` 起播走 `fnval=4048&qn=80`，播放器内切「高清 1080P60」→ `fnval=4048&qn=116` → `在线 DASH 音轨已就绪`，不再出现 `-38`；但未登录账号实际只拿到 DASH 的 720P 视频流，**1080P 画面本体仍需登录（480P+）与大会员（1080P+/60fps）真机复核**。
+- **第二轮（26.10.30 晚）补齐 4K 与权限锁定**：
+  - 播放链路改为**一律先试 DASH**（`getPlaybackVideo`/`getPlaybackBangumi` 不再用 `requiresDash` 分流）。原因不是低档位只能 DASH 拿，而是清晰度面板要靠 DASH 的完整档位清单：`fnval=1` 会按请求档位裁剪，720P 请求只回 `accept_quality:[64,16]`，1080P60/4K **整个从清单里消失**，面板上连可提示的锁定项都没有。只有 DASH 取流失败/缺音轨时才回退合一 MP4。
+  - 取流请求的 `qn` 固定为 `PlayerApi.QN_REQUEST_MAX = 127`（8K 档）：`qn` 在 DASH 下不决定返回哪条流（真正播哪档由 `DashData.getVideoStream(playerData.qn)` 决定），只决定**清单宽度**。用低档请求会让更高档整体消失——下载侧 `QualityChooserActivity` 一直用 `qn = 127` 就是同一个原因。
+  - **权限判据抽成 `player/QualityAccessPolicy.kt`**：`maxUnlockedQn(loggedIn, vip)` = 未登录 720P(64) / 非大会员 1080P(80) / 大会员不限；`isLocked(qn, ...)`；`needsLocked4kHint(values, ...)`。`QualityAccessPolicyTest` 9 例。
+  - **账号状态缓存 `util/AccountStateStore.kt`**：`State(loggedIn, vip)`，来源是 `x/web-interface/nav` 的 `data.isLogin` 与 `data.vip.status`（项目里此前没有任何地方缓存登录/大会员状态）；`cached()` 读 SharedPreferences，`refresh()` 网络补查并落盘，无本地凭据（cookies/mid）时直接判未登录。`clampQuality(qn)` 把超权请求夹到权限内——服务端对超权请求会降级发流，有时比权限内最高档还低（实测 `play_qn=80` 匿名起播拿到 852x480），夹紧后界面档位与实际流才一致。
+  - **播放器清晰度面板**：`QualitySelectorAdapter` 新增 `lockedMaxQuality` 与 `onLockedItemClickListener`，锁定项用 `icon_player_lock` 叠在按钮右侧 + `alpha=0.55`，点击只弹提示不切换；提示按档位分三种——`qn>=120`「4K 超清需要开通大会员」、未登录「登录后可选择 1080P 及以上的清晰度」、非大会员「开通大会员后可选择 1080P60 帧及以上的清晰度」。**4K 档位服务端对没权限的账号根本不下发**（实测匿名 `qn=127&fnval=4048` 只回 `[116,80,64,32,16]`），所以没权限时在列表末尾补一个锁定项当提示位；有权限（大会员）时**不补**——服务端会下发真实 120，硬补会在没有 4K 源的视频上造出假档位。
+  - **设置页按权限隐藏而不是标锁**：`SettingQualityActivity.qnMap` 加了 `1080P60→116 / 4K→120`，列表先按 `cached()` 渲染、后台 `refresh()` 后按 `maxUnlockedQn` 过滤重渲染——设置项没有「点一下看提示」的语境，留一堆点不动的选项更迷惑。
 - 文档同步：`docs/bilibili-api-notes.md` §3.12（取流结论）、`docs/FEATURES.md`（播放清晰度）、`docs/review/fix-progress.md`（本轮实测结论）。
 
 ---

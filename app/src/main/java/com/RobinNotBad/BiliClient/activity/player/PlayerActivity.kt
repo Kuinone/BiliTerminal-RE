@@ -69,6 +69,7 @@ import com.RobinNotBad.BiliClient.player.PlayerDefaults
 import com.RobinNotBad.BiliClient.player.LocalAudioTrackPolicy
 import com.RobinNotBad.BiliClient.player.PlayerSurfaceBinder
 import com.RobinNotBad.BiliClient.player.PlayerStreamPolicy
+import com.RobinNotBad.BiliClient.player.QualityAccessPolicy
 import com.RobinNotBad.BiliClient.player.PlayerVolumePolicy
 import com.RobinNotBad.BiliClient.player.SkipCancelPolicy
 import com.RobinNotBad.BiliClient.player.SkipOpEdPrefs
@@ -83,6 +84,7 @@ import com.RobinNotBad.BiliClient.util.CookieDomainPolicy
 import com.RobinNotBad.BiliClient.util.DisguiseGesture
 import com.RobinNotBad.BiliClient.util.DisguisePrefs
 import com.RobinNotBad.BiliClient.util.LocalVideoProgress
+import com.RobinNotBad.BiliClient.util.AccountStateStore
 import com.RobinNotBad.BiliClient.util.Logu
 import com.RobinNotBad.BiliClient.util.MsgUtil
 import com.RobinNotBad.BiliClient.util.NetWorkUtil
@@ -238,6 +240,20 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
     private var isLocalAudioFile = false
     private var audioTrackUrl: String? = null // DASH外部音频轨道（本地双文件路径或在线 DASH 音轨 URL）
     private var audioPlayer: android.media.MediaPlayer? = null // 外部音频播放器
+
+    /**
+     * 账号状态（登录 / 大会员），决定清晰度列表里哪些档位要上锁。
+     *
+     * `null` 表示还没查到，此时用本地缓存兜底（见 [com.RobinNotBad.BiliClient.util.AccountStateStore.cached]）。
+     * 只用于界面展示与点击拦截：真正的发流权限在服务端。
+     */
+    private var accountState: AccountStateStore.State? = null
+
+    /** 账号状态是否正在后台补查（避免每次弹面板都重复请求）。 */
+    private var accountStateRefreshing = false
+
+    /** 当前清晰度列表的 adapter，账号状态后到时要就地把锁态刷上去。 */
+    private var qualityAdapter: QualitySelectorAdapter? = null
 
     /**
      * 外部音轨是否已经 `onPrepared`。
@@ -733,6 +749,13 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
             currentQuality = intent.getIntExtra("currentQuality", SharedPreferencesUtil.getInt(SettingsKeys.PLAY_QN, 16))
         }
 
+        // 起播清晰度按账号权限夹紧：设置里可能选了 4K/1080P60，但没登录或不是大会员时
+        // 请求会被服务端降级，不夹紧的话清晰度面板会把「播不了的那档」显示成当前档。
+        // 这里只用缓存判断（不查网络），大会员第一次开播最多先按 1080P 起，随后 refresh 会纠正。
+        if (isOnlineVideo) {
+            currentQuality = AccountStateStore.clampQuality(currentQuality)
+        }
+
         isShortVideoMode = intent.getBooleanExtra("isShortVideoMode", false)
 
         return true
@@ -908,6 +931,9 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
                 if (!destroyed && isOnlineVideo && aid > 0 && cid > 0) {
                     loadInteractionVideo()
                 }
+
+                // 提前查账号状态，用户第一次打开清晰度面板时锁态就是准的（失败会退回缓存）
+                refreshAccountStateIfNeeded()
 
                 if (!destroyed) setDisplay()
             }
@@ -4086,7 +4112,9 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
 
                 playerData.title = newTitle
                 playerData.mid = mid
-                playerData.qn = SharedPreferencesUtil.getInt(SettingsKeys.PLAY_QN, 16)
+                playerData.qn = AccountStateStore.clampQuality(
+                    SharedPreferencesUtil.getInt(SettingsKeys.PLAY_QN, 16)
+                )
                 playerData.pagenames = pagenames
                 playerData.cids = cids
                 playerData.currentPageIndex = currentPageIndex
@@ -4393,35 +4421,100 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
         btn_auto_next.setImageResource(if (auto_next_enabled) R.drawable.icon_auto_next_on else R.drawable.icon_auto_next_off)
     }
 
+    /**
+     * 弹清晰度选择卡片。
+     *
+     * 列表里的档位来自服务端 `accept_quality`，它列的是「视频有哪些清晰度」，**不是当前账号
+     * 有没有权限播**：未登录时 1080P 及以上、非大会员时 1080P60 及以上都只是「看得见点不动」，
+     * 服务端不会报错，只会静默给低一档的流。所以这里按账号状态把它们标成锁定态（复用播放器
+     * 的锁图标，见 [QualitySelectorAdapter.lockedMaxQuality]），点了给提示而不是假装切换。
+     */
     private fun showQualitySelectorCard() {
         if (qnStrList == null || qnValueList == null || qnStrList!!.isEmpty()) {
             MsgUtil.showMsg(UiText.of("清晰度列表未加载"))
             return
         }
 
+        // 先用已知/缓存状态渲染，账号状态还没查到时后台补查（见 refreshAccountStateIfNeeded）
+        val state = accountState ?: AccountStateStore.cached()
+        refreshAccountStateIfNeeded()
+
         runOnUiThread {
             val qualitySelectorRecycler = findViewById<RecyclerView>(R.id.quality_selector_list)
             val adapter = QualitySelectorAdapter()
-            adapter.setData(qnStrList!!, qnValueList!!, currentQuality)
+            adapter.lockedMaxQuality = QualityAccessPolicy.maxUnlockedQn(state.loggedIn, state.vip)
+            adapter.onLockedItemClickListener = { lockedQuality ->
+                MsgUtil.showMsg(qualityLockedHint(state, lockedQuality))
+                Logu.d(
+                    "QualitySelector",
+                    "锁定档位被点击：qn=$lockedQuality 登录=${state.loggedIn} 大会员=${state.vip}"
+                )
+            }
+            // 服务端对没权限的账号不下发 4K 档（accept_quality 里连 120 都没有），
+            // 这里补一个锁定项，用户才知道开大会员能解锁这一档
+            val displayNames = ArrayList(qnStrList!!.toList())
+            val displayValues = ArrayList<Int>(qnValueList!!.toList())
+            if (QualityAccessPolicy.needsLocked4kHint(displayValues.toIntArray(), state.loggedIn, state.vip)) {
+                displayNames.add(UiText.of("4K 超清"))
+                displayValues.add(QualityAccessPolicy.QN_4K)
+            }
+            adapter.setData(displayNames.toTypedArray(), displayValues.toIntArray(), currentQuality)
             adapter.setOnItemClickListener { index ->
                 layout_card_bg.visibility = View.GONE
                 card_quality_selector.visibility = View.GONE
-                if (index >= 0 && index < qnValueList!!.size && qnValueList!![index] != currentQuality) {
-                    switchQuality(qnValueList!![index])
+                if (index >= 0 && index < displayValues.size && displayValues[index] != currentQuality) {
+                    switchQuality(displayValues[index])
                 }
             }
             qualitySelectorRecycler.layoutManager = CustomLinearManager(this, LinearLayoutManager.HORIZONTAL, false)
             qualitySelectorRecycler.adapter = adapter
+            qualityAdapter = adapter
             layout_card_bg.visibility = View.VISIBLE
             card_quality_selector.visibility = View.VISIBLE
         }
     }
 
+    /**
+     * 被锁住的清晰度点了以后该说什么。
+     *
+     * 4K 是大会员专属，不管登没登录都是「开通大会员」这一句；其余按未登录/非大会员分两套口径。
+     */
+    private fun qualityLockedHint(state: AccountStateStore.State, lockedQuality: Int = 0): String = when {
+        lockedQuality >= QualityAccessPolicy.QN_4K -> UiText.of("4K 超清需要开通大会员")
+        !state.loggedIn -> UiText.of("登录后可选择 1080P 及以上的清晰度")
+        else -> UiText.of("开通大会员后可选择 1080P60 帧及以上的清晰度")
+    }
+
+    /**
+     * 后台补查一次账号状态；拿到结果后就地刷新清晰度列表的锁态（不重建列表，保留滚动位置）。
+     *
+     * 失败时 [AccountStateStore.refresh] 会退回缓存，所以这里不用处理异常。
+     */
+    private fun refreshAccountStateIfNeeded() {
+        if (accountState != null || accountStateRefreshing) return
+        accountStateRefreshing = true
+        CenterThreadPool.run {
+            val fresh = AccountStateStore.refresh()
+            accountState = fresh
+            accountStateRefreshing = false
+            runOnUiThread {
+                qualityAdapter?.let { adapter ->
+                    adapter.lockedMaxQuality = QualityAccessPolicy.maxUnlockedQn(fresh.loggedIn, fresh.vip)
+                    adapter.notifyDataSetChanged()
+                }
+                // 面板正开着时按新状态重建一次：4K 提示项是"没权限才补"的，账号状态从缓存翻成
+                // 大会员后必须把它去掉，否则会出现一个点不动的假 4K
+                if (card_quality_selector.visibility == View.VISIBLE) showQualitySelectorCard()
+            }
+        }
+    }
+
     private fun switchQuality(newQuality: Int) {
         if (!isOnlineVideo || newQuality == currentQuality) return
-        // 1080P 及以上只有 DASH 拿得到（走 fnval=1 会被服务端降级成 720P）；
-        // 720P 及以下继续用音视频合一的 MP4，没必要多起一路外部音轨
-        applyQuality(newQuality, PlayerStreamPolicy.requiresDash(newQuality))
+        // 一切档位都优先走 DASH：并不是因为低档位只能 DASH 拿，而是清晰度面板要靠 DASH 的
+        // 完整档位清单（fnval=1 会按请求档位裁剪，720P 请求只回 720P/360P，1080P60/4K 直接消失）。
+        // 只有 DASH 取流失败时才在 getPlaybackVideo 内回退合一 MP4。
+        applyQuality(newQuality, true)
     }
 
     /**
@@ -4437,12 +4530,15 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
 
         CenterThreadPool.run {
             try {
+                // 超权档位（例如没大会员却请求 4K）先夹到权限内：服务端对超权请求会降级发流，
+                // 有时降得比权限内最高档还低，夹紧后界面显示的档位与实际流才一致
+                val requestedQuality = AccountStateStore.clampQuality(newQuality)
                 val playerData = PlayerData()
                 playerData.aid = aid
                 playerData.cid = cid
                 playerData.title = text_title!!.text.toString()
                 playerData.mid = mid
-                playerData.qn = newQuality
+                playerData.qn = requestedQuality
                 playerData.pagenames = pagenames
                 playerData.cids = cids
                 playerData.currentPageIndex = currentPageIndex
@@ -4463,7 +4559,7 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
                 if (newVideoUrl.isNullOrBlank()) throw IllegalStateException("取流结果为空")
                 // DASH 回退成合一 MP4 时服务端只给到 720P：如实记录，不能让界面继续显示 1080P
                 val dashUsable = allowDash && !playerData.audioUrl.isNullOrBlank()
-                val appliedQuality = if (allowDash && !dashUsable) PlayerStreamPolicy.QN_720P else newQuality
+                val appliedQuality = if (allowDash && !dashUsable) PlayerStreamPolicy.QN_720P else requestedQuality
 
                 runOnUiThread {
                     if (destroyed) return@runOnUiThread
@@ -4868,7 +4964,7 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
                 playerData.cid = targetCid
                 playerData.title = newData.title
                 playerData.mid = mid
-                playerData.qn = getTargetQuality()
+                playerData.qn = AccountStateStore.clampQuality(getTargetQuality())
 
                 if (pagenames != null && cids != null) {
                     playerData.pagenames = pagenames

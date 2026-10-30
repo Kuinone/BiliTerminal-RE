@@ -2286,6 +2286,11 @@
     <string name="uitext_playeractivity_067">返回主合集</string>
     <string name="uitext_playeractivity_068">合集播放完毕，继续收藏夹</string>
     <string name="uitext_playeractivity_069">分P播放完毕，继续收藏夹</string>
+    <string name="uitext_playeractivity_070">登录后可选择 1080P 及以上的清晰度</string>
+    <string name="uitext_playeractivity_071">开通大会员后可选择 1080P60 帧及以上的清晰度</string>
+    <string name="uitext_playeractivity_072">高清音轨加载失败，已切回 720P</string>
+    <string name="uitext_playeractivity_073">这条视频暂时只能提供 720P</string>
+    <string name="uitext_playeractivity_074">4K 超清需要开通大会员</string>
     <string name="uitext_editprofileactivity_007">图片格式不支持</string>
     <string name="uitext_editprofileactivity_008">图片过大</string>
     <string name="uitext_editprofileactivity_009">请求参数错误</string>

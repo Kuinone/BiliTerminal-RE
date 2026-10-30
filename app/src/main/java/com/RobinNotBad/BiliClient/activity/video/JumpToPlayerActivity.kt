@@ -17,6 +17,7 @@ import com.RobinNotBad.BiliClient.api.PlayerApi
 import com.RobinNotBad.BiliClient.model.PlayerData
 import com.RobinNotBad.BiliClient.util.CenterThreadPool
 import com.RobinNotBad.BiliClient.util.Logu
+import com.RobinNotBad.BiliClient.util.AccountStateStore
 import com.RobinNotBad.BiliClient.util.MsgUtil
 import com.RobinNotBad.BiliClient.util.SettingsKeys
 import com.RobinNotBad.BiliClient.util.SharedPreferencesUtil
@@ -110,6 +111,9 @@ class JumpToPlayerActivity : BaseActivity() {
         download = intent.getIntExtra("download", 0)
 
         data.qn = if (data.qn != -1) data.qn else SharedPreferencesUtil.getInt(SettingsKeys.PLAY_QN, 16)
+        // 下载不受清晰度权限影响（可用性由服务端决定）；播放要把请求档位夹到账号权限内，
+        // 否则超权请求会被服务端降级，反而可能拿到比权限内最高档更低的流
+        if (download == 0) data.qn = AccountStateStore.clampQuality(data.qn)
 
         requestVideo()
     }
