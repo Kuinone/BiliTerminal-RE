@@ -112,6 +112,9 @@
     - **对代码的含义**：`DownloadService` 里「`qn<=64` → `getVideo`（`fnval=1`）取单文件、`useDash=false`」以及「MP4 分支下载完要删掉同目录残留的 `audio.m4a`」都是**正确**的；**反过来把这条流当成"纯视频"再挂一路外部音轨，就会两轨同时出声**（即 §3.13 修的音频重复）。
     - **26.10.25 起下载侧把 DASH 双文件 remux 成单文件**：`util/MediaMerger.kt` 用 `MediaExtractor`（支持分片 MP4 的 `moof`）+ `MediaMuxer` 重封装，产物就是和 `fnval=1` 同形态的双轨 MP4；这不是「把 `fnval=16` 的纯视频当合一文件」，而是容器层真正写入了音频轨。播放侧的外部音轨路径保留给老缓存。
     - **未覆盖**：`platform=html5`（播放侧 mtvPlayer 分支）实测同样是 `trak=2`，与 `pc` 一致；但只测了 1 个稿件、未登录，大会员内容与其它稿件未复验。
+    - **播放侧的含义（26.10.30 修「播放器内切不到 1080P」时确认，同日两轮）**：直播之外的播放链路**一律先试 DASH**（`getVideoDash` / `getBangumiDash`，播放器另起一路外部音频），DASH 失败/缺音轨才回退 `fnval=1` 的合一 MP4。低档位也走 DASH 的原因不是「低档只能 DASH 拿」，而是清晰度面板需要 DASH 的完整档位清单：`fnval=1` 会按请求档位裁剪清单，720P 请求只回 `accept_quality:[64,16]`，1080P60/4K 直接消失。**不能只靠"列表里有 1080P 就以为能拿 1080P"**：`accept_quality` 与 `fnval` 无关，`fnval=1` 时它照样列 1080P，只是 `quality` 被降到 64。判据与取流入口见 `player/PlayerStreamPolicy.kt`、`player/QualityAccessPolicy.kt` 与 `PlayerApi.getPlaybackVideo/getPlaybackBangumi`（`docs/architecture-map.md` §7.57）。
+    - **`qn` 仍然决定「清单宽度」（26.10.30 实测）**：`qn` 在 DASH 下不决定返回哪条流，但决定服务端把哪些档位写进 `accept_quality` / `dash` 流列表。`qn=64` 请求只回 `[64,16]`，`qn=127` 才回完整档位；所以播放侧取流固定用 `qn=127`（`PlayerApi.QN_REQUEST_MAX`），真正播哪档由 `DashData.getVideoStream(playerData.qn)` 选。下载侧 `QualityChooserActivity` 早就是这个做法。
+    - **4K（120）是否下发由大会员权限决定**：匿名请求 `qn=127&fnval=4048&fourk=1` 实测只回 `accept_quality:[116,80,64,32,16]`，**响应里连 120 都没有**（`fnval=4048` 已含 128/4K 位、`fourk=1` 也带了）。即「列表里没有 4K」不是参数错误，而是账号权限过滤；播放器对没权限账号补一个锁定提示位（见 §7.57），**4K 流本身只能用大会员账号验证**。
 13. **搜索排序只长在「分类搜索」上，聚合搜索没有**（26.10.24 加搜索排序时核实）：`wbi/search/all/v2` 只接受 `keyword`（`bilibili-API/docs/search/search_request.md:21-27`），`order` 是 `wbi/search/type` 的参数——视频/专栏 `totalrank`（默认）/ `click` / `pubdate` / `dm` / `stow` / `scores`（专栏另有 `attention`），直播间 `online` / `live_time`，用户 `0` / `fans` / `level`（`:598`）。
     - **没有「最多点赞」**：视频搜索不支持按点赞数排序，别照用户口吻去拼一个不存在的值。
     - **要排序就得换接口**：本项目视频分类选「综合」时仍走 `all/v2`（它会把番剧结果混进第一页），选其余档位改走 `search/type?search_type=video&order=…`（不混番剧；条目字段与聚合结果同构，解析共用 `SearchApi.parseVideoEntry`）。
@@ -171,13 +174,15 @@
 
 - 读收藏夹列表：`GET x/v3/fav/folder/created/list?up_mid=&pn=&ps=100`（自己/他人同一接口，按 `has_more` 分页）。每项 `id` 就是 media_id、`fid` 只是展示用的旧 id、`attr` bit0=1 私密 / bit1=0 默认、`cover` 直接给。
 - 读收藏夹内容：`GET x/v3/fav/resource/list?media_id=&platform=web&pn=&ps=20&order=`（`order` 取 `mtime`/`view`/`pubtime`）。
-- 写收藏/取消/多选删除：统一 `POST x/v3/fav/resource/batch-deal`，form `resources`（`{avid}:2` 逗号串）+ `add_media_ids` + `del_media_ids` + `csrf`（可同时加/删）。
-- 已弃用（本项目不再调用）：`space.bilibili.com/ajax/fav/getBoxList`、`x/space/fav/arc`、`medialist/gateway/coll/resource/deal`、`medialist/gateway/coll/resource/batch/del`、`x/v3/fav/resource/batch-del`、`x/v3/fav/resource/deal`。
+- 写收藏/取消/多选删除：统一 `POST x/v3/fav/resource/batch-deal`，form `resources`（`{内容id}:{内容类型}` 逗号串）+ `add_media_ids` + `del_media_ids` + `csrf`（可同时加/删）。
+- **`resources` 的类型位不只是 `2`**（26.10.29 核实 `bilibili-API/docs/fav/action.md`）：`2`=视频稿件（id 用 avid）、`12`=音频（auid）、`21`=视频合集（合集 id）。`x/v3/fav/resource/list` 每条 media 的 `type` 字段就是它，所以删除音频/合集收藏必须按真实类型拼，不能一律写 `:2`。本项目 `FavoriteApi.normalizeFavType()` 只放行 2/12/21，其余回落 2；`VideoCard.favType` 承载该值（`buildResources` 按卡片类型拼串）。
+- 清空夹内失效：`POST x/v3/fav/resource/clean`，form 只有 `media_id` + `csrf`，成功 `{code:0,message:"0",ttl:1,data:0}`——**`data` 是 0 而不是清理条数**，服务端不告诉清了几条；本项目的接口快照里**没有** `folder/clean-state` 章节，所以不做「可清理数量」预检（26.10.29 已接入，见 `FavoriteApi.cleanInvalidResources`）。tab 级全量清理是 `x/v3/fav/tab/clean_invalid`，仍未接。
+- 已弃用（本项目不再调用）：`space.bilibili.com/ajax/fav/getBoxList`、`x/space/fav/arc`、`medialist/gateway/coll/resource/deal`、`medialist/gateway/coll/resource/batch/del`、`x/v3/fav/resource/batch-del`、`x/v3/fav/resource/deal`。**注意**：官方文档里专门有一条「批量删除内容」`x/v3/fav/resource/batch-del`（form `resources`+`media_id`+`platform=web`+`csrf`），能力与 `batch-deal` 的删除半边重复，本项目继续走 `batch-deal`，不引入它。
 - 图文收藏：`x/polymer/web-dynamic/v1/opus/feed/fav`（`page_size=20&page=`，`items[].cover` 是对象 `{url}`），旧 `x/polymer/web-dynamic/v1/opus/favlist` 仅兜底。
 
 **上限字段的坑（26.10.16 历史，迁移后已不存在）**：老 `getBoxList` 对自建收藏夹恒返回 `max_count = 999`（实际上限 1000），「我的收藏夹」页因此显示过 `1000/999`；v3 系（`created/list`、`list-all`）**完全不返回上限**。现在上限按服务端约定本地算：默认收藏夹 50000、自建 1000（`FavoriteApi.maxCountOf()`）；默认收藏夹用 `attr & 2 == 0` 判断（不再用 `index == 0`，`index` 判据只对已删除的 `getBoxList` 成立）。详见 `docs/architecture-map.md` §7.34。
 
-**已知但未接的收藏接口**（逐条能力表见 `docs/FEATURES.md` §8.5）：`x/v3/fav/resource/sort`（夹内手动排序）、`x/v3/fav/folder/sort`（收藏夹本身排序）、`x/v3/fav/resource/clean` + `x/v3/fav/tab/clean_invalid`（清理失效）、`x/v3/fav/thump/up`、`x/v3/fav/tab/report`、`resource/infos|ids`、`folder/space|space/v2|whitelist`、`x/v3/fav/tab` 族、`x/v3/fav/season/unfav`。前两个需 APP 签名（`appkey` + `ts` + `sign = md5(query + appsec)`）。
+**已知但未接的收藏接口**（逐条能力表见 `docs/FEATURES.md` §8.5）：`x/v3/fav/resource/sort`（夹内手动排序）、`x/v3/fav/folder/sort`（收藏夹本身排序）、`x/v3/fav/tab/clean_invalid`（清理所有夹的失效）、`x/v3/fav/thump/up`、`x/v3/fav/tab/report`、`resource/infos|ids`、`folder/space|space/v2|whitelist`、`x/v3/fav/tab` 族、`x/v3/fav/season/unfav`。前两个需 APP 签名（`appkey` + `ts` + `sign = md5(query + appsec)`）。
 
 **批量写接口要带 `x-bili-gaia-vtoken`**（9.16.1 客户端静态分析）：`POST x/v3/fav/resource/batch-deal` 的请求头里有一个人机校验 token（`BiliApiException.mCode == 11211` 时官方客户端会单独处理、不弹通用错误）。这个 token 由风控链路下发，第三方拿不到——所以本项目走 `batch-deal` 时**偶发失败要优先怀疑它**，退路是逐条打 `x/v3/fav/resource/deal`（官方也保留着这条）。单条 `deal` 不需要该头。
 

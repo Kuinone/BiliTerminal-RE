@@ -131,11 +131,9 @@ class FavoriteFolderAdapter(
                     context.startActivity(intent)
                 }
                 favoriteHolder.itemView.setOnLongClickListener {
-                    if (onLongClickListener != null && !folder.isDefault) {
-                        onLongClickListener!!.onLongClick(position - 1)
-                    } else if (folder.isDefault) {
-                        com.RobinNotBad.BiliClient.util.MsgUtil.showMsg(UiText.of("默认收藏夹不能编辑"))
-                    }
+                    // 默认收藏夹也进管理页：改名/删除那块在管理页里自己隐藏，
+                    // 但「批量删除内容」「清空失效内容」只在管理页有入口，默认夹最需要它
+                    onLongClickListener?.onLongClick(position - 1)
                     true
                 }
             }

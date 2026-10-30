@@ -17,6 +17,19 @@ class QualitySelectorAdapter : RecyclerView.Adapter<QualitySelectorAdapter.Quali
     private var qualityValues: IntArray? = null
     private var context: Context? = null
     var listener: OnItemClickListener? = null
+
+    /**
+     * 高于这个 qn 的清晰度显示成「上锁」态并拦截点击（权限不够）。
+     *
+     * 由调用方按账号状态算出来（见 `player/QualityAccessPolicy`）：未登录 64、非大会员 80、
+     * 大会员 `Int.MAX_VALUE`（全解锁）。锁的只是一个「好看但点了没用」的入口——服务端按账号
+     * 权限发流，不会因为点了高档位就真给高档位。
+     */
+    var lockedMaxQuality: Int = Int.MAX_VALUE
+
+    /** 点到被锁住的清晰度时回调，参数是那条的 qn（由调用方决定提示什么）。 */
+    var onLockedItemClickListener: ((Int) -> Unit)? = null
+
     var selectedItemIndex: Int = 0
         set(value) {
             val previous = field
@@ -79,7 +92,21 @@ class QualitySelectorAdapter : RecyclerView.Adapter<QualitySelectorAdapter.Quali
         fun bind(currentIndex: Int, isSelected: Boolean) {
             if (currentIndex < 0 || qualityNames == null || currentIndex >= qualityNames!!.size)
                 return
+            val values = qualityValues ?: return
+            val quality = if (currentIndex < values.size) values[currentIndex] else Int.MAX_VALUE
+            val locked = quality > lockedMaxQuality
             button.text = qualityNames!![currentIndex]
+            if (locked) {
+                // 锁图标复用播放器锁屏按钮那张，整格再压暗一点：一眼能看出「有这个档但选不了」。
+                // 锁住的项永远不会是当前档（当前档一定是能播的），所以不用管选中配色冲突。
+                button.setCompoundDrawablesRelativeWithIntrinsicBounds(0, 0, R.drawable.icon_player_lock, 0)
+                button.compoundDrawablePadding =
+                    (6 * button.resources.displayMetrics.density).toInt()
+                button.alpha = 0.55f
+            } else {
+                button.setCompoundDrawablesRelativeWithIntrinsicBounds(0, 0, 0, 0)
+                button.alpha = 1f
+            }
             if (isSelected) {
                 button.setTextColor(ColorScheme.ON_PRIMARY)
                 button.setBackgroundColor(ColorScheme.PRIMARY)
@@ -88,6 +115,11 @@ class QualitySelectorAdapter : RecyclerView.Adapter<QualitySelectorAdapter.Quali
                 button.setBackgroundColor(ColorScheme.CARD)
             }
             button.setOnClickListener {
+                if (locked) {
+                    // 被锁住的档位不切换，交给调用方弹提示（未登录 / 非大会员）
+                    onLockedItemClickListener?.invoke(quality)
+                    return@setOnClickListener
+                }
                 selectedItemIndex = currentIndex
                 if (listener != null) {
                     listener!!.onItemClick(currentIndex)

@@ -9,7 +9,7 @@
 - **版本号**：`26.10.27`（`app/build.gradle` 的 `versionName`），`versionCode 2610270`；`strings.xml` 的 `update_log_current` 锚点是「【26.10.27 本次更新】」，`:app:verifyVersionConsistency` 以该锚点校验。tag `26.10.27` 已占用（发版记录见 §4 的 §五十八）。
 - **上一版**：`26.10.26` / tag `26.10.26`。
 - **本轮改动（26.10.27）**：暗色 / 亮色模式、弥散光晕背景、玻璃质感（默认关闭）；设置新增「布局适配」二级页，与「外观设置」同在「界面与外观」下；搜索排序入口收进搜索框左侧图标（§3.71）；控制栏收起后字幕随之下沉；Android 7.1 及以下内测码更新报 Trust anchor（§3.70）。明细见 `strings.xml` 的 `update_log_current`（5 条编号条目，另 1 条为版本锚点）。
-- **26.10.27 发版后的未发版改动**：系统时间错误防呆（启动与证书时间错误时提示改时间，§3.72）、点赞投币收藏卡片适配玻璃质感（§3.73）、弥散光晕可选光源位置（§3.76）。下次发版时 `update_log_current` 要补这三条。
+- **26.10.27 发版后的未发版改动**：系统时间错误防呆（启动与证书时间错误时提示改时间，§3.72）、点赞投币收藏卡片适配玻璃质感（§3.73）、弥散光晕可选光源位置（§3.76）、收藏夹管理页的内容管理（批量删除 / 清空失效）与版式重做（§3.80）。下次发版时 `update_log_current` 要补这四条。
 - **下次递增**：先看 `app/build.gradle:23-24`；release immutability 下被 Release 用过的 tag **永久不可复用**，同版本名补丁版只能用 `26.10.24.1` 这种后缀形式，`versionCode` 递增、`versionName` 可不变。改了版本号还要同步 `strings.xml` 里 `update_log_current` 的「【YY.MM.DD 本次更新】」锚点，否则 `:app:verifyVersionConsistency` 会失败。
 - **构建命令**（单测任务名**带 flavor 前缀**，`testDebugUnitTest` 自 26.10.11 引入 flavor 后已不存在）：
 
@@ -25,7 +25,7 @@
 - **依赖仓库**：`settings.gradle` 已把 aliyun 的 `google` / `public` / `gradle-plugin` 三个镜像前置，`google()`/`mavenCentral()`/jitpack 仅作兜底。
 - **改了 `res/` 文件集合时**：`:app:clean` 与后续命令**必须分两次 Gradle 调用**，且带 `--no-build-cache --no-configuration-cache`，否则会回放陈旧资源（症状是 `Unresolved reference 'R.layout.xxx'`）。
 - **版本一致性**：`:app:verifyVersionConsistency` 以 `strings.xml` 的 `update_log_current` 为锚点校验版本一致性；发版说明也由 CI 从它抽取（抽不到直接拒绝发版）。
-- **单测（静态计数，26.10.29 补 #44 回复流弹幕后实测）**：**102 个测试类 / 1087 个用例**，两个 flavor 完全相同（同源码），0 失败 0 错误 0 跳过。计数方式：`app/src/test/` 下 `*Test.kt|java` 计数（另有共享假实现 `util/FakeSharedPreferences.kt`），`app/build/test-results/testStandardDebugUnitTest/TEST-*.xml` 的 `tests=` 求和。用例数一律以机器产出为准，队友口述数字不进入文档。
+- **单测（26.10.30 合并上游 6 个提交后实测，`testStandardDebugUnitTest`）**：**104 suites / 1108 tests**，两个 flavor 完全相同（同源码），0 失败 0 错误 0 跳过。计数方式：`app/src/test/` 下 `*Test.kt|java` 计源文件（另有共享假实现 `util/FakeSharedPreferences.kt`，合并后计得 104 个），`app/build/test-results/testStandardDebugUnitTest/TEST-*.xml` 的 `tests=` 求和。用例数一律以机器产出为准，队友口述数字不进入文档。
 - **26.10.10 那一轮的构建记录（历史，留作「改 minSdk / 重跑 release 链路」时的验证口径）**：`minSdk 24 → 19` 全部改动（含 jsoup 1.16.1、7 个 `res/drawable-v21` 资源）落盘后，按「`clean` → `assembleRelease` → `lintRelease` → 单测」四步跑完（均带 `--no-configuration-cache`，`clean` 与 `assemble` 分两次调用），四步全 `BUILD SUCCESSFUL`（37s / 2m13s / 1m25s / 39s）。当时单测汇总 **49 suites / 460 tests / 0 failures**（任务名当时还是 `testDebugUnitTest`，现已带 flavor 前缀），最新 XML 时间 `2026-10-09T22:59:04`（晚于当轮 APK 出包时间 22:56:58，覆盖了当轮全部源码改动）。`:app:lintRelease` 的 **`NewApi` 从 22 条降到 2 条**，且这 2 条就是 `PlayerActivity.kt:1981` 的已知假阳性。发版前仍建议再跑一次确认。
 - **「自动跳过片头片尾」已恢复上线（26.10.22）**：26.10.10 的紧急撤回**已解除**，`SkipOpEdPrefs.FEATURE_ENABLED` 回到 `true`，设置入口与搜索索引均已恢复；口径按用户拍板改为**默认关闭**（`DEFAULT_ENABLED = false`，老用户存档里显式写的值仍然优先）。恢复细节见 §3.3「恢复记录」，乱跳的三个根因修复见 §3.55。
 - **本轮基建改动（26.10.10）**：**`minSdk 24 → 21 → 19（Android 4.4）`**，唯一落点是 `app/build.gradle:21`。两级下调的成本不同，分开记：
@@ -41,6 +41,8 @@
 ## 2. 未完成待办
 
 ### 2.1 真机未验证（无设备 / 无登录态）
+
+- [ ] **收藏夹管理页新版式 + 内容管理入口（§3.80）部分设备验证**：已在 SDK AVD `wear5`（Android 14 / 466×466）上用 `coexistDebug` universal 包核对了**结构与文案**（默认夹与非默认夹两种版式、两行内容管理入口、点「批量删除内容」能开出夹内容页）。**仍未验的**：①点「批量删除内容」后是否真的**直达多选态**（要先登录拉到列表，空列表按设计不进多选）；②「清空失效内容」的确认框与 `data=0` 成功提示；③真手表/圆屏上的实际观感。**注意**：删除与清空都是真实账号的破坏性写操作，真机验证要做好心理准备，别拿主号试。
 
 - [ ] **DASH 下载合并单文件（§3.66）端到端未验证**：需要登录态 + 选 1080P，本机只有模拟器且未登录。容器层已用两条现成 m4s 走 DebugBridge `merge` 实测通过（`result=OK`、`tracks=2`、采样数与源一致），**但「真实下载 → 合并 → 本地列表只剩视频 → 内置播放器有声」整条链路没跑过**。真机用例：登录后下载一个 1080P 视频，观察进度走完 0.88–1.00 的「合并音视频」阶段、目录里只有 `video.mp4`（无 `audio.m4a`、无 `video_merging.tmp`）、本地页直接播放有声；再故意制造合并失败（如把磁盘写满）确认保留双文件且下载不报错。
 
@@ -697,7 +699,49 @@
   - #57 没在模拟器上实测撤回（会真的给对方发私信），只有判据单测；需要真机给自己的小号发一条再撤回。
   - #38 的手势本身只能在真手表上确认（MuMu 没有窗口层右滑返回）。
 
-### 3.80 新增「举报评论」（26.10.27，用户要求）
+### 3.80 收藏夹管理页：内容管理（批量删除 / 清空失效）+ 视觉统一（26.10.29，用户要求）
+
+- **缘起**：用户给了 B 站「批量删除内容」（`x/v3/fav/resource/batch-del`）与「清空所有失效内容」（`x/v3/fav/resource/clean`）两份接口文档，要求把功能做在「长按收藏夹跳转出的管理页面」上，并顺手把这个管理页的视觉风格与配色统一到全站口径。
+- **入口语义变更**：`FavoriteFolderEditActivity` 从「编辑收藏夹」升级为「收藏夹管理」（顶栏 + manifest label 共用 `text_activityfavoritefolderedit_06`，值改成「收藏夹管理」）。`FavoriteFolderAdapter` 的长按不再拦默认收藏夹（原 `!folder.isDefault` + toast），因为内容管理只在这个页面有入口；默认夹进来改显示常驻提示 `hintDefault`、隐藏改名/删除两块，且不再每次弹 toast。
+- **批量删除内容**：管理页新增一行 → 打开 `FavoriteVideoListActivity` 并带 `selectMode=true`，内容页在首屏加载成功后若 `writable && 列表非空` 自动 `enterSelectionMode()`（空夹/只读夹不硬进；切排序不重复进；首屏失败不标记，重试仍可进）。返回时管理页 `setResult(RESULT_OK)` 让收藏夹列表重拉数量。
+- **修掉一个真 bug（资源类型位）**：`resources` 的 `{id}:{type}` 里 `2`=视频稿件 / `12`=音频 / `21`=视频合集，原来 `buildResources()` 一律写 `:2`，音频与合集条目删的是错 id 语义。`VideoCard` 末尾追加 `favType`（Parcelable 只能末尾追加）、`getFolderVideosNew` 用 `normalizeFavType(media.optInt("type"))` 填、`buildResources` 按卡片类型拼串、新增 `deleteFavorite(aid, favType, mediaId)` 重载（旧两参委托它）。**没有引入 `batch-del`**：项目既定写操作全部收口 `x/v3/fav/resource/batch-deal`，两者能力重叠（`bilibili-api-notes.md` §6 已记录这条判断）。
+- **清空失效内容**：`FavoriteApi.cleanInvalidResources(mediaId)` → `POST x/v3/fav/resource/clean`（form 只有 `media_id`+`csrf`，`mediaId<=0` 直接 `-400`）。成功 `data` 是 `0` 不是条数，所以只提示「清理完成」**不谎报清了几条**；快照里没有 `folder/clean-state`，因此不做「可清理数量」预检。
+- **视觉统一**：`activity_favorite_folder_edit.xml` 整文件照 `activity_edit_user_info.xml` 的单卡片编辑页模板重写——12sp `?android:attr/textColorSecondary` 小标题、输入框裸 `@drawable/background_edittext`、保存行是卡片行 `textEnd`+`arrow_forward`、内容管理两行是「标题 + 描述 + 箭头」单行卡片（**不加图标**：`drawable/icon_*.xml` 硬编码浅色 `#ebe0e2`，亮色主题下对比度不足）、危险操作用 `@color/status_error`。卡片一律不写 `cardBackgroundColor`，交给主题的 `materialCardViewStyle`。
+- **验证**：`./gradlew.bat :app:assembleDebug` 通过（两 flavor，2m11s）；`testStandardDebugUnitTest` + `testCoexistDebugUnitTest` 通过，`FavoriteApiTest` 20 例全绿（含新增 `normalizeFavType_*` / `buildResources_*` 4 例）。
+- **设备侧（SDK AVD `wear5`，`sdk_gwear_x86_64` / Android 14 / 466×466 圆屏 / 320dpi，装 `coexistDebug` universal 包）**：经 DebugBridge 拉起 `FavoriteFolderEditActivity` 核对结构与文案——默认夹（extras `mediaId=1;isDefault=true;title=DemoFolder`）顶栏「收藏夹管理」、`hintDefault` 显示「默认收藏夹仅支持管理内容，不能改名或删除」、`groupInfo`/`groupDanger` 均不在 dump 里（已隐藏）、内容管理小标题 + 「批量删除内容 / 勾选要移除的内容后删除」「清空失效内容 / 清理已失效（被删除或不可见）的收藏」两行卡片；非默认夹（`mediaId=123456;isDefault=false`）`groupInfo` 可见、标题回填 `DemoFolder`、滚动后「保存」行与两行内容管理入口都在；点「批量删除内容」成功开出 `FavoriteVideoListActivity`，顶栏显示 `DemoFolder`（`name` extra 透传成功）。**没有登录态**，故列表拉不到、多选态与两个写操作的成功提示未验。另记一条环境结论：该 AVD 上**所有页面**（含未改动的 `SettingMainActivity`）都渲染成内容放大溢出、左侧与底部被裁的样子，所以只能用来核对结构与文本，**不能做像素级版式对照**；同时 `android_find_text` 在本机不可用（无 Tesseract），`uiautomator dump` 是唯一可靠的判读手段。
+- **调试踩坑（对后续设备测试有用）**：PowerShell 5.1 往原生程序传参时会吃掉内嵌双引号，`adb shell 'am broadcast ... --es extras "a=1;b=2"'` 到设备端只剩 `a=1`（分号被设备 shell 当命令分隔符）。可靠写法是 `adb --% shell "am broadcast ... --es extras 'mediaId=1;isDefault=true'"`——`--%` 停止 PowerShell 解析、内层改用**单引号**给设备 shell。
+- **遗留**：① 「批量删除内容」是否**直达多选态**、「清空失效内容」的确认框与「清理完成」提示要在登录态下再验（空列表/只读夹按设计不进多选）；② 真手表/圆屏上的实际观感未看，AVD 渲染本身不可信；③ 音频/合集卡片点击仍按视频处理（`aid` 里装 auid/合集 id 走详情/虚拟合集），是改动前既有行为，本次未扩大范围。
+
+### 3.81 长按三倍速期间不再响应横滑调进度（26.10.30，用户报告）
+
+- **缘起**：用户报告「长按触发三倍速时，仍然能触发滑动控制进度」。长按是「按住不放」的动作，手指在加速期间几乎必然有几十像素的横向漂移；旧逻辑把这段漂移当成滑动调进度，浮层跳变、松手还会 seek 到漂移后的位置——本来只想加速看一段，进度却被拽走。
+- **根因**：`PlayerActivity.handleSwipeSeekTouch()` 的判据只有「设置开 + 已准备 + 非直播 + 播放器就绪 + 未缩放」（`PlayerSwipeSeekPolicy.isSeekAllowed`），**完全没看 `onLongClick`**；而 `handleSwipeSeekTouch()` 在两套 `layout_control` 触摸分支的 ACTION_MOVE 里都会被调用，所以加速期间横滑照样激活 `swipe_seek_overlay` 并改 `seekbar_progress`。
+- **修法**：
+  - `app/src/main/java/com/RobinNotBad/BiliClient/activity/player/PlayerGesturePolicies.kt`：`PlayerSwipeSeekPolicy.isSeekAllowed(...)` 增加第 7 个参数 `longPressBoost: Boolean`（**不设默认值**，逼调用点显式表态），判据追加 `&& !longPressBoost`；`handleSwipeSeekTouch()` 把 `onLongClick` 作为该参数传入，被拒后走原有的 `cancelSwipeSeekIfActive()`（浮层不出现、进度不动）。
+  - `PlayerActivity`：新增 `private fun endLongPressBoost()` 收口「松手还原倍速」——复位 `onLongClick`、`ijkPlayer?.setSpeed(speed_values[seekbar_speed.progress])`、`danmakuManager?.setSpeed(...)`、恢复 `text_speed` 文案；两套触摸分支的 ACTION_UP 都改调它，并**同时接 ACTION_CANCEL**。
+  - **ACTION_CANCEL 必须接**：这是本次翻出来的连带缺陷。改前 `onLongClick` 只在 ACTION_UP 复位，触摸被父容器拦截或失焦 CANCEL 后标志卡在 true，倍速停在 3 倍；一旦把 `onLongClick` 做成滑动门闸，同一个 bug 还会把「横滑调进度」永久锁死（这辈子不再恢复）。
+  - 文案：设置项 `settingtext_settingterminalplayeractivity_005` 改为「在视频区域左右滑动快进/快退（未缩放视频、未长按加速时生效）」。
+- **验证**：`./gradlew.bat :app:assembleDebug :app:testStandardDebugUnitTest` 通过（两 flavor，1m18s）；`testStandardDebugUnitTest` **99 suites / 1045 tests / 0 失败 0 错误 0 跳过**，`PlayerGesturePoliciesTest` 11 例（新增 `longPressBoost_blocksSwipeSeek`、`longPressRelease_restoresSwipeSeek`）。
+  - 设备侧（SDK AVD `wear5`，`sdk_gwear_x86_64` / Android 14 / 466×466，装 `coexistDebug`；`player_scale` / `player_swipe_seek` / `player_longclick` 全开，走的是 `layout_control` 缩放触摸分支）：样本是 `screenrecord` 自录的 44 秒本地 mp4，经 DebugBridge 直接拉起 `PlayerActivity`（`extras url=<本地路径>`，不需要登录）。
+    - **对照**：普通横滑（DOWN → 3 次 MOVE）→ dump 出现 `swipe_seek_overlay`、无 `longclick` 日志 → 调进度正常 ✔。
+    - **修复后**：DOWN 后按住 1000ms（logcat 出现 `gesture>longclick_down`，三倍速已触发）再 MOVE 两次 → dump **无** `swipe_seek_overlay`、进度文本不动 ✔。
+    - **松手恢复**：加速拖到 x=330 期间进度不变，UP 后 logcat `IJKMEDIA: Playback rate: 3.000000` → `Playback rate: 1.000000`，紧接着普通横滑 → 浮层出现（`00:24 / 00:44 (55%)`）✔。
+    - **ACTION_CANCEL**：按住加速后发 `input motionevent CANCEL` → 倍速 3.0 → 1.0；CANCEL 之后再普通横滑 → 浮层出现（`00:37 / 00:44 (82%)`）→ `onLongClick` 没卡 true ✔。
+- **调试踩坑（对后续播放器设备测试有用）**：① `adb shell input motionevent DOWN/MOVE/UP/CANCEL x y` 能跨进程拼出一条真实触摸序列，`input swipe` 做不到「按住不动再横移」这种时序；② `screenrecord` 录静止画面只产出 3~4 秒、几 KB 的短片，播放器立刻 `FFP_MSG_COMPLETED`、`isPlaying` 不成立就没法测长按，录的时候要同时在设备上制造画面变化（这次录出 44 秒 / 15MB），录完还要 `chmod 660`（属主是 shell，app 读不到）；③ CANCEL 之后前台偶尔被 Wear 系统 UI 抢走，dump 取不到播放器控件是**假阴性**，先用 `dumpsys window | Select-String mCurrentFocus` 确认焦点在 `PlayerActivity` 再判读。
+- **遗留**：① 只实测了「开启视频可缩放」的触摸分支（默认设置）；未缩放分支的 UP/CANCEL 收尾代码同构，没单独跑；② 圆屏 AVD 的命中区与真手表手感不同，系统 long press 阈值在真机上的误触率仍待真机观察；③ 长按加速期间**双指缩放/拖动**仍被吞（既有行为，本次未扩大范围）。
+
+### 3.82 亮色模式下按钮的深色描边（26.10.30，用户报告）
+
+- **缘起**：用户贴两张截图——亮色（经典终端 / 纸质终端）视频详情页的「播放」按钮四周有一圈显眼的深灰框，暗色同一页面则是干净的无边框色块，要求把亮色这个描边修掉。
+- **根因**：这不是 MaterialButton 的默认样式，是 26.10.26 给亮色单独补的一道描边：`themes.xml` 的 `ButtonStyleTerminal` 写了 `strokeColor=@color/terminal_divider` + `strokeWidth=@dimen/terminal_btn_stroke_width`，而 `terminal_btn_stroke_width` 在 `values/dimens.xml` 是 `0dp`（暗色）、被 `values-notnight/dimens.xml` 覆盖成 `1dp`（亮色），`terminal_divider` 的亮色值又是 `#26000000`（15% 黑）——所以只有亮色长出这圈深灰框，暗色天然没有。当时的动机是「亮色下浅色按钮压在浅色纸底上不够分明」，但实际观感与暗色版的「无边框」对不上。
+- **修法**：`ButtonStyleTerminal` 删掉 `strokeColor` / `strokeWidth` 两项，连同只为它存在的两处 dimen 一起清掉（`values/dimens.xml` 的 `terminal_btn_stroke_width=0dp` 与注释、整份 `values-notnight/dimens.xml`）。亮暗两版回到同一套语义：无描边、按钮底 = 卡片色 `@color/terminal_card_bg`，靠「底色 vs 页底」的差区分——亮色 `#CCFDF6EC` 压在 `#EBDFCF` 纸底上实测 `#F9F2E6`，与暗色 `#2A2A2A` 压在 `#000` 上的层级关系一致。
+- **未动的**：`@color/terminal_divider` 两个值保留（改完已无引用，删色值要连带动 `tools/appearance/gen_light_mode.py` 的亮色色表，本次不扩大范围）；玻璃质感的 `ButtonStyleTerminal.Glass` 自带 overlay 描边（那是玻璃主题的设计），不受影响；其余六套主题的按钮走 `gradient_button_bg_*` 背景、本来就没写 stroke，也不受影响。卡片上的粉色 `actionCardStroke` 描边与本条无关。
+- **验证**：`./gradlew.bat :app:assembleDebug` 通过（两 flavor，34s）；`:app:testStandardDebugUnitTest` + `:app:testCoexistDebugUnitTest` 通过。
+  - 设备侧（emulator-5554 / SDK AVD `24031PN0DC` / Android 12，装 `coexistDebug` universal 包，经典终端主题）：亮色视频详情页（`--es bvid BV1jBpE6zEGD --el aid 0`，不加 `--el aid 0` 会走 aid=114514 报 `video object is null`）「播放」按钮的 1dp 深灰框已消失，沿垂直方向扫按钮上边缘是 `(235,223,207)` 纸底 → `(239,232,222)` 抗锯齿 → `(249,242,230)` 按钮底，**中间没有暗像素**；暗色同一页面与改动前逐像素一致（`#2A2A2A` 色块、无描边）；亮色 `SetupUIActivity` 的「恢复默认 / 查看预览」两个按钮同样干净。
+  - 测完把模拟器状态还原：`coexist` 的 `shared_prefs/default.xml` 用测前备份覆盖回去（6102 字节、md5 与备份一致、属主仍是 `u0_a52`），`standard` 里临时插进去的 `ui_color_mode=light` 键删掉。
+- **遗留**：无。附带记一条复现方法：亮/暗切换改 `shared_prefs/default.xml` 的 `ui_color_mode`（写回要用 `cat` 覆写保持属主，`sed -i` 会留下 root 属主的文件）。
+
+### 3.83 新增「举报评论」（26.10.27，用户要求）
 
 - **缘起**：用户要求「加入举报功能，api 使用从 app 逆向的接口」。口径经确认收敛为 **只做评论举报 + 入口放在长按操作面板**（视频举报、弹幕举报本轮不做，原因见 `docs/bilibili-api-notes.md` §8）。
 - **改法**：
@@ -731,7 +775,7 @@
     - 「快照列了理由码 9~17，客户端没开放」→ **查证后决定暂不开放**，三条证据：①服务端先风控后校验参数，`reason=99` 与 `reason=1` 都回 -352，离线拿不到合法/非法信号；②APK 里「违法违规/赌博诈骗/侵犯隐私/抢楼」字符串确实存在，但按 `public.xml` 的资源 id 反查 `jadx` 全部代码**0 命中**，是历史遗留资源，不能判定仍在使用；③未知 `reason` 服务端是回 -400 还是降级成「其他」无证据。定论方法（登录后逐码试 `9..17`）写进 `docs/bilibili-api-notes.md` §8 与 `ReportApi` 类注释，验完补两个数组即可，UI 不用动。
 - **遗留**：①**登录态下的成功提交（code=0）没验**——模拟器没有可用登录态，登录要扫码，只能等真机；已验证到「请求体正确、服务端确实在回业务码」这一步；②视频/弹幕举报未做（各有明确理由，见 api notes §8）；③举报后列表不会变（服务端审核结果不回写列表，也不打算轮询）。
 
-### 3.81 按线上崩溃报告修 7 类缺陷（26.10.28，用户要求，mapping 还原后定位）
+### 3.84 按线上崩溃报告修 7 类缺陷（26.10.28，用户要求，mapping 还原后定位）
 
 - **缘起**：控制台积了 50 条待处理崩溃。第一轮只按「堆栈里未混淆的帧」推断，结论不可用；用户提示「编译一遍 release 就有 mapping」后重新做：`./gradlew.bat :app:minifyStandardReleaseWithR8 :app:minifyCoexistReleaseWithR8`（本机没有 `key.jks`，只跑 R8 阶段即可）产出 `app/build/outputs/mapping/{standard,coexist}Release/mapping.txt`，逐帧还原后 **50 条全部归类**，其中 7 类能落到代码。
 - **还原的可信度校验**（重要，否则等于瞎猜）：崩溃文本自带的 `adapter:d1.r@…` → mapping 里 `d1.r = MenuSettingAdapter`；`UpdateActivity.O` 的相邻帧 `R0.v` → `UpdateActivity$$ExternalSyntheticLambda0`；页面轨迹与解出的类一致。**跨版本的报告只能解出方法名、行号不可用**（mapping 来自当前 `main`），所以 26.10.19/26.10.16 的那 3 条 NPE 与 3 条 Fragment 崩溃仍未定位。
@@ -826,6 +870,9 @@
 | 五十七 | 26.10.26：发版 26.10.26（2610260）与官网同步 | 版本号 `26.10.24`→`26.10.26`（versionCode `2610242`→`2610260`）、把 26.10.24 的 20 条日志归档进 `update_history_log`、`update_log_current` 按用户口径精简为 12 条；提交 `055eaad`（版本号 + 日志归档）+ `8388d56`（日志精简）并推送 `main` 与 tag `26.10.26`；CI「构建发行版并创建 Release」#15 全部步骤 success，GitHub Release 10 个资产（8 个 APK + `md5sums.txt` + `release-links.txt`，正文 12 条 + MD5 表 + `versionCode` 标记），Gitee 发行版已同步 26.10.26；站点仓库 `bili-terminal-site` 用 `tools/sync-release.py` 重新生成 `data/releases.json` / `index.html` / `changelog.html` 等静态页，提交 `bdc9e37` 推送 `main` | 部分遗留（**官网静态页仍未更新**：线上 `data/releases.json` 最新 tag 仍是 26.10.14、`sitemap.xml` lastmod 仍是 2026-10-14、`changelog.html` 仍写「当前最新版 26.10.14」，且 `rebiterminal.netlify.app` 已返回 404「site-not-found」（站点被改名或反代目标失效），而 `/api/release` 运行时接口已返回 26.10.26 → 判断 Netlify 自 26.10.14 之后没再部署该仓库（`26.10.19`、`26.10.24` 两次同步提交同样未上线），需要在 Netlify 后台检查站点是否仍绑定 `PurpleEthereality/BiliTerminal-RE_web` 的 `main` 分支，或手动触发一次 Deploy；站点仓库内容与本地生成结果均已就绪，恢复部署即自动生效） |
 
 | 五十八 | 26.10.27：发版 26.10.27（2610270）与官网同步 | 版本号 `26.10.26`→`26.10.27`（versionCode `2610260`→`2610270`）、把 26.10.26 的 12 条日志归档进 `update_history_log` 的 `## 2026-10-26` 组、`update_log_current` 按用户口径改成 5 条（暗色 / 亮色 + 弥散光晕 + 玻璃质感、设置改版、搜索排序图标、字幕下沉、Android 7.1 及以下更新失败）；提交 `4cf93c6` 推送 `main` 与 tag `26.10.27`；CI「构建发行版并创建 Release」`40449814197` 全部 success，GitHub Release 10 个资产（8 个 APK + `md5sums.txt` + `release-links.txt`，正文 5 条 + MD5 表 + `versionCode` 标记），Gitee 发行版同步出 11 个资产（8 个 APK + `md5sums.txt` + 源码归档 zip/tar.gz）；站点仓库 `bili-terminal-site` 用 `tools/sync-release.py` 重新生成 `data/releases.json` / `index.html` / `changelog.html` 等静态页，提交 `ac21dde` 推送 `main`；构建过程中 `:app:minifyCoexistReleaseWithR8` 因本地 Gradle 构建缓存里的坏产物（`DynamicApi$UpInfo.class` 为 532 字节全零）失败，删坏 class + `:app:clean` + `--no-build-cache --no-configuration-cache` 重建成功 | 部分遗留（**官网静态页仍未更新**：`changelog.html` 仍写「当前最新版 26.10.14」，Netlify 依旧未从 `PurpleEthereality/BiliTerminal-RE_web` 的 `main` 重新部署，需在 Netlify 后台检查站点绑定或手动 Deploy；`/api/release` 运行时接口已返回 26.10.27 + 5 条日志，动态部分正常；站点仓库内容与本地生成结果均已就绪，恢复部署即自动生效。另：发版提交落地时本地 HEAD 已被人为切到 `refactor/layout-as-subpage`（非本代理所为），已用 `git branch -f main 4cf93c6` 把 `main` 快进并推送，该分支未删，等待用户决定） |
+
+| 五十九 | 26.10.30：播放器内切不到 1080P（根因 + 修复） | 根因：播放链路全走 `fnval=1` 合一 MP4（清晰度天花板 720P，`qn=80` 被服务端降级成 `quality=64`），而 `accept_quality` 仍列 1080P → 界面能看到、切了没效果。修复：新增 `player/PlayerStreamPolicy.kt`（`QN_720P=64`、`requiresDash`、`isPlayableDash`、`isRemoteAudioTrack`，纯函数 + 6 例单测）；`api/PlayerApi.java` 新增 `getPlaybackVideo`/`getPlaybackBangumi`/`getBangumiDash`，`applyDashStreams`/`fillQualityLists` 抽出公共解析；`activity/player/PlayerActivity.kt` 新增 `initRemoteAudioTrack`（`MediaPlayer` + `setDataSource(Context, Uri, headers{Referer/UA/Cookie})` + `prepareAsync` 播 DASH 音轨）、`onHighQualityAudioFailed`（音轨失败一次性回退 720P）、`applyAudioSpeed`（`PlaybackParams` 同步倍速，API 23+）、`switchQuality` 拆出唯一落地路径 `applyQuality`；切P与互动跳转也改走 DASH 入口并带上新音轨。文档同步 `architecture-map.md` §7.57、`bilibili-api-notes.md` §3.12、`FEATURES.md`。**模拟器实测又抓出一个真 bug**：切 1080P 后远程音轨报 `INVALID_OPERATION`(-38) 被误判失败、自动踢回 720P——根因是 `progressChange` 对还没 `prepareAsync` 完成的 `MediaPlayer` 调 `seekTo`；修法是新增 `audioTrackPrepared` 守卫，并补 `retryRemoteAudioTrack`（600ms 重试一次）、`audioDriftBaseline`（只纠变大的漂移，不纠固定偏差）、回退时不覆盖清晰度列表（否则 1080P 入口消失） | 部分遗留（`assembleDebug` 双 flavor 通过；`testStandardDebugUnitTest` / `testCoexistDebugUnitTest` 通过，`PlayerStreamPolicyTest` 6 例全绿；**模拟器 emulator-5554 实测**：`play_qn=80` 起播走 `fnval=4048&qn=80`，播放器内切「高清 1080P60」→ `fnval=4048&qn=116` → `在线 DASH 音轨已就绪`（不再 -38），清晰度列表保持 DASH 档可再切回；但模拟器未登录，实际只拿到 DASH 的 720P 视频流，**1080P 画面本体仍需登录/大会员真机复核**；DASH 流地址约 120 分钟过期导致超长视频中途断流未处理；倍速同步在 API < 23 上无 `PlaybackParams`，仍只靠偏差校正） |
+| 六十 | 26.10.30：清晰度按账号权限锁定 + 4K 接入 | 按用户要求把“能不能选”与“能不能播”分开：新增 `player/QualityAccessPolicy.kt`（`maxUnlockedQn`=未登录 720P / 非大会员 1080P / 大会员不限、`isLocked`、`needsLocked4kHint`，9 例单测）与 `util/AccountStateStore.kt`（`x/web-interface/nav` 的 `isLogin`/`vip.status` → SharedPreferences 缓存，`clampQuality` 把超权请求夹到权限内）。播放器清晰度面板：`QualitySelectorAdapter` 支持锁定项（复用 `icon_player_lock`、`alpha=0.55`、点击只提示），未登录锁 1080P 及以上、非大会员锁 1080P60/4K，4K 追加“需开通大会员”提示位（服务端不给无权限账号下发 120）。取流改为**一律先 DASH**（否则 `fnval=1` 会按档位裁剪清单，高档整体消失），请求 `qn` 固定 127（`QN_REQUEST_MAX`，只影响清单宽度）。`SettingQualityActivity` 增加 1080P60/4K 并**按权限隐藏**不可选档位。文档同步 `architecture-map.md` §7.57、`bilibili-api-notes.md` §3.12、`FEATURES.md` | 部分遗留（`assembleDebug` + 两 flavor 单测通过，`QualityAccessPolicyTest` 9 例全绿；**emulator-5554 实测**：匿名面板显示 1080P60/1080P/720P/480P/360P + 锁定「4K 超清」，点锁定项弹对应提示且不切换；设置页仅剩 360P/720P；切 480P 生效（`changeVideoSize video>852x480` + `在线 DASH 音轨已就绪`）。**4K 流本身未验证**：匿名请求 `qn=127&fnval=4048&fourk=1` 的响应只有 `[116,80,64,32,16]`，4K 档由大会员权限决定是否下发，需要大会员账号真机复验） |
 
 ## 5. 仍待回迁 / 仅见于归档的长期结论
 

@@ -1192,7 +1192,7 @@
     <string name="settingtext_settingterminalplayeractivity_002">关</string>
     <string name="settingtext_settingterminalplayeractivity_003">沿用上次</string>
     <string name="settingtext_settingterminalplayeractivity_004">左右滑动控制进度</string>
-    <string name="settingtext_settingterminalplayeractivity_005">在视频区域左右滑动快进/快退（未缩放视频时生效）</string>
+    <string name="settingtext_settingterminalplayeractivity_005">在视频区域左右滑动快进/快退（未缩放视频、未长按加速时生效）</string>
     <string name="settingtext_settingterminalplayeractivity_006">退到后台或熄屏时继续播放，并挂出通知栏遥控</string>
     <string name="settingtext_settingterminalplayeractivity_007">开播时的弹幕开关；「沿用上次」= 上次退出播放器时的实际状态</string>
     <string name="settingtext_settingterminalplayeractivity_008">单集播放结束后循环重播当前视频</string>
@@ -1481,6 +1481,9 @@
     <string name="uitext_favoritefoldereditactivity_001">再次点击删除按钮确认删除</string>
     <string name="uitext_favoritefoldereditactivity_002">保存成功</string>
     <string name="uitext_favoritefoldereditactivity_003">默认收藏夹不能编辑或删除</string>
+    <string name="uitext_favoritefoldereditactivity_004">确定清空这个收藏夹里的失效内容吗？清理后不可恢复。</string>
+    <string name="uitext_favoritefoldereditactivity_005">清理完成</string>
+    <string name="uitext_favoritefoldereditactivity_007">清空</string>
     <string name="uitext_favoritefolderlistactivity_001">无法获取收藏夹信息，请稍后重试</string>
     <string name="uitext_favoritefolderlistactivity_002">收藏</string>
     <string name="uitext_favoritevideolistactivity_001">收藏夹为空</string>
@@ -2061,7 +2064,14 @@
     <string name="hint_activityfavoritefolderedit_03">请输入收藏夹简介（可选）</string>
     <string name="text_activityfavoritefolderedit_04">收藏夹简介</string>
     <string name="text_activityfavoritefolderedit_05">收藏夹名称</string>
-    <string name="text_activityfavoritefolderedit_06">编辑收藏夹</string>
+    <string name="text_activityfavoritefolderedit_06">收藏夹管理</string>
+    <string name="text_activityfavoritefolderedit_10">内容管理</string>
+    <string name="text_activityfavoritefolderedit_11">批量删除内容</string>
+    <string name="text_activityfavoritefolderedit_12">清空失效内容</string>
+    <string name="text_activityfavoritefolderedit_13">危险操作</string>
+    <string name="text_activityfavoritefolderedit_14">默认收藏夹仅支持管理内容，不能改名或删除</string>
+    <string name="text_activityfavoritefolderedit_15">勾选要移除的内容后删除</string>
+    <string name="text_activityfavoritefolderedit_16">清理已失效（被删除或不可见）的收藏</string>
     <string name="text_activityfeedback_01">最近的应用运行日志（已脱敏），便于定位问题</string>
     <string name="text_activityfeedbackdetail_01">补充复现步骤或说明，开发者会看到</string>
     <string name="text_activityimageviewer_01">第0/0张</string>
@@ -2278,6 +2288,11 @@
     <string name="uitext_playeractivity_067">返回主合集</string>
     <string name="uitext_playeractivity_068">合集播放完毕，继续收藏夹</string>
     <string name="uitext_playeractivity_069">分P播放完毕，继续收藏夹</string>
+    <string name="uitext_playeractivity_070">登录后可选择 1080P 及以上的清晰度</string>
+    <string name="uitext_playeractivity_071">开通大会员后可选择 1080P60 帧及以上的清晰度</string>
+    <string name="uitext_playeractivity_072">高清音轨加载失败，已切回 720P</string>
+    <string name="uitext_playeractivity_073">这条视频暂时只能提供 720P</string>
+    <string name="uitext_playeractivity_074">4K 超清需要开通大会员</string>
     <string name="uitext_editprofileactivity_007">图片格式不支持</string>
     <string name="uitext_editprofileactivity_008">图片过大</string>
     <string name="uitext_editprofileactivity_009">请求参数错误</string>
