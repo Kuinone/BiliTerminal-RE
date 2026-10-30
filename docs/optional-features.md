@@ -47,10 +47,10 @@ private/
 
 | 挂点 | 位置 | 公共侧行为 |
 | --- | --- | --- |
-| 菜单项 | `util/MenuConfig.kt` 的 `optionalKeys` + `activity/MenuActivity.kt` 的 companion `init` | 可选 key 为空，菜单仍是原有的 14 项 |
+| 菜单项 | `util/MenuConfig.kt` 的 `OPTIONAL_ITEMS` + `activity/MenuActivity.kt` 的 companion `init` | `OPTIONAL_ITEMS` 为空列表，菜单仍是原有的 14 项 |
 | 菜单设置页 | 复用 `MenuActivity.btnNames`（`SettingMenuActivity` 从这里取显示名） | 无需改动 |
 | 启动页跳转 | `SplashActivity` 从 `btnNames` 取 Class | 无需改动 |
-| 视频详情页动作区 | `fragment_video_info.xml` 的 `@id/video_actions` + `VideoInfoFragment` 里的 `OptionalFeatures.attachVideoShare(...)` | 空操作，按钮不存在 |
+| 视频详情页动作区 | `fragment_video_info.xml` 的 `@id/video_actions` + `VideoInfoFragment` 里的 `OptionalFeatures.attachDetailActionRow(...)` | 空操作，不多出按钮 |
 
 老用户的 `menu_enabled` 里没有可选 key 时，`MenuConfig.loadEnabled` 会走一次迁移把它补进来
 （`resolveEnabledList` 对可选项的处理与固定项一致：缺失即补到末尾）。
