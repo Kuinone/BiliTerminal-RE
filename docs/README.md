@@ -43,6 +43,7 @@
 | 文件 | 内容 | 维护时机 |
 | --- | --- | --- |
 | [`architecture-map.md`](architecture-map.md) | 架构通读：§6 网络层、§7 改前必查的坑（7.1–7.55）、§8 UI 基建与外观、§9 API 层映射（48 个文件）、§10 检查清单 | 改架构 / 基建 / 新增基类时 |
+| [`optional-features.md`](optional-features.md) | 可选私有功能机制：`private/` 目录、AGP 四处注入点、`OptionalFeatures` 反射门面、现有挂点、本地开发与 CI 注入（不写私有功能的实现细节） | 新增/调整「不进公开仓库」的功能、改 `app/build.gradle` 的 `hasPrivateFeature`、动发版注入步骤时 |
 | [`FEATURES.md`](FEATURES.md) | 用户可见功能总表（20 章） | 新增用户可见功能时 |
 | [`bilibili-api-notes.md`](bilibili-api-notes.md) | 接口与风控常识（来源与可信度、速查表、11 条硬约束、值得做/不做） | 核实出新接口结论时 |
 | [`review/fix-progress.md`](review/fix-progress.md) | 活台账：当前状态 + 未完成待办 + 26.10.22 起的快照（更早的 §3.0~§3.51 已归档）+ 历史章节索引 | 修完 bug / 关掉待办 / 每轮真机验证后 |

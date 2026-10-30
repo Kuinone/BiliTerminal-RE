@@ -210,12 +210,42 @@ jobs:
           # 造成的版本错位（P1-1 的另一半）。
           ref: ${{ needs.verify-version.outputs.checkout_ref }}
 
+      # ── 可选私有功能源码注入 ────────────────────────────────────────────────
+      # 扫码 / 视频二维码这类功能**不在本仓库**：源码在私有仓库，构建时才检出到根目录 private/
+      # （private/ 已 gitignore）。app/build.gradle 检测到 private/src/main/java 才把
+      # java/res/manifest/R8 规则挂进构建；目录不存在就是公开版，行为与从前完全一致。
+      #
+      #   Secrets.PRIVATE_FEATURE_REPO  —— 私有仓库 owner/repo
+      #   Secrets.PRIVATE_FEATURE_TOKEN —— 只读该私有仓库的 PAT（fine-grained，Contents: Read）
+      #
+      # 没配这两个 Secret 也能正常发版（发的是公开版）；PR 构建永远拿不到 Secrets，
+      # 必然是公开版。机制说明见 docs/optional-features.md。
+      - name: 注入可选私有功能源码（未配置则跳过）
+        env:
+          PRIVATE_FEATURE_REPO: ${{ secrets.PRIVATE_FEATURE_REPO }}
+          PRIVATE_FEATURE_TOKEN: ${{ secrets.PRIVATE_FEATURE_TOKEN }}
+        run: |
+          if [ -z "$PRIVATE_FEATURE_REPO" ] || [ -z "$PRIVATE_FEATURE_TOKEN" ]; then
+            echo "::notice::未配置 Secrets.PRIVATE_FEATURE_REPO / PRIVATE_FEATURE_TOKEN，按公开版构建（不含私有功能）"
+            exit 0
+          fi
+          rm -rf private
+          git clone --depth 1 \
+            "https://x-access-token:${PRIVATE_FEATURE_TOKEN}@github.com/${PRIVATE_FEATURE_REPO}.git" private
+          # token 不能留在 .git/config 里（下一步会打包 workspace，artifact 里不该有凭据）
+          rm -rf private/.git
+          if [ ! -d private/src/main/java ]; then
+            echo "::error::私有仓库里没有 src/main/java，private/ 结构不对"
+            exit 1
+          fi
+          echo "私有功能源码已注入："
+          find private -maxdepth 2 -type d | sort
+
       - name: 安装 JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
-
       - name: 配置 Android SDK
         uses: android-actions/setup-android@v3
         with:

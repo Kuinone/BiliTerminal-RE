@@ -16,6 +16,7 @@
 | --- | --- |
 | 写界面 / 列表 / 菜单 / 设置 / 弹窗 / 文案 | `docs/agents/dev-conventions.md` |
 | 动清单、网络域名、备份、调试入口 | `docs/agents/security.md` |
+| 加/改「不进公开仓库」的功能（`private/`、`OptionalFeatures` 门面、发版注入） | `docs/optional-features.md` |
 | 构建 / 单测 / 装包 / 遇到构建怪错误 | `docs/agents/build.md` |
 | 发版 / 更新日志 / Release 说明 | `docs/agents/release.md` |
 | 准备提交、准备说"应该没问题" | `docs/agents/workflow.md` |

@@ -9,6 +9,7 @@
     4. 安装到真机（Debug / Release × 普通版 / 共存版）
     5. 安装到模拟器（Debug / Release × 普通版 / 共存版）
     6. 修改版本号 / 版本名（写 app/build.gradle，可顺带同步 strings.xml 的更新日志锚点）
+    7. 同步私有功能源码（从 GitHub 私有仓库拉取到 private/，见 docs/optional-features.md）
 
 设计要点：
     * 只用 Python 标准库，不引入第三方依赖（仓库约定「不轻易引入新第三方库」）。
@@ -23,6 +24,10 @@
     * 改 versionName 只动 `app/build.gradle` 那一行；`strings.xml` 里的
       「【YY.MM.DD 本次更新】」锚点不会自动跟着改（会询问），不同步的话
       `verifyVersionConsistency` 在 check / CI 上会失败，assemble 不受影响。
+    * 私有功能（扫码 / 分享二维码等）的源码放在独立的 GitHub **私有**仓库，
+      构建前同步到 `private/`（整目录被 .gitignore 忽略）。同步走 `git clone --depth 1`，
+      仓库配置读环境变量或 local.properties 里的 PRIVATE_FEATURE_REPO / PRIVATE_FEATURE_TOKEN /
+      PRIVATE_FEATURE_BRANCH；没同步时构建出来的就是公开版（不含私有功能），与 CI 的降级行为一致。
 
 用法：
     python build_tui.py                  # 交互式 TUI（终端不支持时自动降级为行式菜单）
@@ -34,6 +39,8 @@
     python build_tui.py --build-all      # 一次构建全部四个变体
     python build_tui.py --install --target emulator --type debug --flavor standard
     python build_tui.py --version-name 26.10.20 --version-code 2610200 --sync-anchor
+    python build_tui.py --sync-private   # 从私有仓库同步 private/（先配 --private-repo）
+    python build_tui.py --private-repo owner/repo --private-token XXX   # 写入 local.properties
     python build_tui.py --dry-run ...    # 只打印将执行的命令，不真正执行
 
 注意：TUI 用 ANSI 转义序列 + Windows 控制台 VT 模式实现，Windows 10 及以上、以及
@@ -64,6 +71,15 @@ APK_ROOT = ROOT / "app" / "build" / "outputs" / "apk"
 
 APP_ID = "com.RobinNotBad.BiliClient"
 TITLE = "RE:哔哩终端 · 构建与安装"
+
+# 私有功能源码：不在公开仓库里，构建前从独立的 GitHub 私有仓库同步到这个目录。
+# 配置键与 CI（.github/workflows/build-release.yml）保持一致，本机优先读环境变量、其次 local.properties。
+PRIVATE_DIR = ROOT / "private"
+PRIVATE_SRC = PRIVATE_DIR / "src" / "main" / "java"
+LOCAL_PROPS = ROOT / "local.properties"
+PRIVATE_REPO_KEY = "PRIVATE_FEATURE_REPO"
+PRIVATE_TOKEN_KEY = "PRIVATE_FEATURE_TOKEN"
+PRIVATE_BRANCH_KEY = "PRIVATE_FEATURE_BRANCH"
 
 FLAVORS = ("standard", "coexist")
 TYPES = ("debug", "release")
@@ -429,11 +445,14 @@ def newest_input_mtime():
         return cached_value
 
     newest = 0.0
-    for path in (ROOT / "app" / "src", ROOT / "app" / "libs"):
+    # PRIVATE_DIR 也算输入：同步了私有源码之后，旧 APK 就过期了
+    for path in (ROOT / "app" / "src", ROOT / "app" / "libs", PRIVATE_DIR):
         if not path.is_dir():
             continue
         for item in path.rglob("*"):
             try:
+                if ".git" in item.parts:
+                    continue
                 if item.is_file():
                     newest = max(newest, item.stat().st_mtime)
             except OSError:
@@ -471,6 +490,241 @@ def has_release_signing():
     except OSError:
         return False
     return "KEY_PATH" in text and "KEY_PASSWORD" in text
+
+
+# ---------------------------------------------------------------------------
+# 私有功能源码（GitHub 私有仓库 → private/）
+# ---------------------------------------------------------------------------
+
+
+def read_local_props():
+    """把 local.properties 读成 dict（文件不存在 / 读不了就返回空 dict）。"""
+    if not LOCAL_PROPS.is_file():
+        return {}
+    try:
+        text = LOCAL_PROPS.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return {}
+    props = {}
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        props[key.strip()] = value.strip()
+    return props
+
+
+def write_local_props(key, value):
+    """在 local.properties 里写入 / 更新一行 KEY=VALUE，保留其余内容与原有行尾风格。"""
+    try:
+        text = (
+            LOCAL_PROPS.read_text(encoding="utf-8", errors="replace")
+            if LOCAL_PROPS.is_file()
+            else ""
+        )
+    except OSError:
+        text = ""
+    newline = "\r\n" if "\r\n" in text else "\n"
+    pattern = re.compile(r"(?m)^[ \t]*" + re.escape(key) + r"[ \t]*=.*$")
+    line = f"{key}={value}"
+    if pattern.search(text):
+        text = pattern.sub(lambda _match: line, text, count=1)
+    else:
+        if text and not text.endswith(("\n", "\r")):
+            text += newline
+        text += line + newline
+    LOCAL_PROPS.write_text(text, encoding="utf-8")
+
+
+def private_setting(key):
+    """取私有仓库配置：环境变量优先，其次 local.properties（都和 CI 的命名一致）。"""
+    value = os.environ.get(key, "").strip()
+    if value:
+        return value
+    return read_local_props().get(key, "").strip()
+
+
+def private_present():
+    """private/ 里是否已有可编译的私有源码（与 app/build.gradle 的 hasPrivateFeature 同一判据）。"""
+    return PRIVATE_SRC.is_dir()
+
+
+def private_hint():
+    """TUI 菜单里那列简短的私有功能状态。"""
+    return "已就位" if private_present() else "未获取"
+
+
+def private_note():
+    """构建横幅上的私有功能状态：让人一眼知道这个包带不带私有功能。"""
+    if private_present():
+        return "私有功能：已注入 private/（按私有仓库的内容构建）"
+    return "私有功能：未获取（本次构建不含私有功能，等同公开版）"
+
+
+def _mask_url(text):
+    """把 URL 里 `://…@` 那一段的凭据抹成 ***，日志与报错都不许把 token 带出去。"""
+    return re.sub(r"(://)[^@/\s]*@", r"\1***@", text)
+
+
+def _normalize_repo(repo):
+    """允许 owner/repo、https://github.com/owner/repo(.git)、git@github.com:owner/repo 几种写法。"""
+    repo = (repo or "").strip()
+    for prefix in ("https://github.com/", "http://github.com/", "git@github.com:"):
+        if repo.startswith(prefix):
+            repo = repo[len(prefix) :]
+    if repo.endswith(".git"):
+        repo = repo[: -len(".git")]
+    return repo.strip("/ ")
+
+
+def _private_clone_url(repo, token):
+    """拼 clone 地址；有 token 用 x-access-token（细粒度 PAT，Contents: Read 即可）。"""
+    if token:
+        return f"https://x-access-token:{token}@github.com/{repo}.git"
+    return f"https://github.com/{repo}.git"
+
+
+def sync_private_feature(dry_run=False, force=False):
+    """把私有功能源码从 GitHub 私有仓库同步到 private/。返回 (是否成功, 说明)。
+
+    做法与 CI 的注入步骤一致：浅克隆到一个临时目录，再整体替换 private/。
+    **带了 token 才删 .git**（凭据不能留在磁盘上，CI 就是这种情况）；本机靠凭据管理器
+    鉴权时不带 token，于是 private/ 保持是一个能继续 commit / push 的仓库。
+    已存在且没有 force 时**不动**它——本地手改的私有源码不该被静默覆盖。
+    """
+    raw_repo = private_setting(PRIVATE_REPO_KEY)
+    if not raw_repo:
+        return False, (
+            "还没有配置私有仓库：在 local.properties 里写 "
+            f"{PRIVATE_REPO_KEY}=<owner/repo>（或设同名环境变量），再回来同步。"
+        )
+    repo = _normalize_repo(raw_repo)
+    if "/" not in repo:
+        return False, f"私有仓库名不像 owner/repo：{raw_repo}"
+
+    token = private_setting(PRIVATE_TOKEN_KEY)
+    branch = private_setting(PRIVATE_BRANCH_KEY)
+    url = _private_clone_url(repo, token)
+
+    if PRIVATE_DIR.exists() and not force:
+        return False, (
+            "private/ 已存在，没有覆盖它。要按私有仓库的最新内容重建，"
+            "加 --private-force（TUI 里会先问一句）。"
+        )
+
+    if shutil.which("git") is None:
+        return False, "找不到 git 命令：先安装 Git，或把它加进 PATH。"
+
+    tmp_dir = PRIVATE_DIR.with_name("private.tmp")
+    cmd = ["git", "clone", "--depth", "1"]
+    if branch:
+        cmd += ["--branch", branch]
+    cmd += [url, str(tmp_dir)]
+
+    print()
+    print(paint(f"$ {_mask_url(' '.join(cmd))}", C.BOLD, C.BLUE))
+    sys.stdout.flush()
+    if dry_run:
+        print(paint("[dry-run] 未真正拉取", C.DIM))
+        return True, "[dry-run] 将把私有仓库拉取到 private/"
+
+    def _remove(path):
+        if path.exists():
+            shutil.rmtree(path, ignore_errors=True)
+
+    _remove(tmp_dir)
+    try:
+        result = subprocess.run(
+            cmd,
+            cwd=str(ROOT),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            errors="replace",
+        )
+    except OSError as exc:
+        _remove(tmp_dir)
+        return False, f"启动 git 失败：{_mask_url(str(exc))}"
+    output = (result.stdout or "").strip()
+    if result.returncode != 0:
+        _remove(tmp_dir)
+        detail = _mask_url(truncate(output, 200)) if output else f"git 退出码 {result.returncode}"
+        return False, f"拉取失败：{detail}"
+    if not (tmp_dir / "src" / "main" / "java").is_dir():
+        _remove(tmp_dir)
+        return False, (
+            "拉下来的仓库里没有 src/main/java，目录结构不对："
+            "私有仓库根目录应当就是 private/ 的内容（manifest/ · src/ · res/ · keep.pro）。"
+        )
+    if token:
+        # 带 token 的克隆：删掉 .git，别把凭据留在 .git/config 里
+        shutil.rmtree(tmp_dir / ".git", ignore_errors=True)
+    _remove(PRIVATE_DIR)
+    try:
+        os.replace(tmp_dir, PRIVATE_DIR)
+    except OSError:
+        # 跨盘 / 被占用时 os.replace 换不动目录，退回 shutil.move
+        shutil.move(str(tmp_dir), str(PRIVATE_DIR))
+    tail = "已删除 .git（凭据不留在磁盘上）" if token else "保留了 .git，可在 private/ 里继续 commit / push"
+    return True, f"私有源码已同步到 private/（{repo}，{tail}）"
+
+
+def save_private_settings(args):
+    """把 --private-repo / --private-token / --private-branch 写进 local.properties。返回写入的键名列表。"""
+    saved = []
+    if args.private_repo is not None:
+        repo = _normalize_repo(args.private_repo)
+        if repo:
+            write_local_props(PRIVATE_REPO_KEY, repo)
+            saved.append(PRIVATE_REPO_KEY)
+    if args.private_token is not None:
+        write_local_props(PRIVATE_TOKEN_KEY, args.private_token.strip())
+        saved.append(PRIVATE_TOKEN_KEY)
+    if args.private_branch is not None:
+        write_local_props(PRIVATE_BRANCH_KEY, args.private_branch.strip())
+        saved.append(PRIVATE_BRANCH_KEY)
+    return saved
+
+
+def sync_private_feature_interactive(dry_run=False):
+    """交互式同步：缺配置时就地问，并写进 local.properties（token 只报键名，不回显）。"""
+    repo = private_setting(PRIVATE_REPO_KEY)
+    if not repo:
+        print(paint("私有功能源码不在公开仓库里，需要从 GitHub 私有仓库拉取。", C.DIM))
+        print(paint("私有仓库根目录应当就是 private/ 的内容（manifest/ · src/ · res/ · keep.pro）。", C.DIM))
+        try:
+            repo = input("私有仓库 (owner/repo，直接回车取消)> ").strip()
+        except EOFError:
+            repo = ""
+        if not repo:
+            return False, "已取消"
+        write_local_props(PRIVATE_REPO_KEY, _normalize_repo(repo))
+        print(paint(f"  已写入 local.properties：{PRIVATE_REPO_KEY}={_normalize_repo(repo)}", C.GREEN))
+    if not private_setting(PRIVATE_TOKEN_KEY):
+        print(paint("私有仓库需要一个只读 token（细粒度 PAT，Contents: Read）；公开仓库可留空。", C.DIM))
+        try:
+            token = input("Token（回车跳过）> ").strip()
+        except EOFError:
+            token = ""
+        if token:
+            write_local_props(PRIVATE_TOKEN_KEY, token)
+            print(paint(f"  已写入 local.properties：{PRIVATE_TOKEN_KEY}=***", C.GREEN))
+    branch = private_setting(PRIVATE_BRANCH_KEY)
+    if branch:
+        print(paint(f"  分支：{branch}", C.DIM))
+    else:
+        print(paint("  分支：默认分支（想固定分支就配 PRIVATE_FEATURE_BRANCH）", C.DIM))
+    force = False
+    if private_present():
+        try:
+            answer = input("private/ 已存在，按私有仓库最新内容覆盖？(y/N)> ").strip().lower()
+        except EOFError:
+            answer = ""
+        force = answer in ("y", "yes")
+        if not force:
+            return False, "保留现有 private/，未同步"
+    return sync_private_feature(dry_run, force=force)
 
 
 # ---------------------------------------------------------------------------
@@ -1122,6 +1376,7 @@ def execute_build(build_type, flavor, dry_run=False):
     note = version_note()
     if note:
         print(f"  {note}")
+    print(f"  {private_note()}")
     if build_type == "release" and not has_release_signing():
         print(
             paint(
@@ -1147,6 +1402,7 @@ def execute_build_all(dry_run=False):
     note = version_note()
     if note:
         print(f"  {note}")
+    print(f"  {private_note()}")
     for task in tasks:
         print(f"  {task}")
     if not has_release_signing():
@@ -1351,6 +1607,12 @@ def make_items(state):
             hint=f"改 build.gradle：{state.version_hint()}",
         ),
         Item(
+            "sync_private",
+            "同步私有功能源码",
+            hotkey="p",
+            hint=f"GitHub 私有仓库 → private/：{private_hint()}",
+        ),
+        Item(
             "install_device",
             "安装到真机",
             hotkey="3",
@@ -1479,7 +1741,7 @@ def build_frame(state, width):
     lines.append("│ " + row(status_segs, inner) + " │")
     lines.append(
         "│ "
-        + row([(" ↑↓ 选择   ←→ 切换   Enter 执行   1-4 直达   A 全构建   V 版本   R 刷新   C 连模拟器   Q 退出", C.DIM)], inner)
+        + row([(" ↑↓ 选择   ←→ 切换   Enter 执行   1-4 直达   A 全构建   V 版本   P 私有源码   R 刷新   C 连模拟器   Q 退出", C.DIM)], inner)
         + " │"
     )
     lines.append("└" + "─" * (w - 2) + "┘")
@@ -1597,6 +1859,8 @@ class TuiApp:
             self.run_build_all()
         elif item.key == "edit_version":
             self.run_edit_version()
+        elif item.key == "sync_private":
+            self.run_sync_private()
         elif item.key == "install_device":
             self.run_install("device")
         elif item.key == "install_emulator":
@@ -1668,6 +1932,18 @@ class TuiApp:
         self.term.enter()
         load_version(state)
         self.refresh(quiet=True)
+        state.set_status(message, "ok" if ok else "err")
+
+    def run_sync_private(self):
+        state = self.state
+        self.term.leave()
+        try:
+            ok, message = sync_private_feature_interactive(self.dry_run)
+        except Exception as exc:  # noqa: BLE001 - 拉取失败只提示，不能让 TUI 崩
+            ok, message = False, f"同步私有源码失败：{exc}"
+        finally:
+            self.term.wait_return()
+            self.term.enter()
         state.set_status(message, "ok" if ok else "err")
 
     def run_install(self, target_kind):
@@ -1771,10 +2047,11 @@ def run_line_mode(state, dry_run=False):
             )
         else:
             print(paint(" 设备：未检测到设备", C.DIM))
+        print(f" 私有功能源码：{private_hint()}")
         print()
         print("  [1] 构建 Debug            [2] 构建 Release")
         print("  [a] 构建全部（两渠道 × 两类型）")
-        print("  [v] 修改版本号 / 版本名")
+        print("  [v] 修改版本号 / 版本名   [p] 同步私有功能源码")
         print("  [3] 安装到真机            [4] 安装到模拟器")
         print("  [t] 切换构建类型          [f] 切换发行渠道")
         print("  [c] 连接模拟器            [d] 刷新设备    [0] 退出")
@@ -1828,6 +2105,13 @@ def run_line_mode(state, dry_run=False):
         if raw == "v":
             prompt_version_edit(TERM, dry_run)
             load_version(state)
+            continue
+        if raw == "p":
+            try:
+                ok, message = sync_private_feature_interactive(dry_run)
+            except Exception as exc:  # noqa: BLE001 - 拉取失败只提示
+                ok, message = False, f"同步私有源码失败：{exc}"
+            print(paint(f"  {message}", C.GREEN if ok else C.RED))
             continue
         if raw in ("3", "4"):
             target_kind = "device" if raw == "3" else "emulator"
@@ -1993,6 +2277,36 @@ def cmd_install(args):
     return 0 if ok else 1
 
 
+def cmd_sync_private(args):
+    """非交互同步私有功能源码：先把 --private-* 落进 local.properties，再拉取。"""
+    try:
+        saved = save_private_settings(args)
+    except OSError as exc:
+        print(paint(f"[错误] 写 {rel(LOCAL_PROPS)} 失败：{exc}", C.RED))
+        return 2
+    if saved:
+        print(paint(f"  已写入 {rel(LOCAL_PROPS)}：{'、'.join(saved)}", C.DIM))
+    if not args.sync_private:
+        # 只给了 --private-repo / --private-token：写配置就结束，不拉代码
+        print(paint("  配置已保存。要立刻拉取私有源码，加 --sync-private。", C.DIM))
+        return 0
+    if not private_setting(PRIVATE_REPO_KEY):
+        print(
+            paint(
+                f"[错误] 还没有配置私有仓库：加 --private-repo <owner/repo>，"
+                f"或在环境变量 / local.properties 里设 {PRIVATE_REPO_KEY}。",
+                C.RED,
+            )
+        )
+        return 2
+    try:
+        ok, message = sync_private_feature(args.dry_run, force=args.private_force)
+    except Exception as exc:  # noqa: BLE001 - 把意外统一成一句可读错误
+        ok, message = False, f"同步私有源码失败：{exc}"
+    print(paint(("  " if ok else "[错误] ") + message, C.GREEN if ok else C.RED))
+    return 0 if ok else 1
+
+
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(
         prog="build_tui.py",
@@ -2007,6 +2321,7 @@ def parse_args(argv=None):
             "  python build_tui.py --install --target emulator --type debug --flavor standard\n"
             "  python build_tui.py --list-version\n"
             "  python build_tui.py --version-name 26.10.20 --version-code 2610200 --sync-anchor\n"
+            "  python build_tui.py --sync-private --private-repo owner/repo --private-token XXX\n"
         ),
     )
     parser.add_argument("--build", action="store_true", help="非交互：构建一次")
@@ -2050,6 +2365,33 @@ def parse_args(argv=None):
         "（verifyVersionConsistency 要求，不同步则 check / CI 失败）",
     )
     parser.add_argument("--no-tui", action="store_true", help="强制使用行式菜单（不用全屏 TUI）")
+    parser.add_argument(
+        "--sync-private",
+        action="store_true",
+        help="非交互：从 GitHub 私有仓库同步私有功能源码到 private/（构建前会提示状态）",
+    )
+    parser.add_argument(
+        "--private-repo",
+        default=None,
+        help="私有仓库 owner/repo（写入 local.properties 的 " + PRIVATE_REPO_KEY + "）",
+    )
+    parser.add_argument(
+        "--private-token",
+        default=None,
+        help="访问私有仓库的只读 token（写入 local.properties 的 "
+        + PRIVATE_TOKEN_KEY
+        + "，不会回显）",
+    )
+    parser.add_argument(
+        "--private-branch",
+        default=None,
+        help="私有仓库分支（写入 local.properties 的 " + PRIVATE_BRANCH_KEY + "，默认分支可留空）",
+    )
+    parser.add_argument(
+        "--private-force",
+        action="store_true",
+        help="private/ 已存在时也强制用私有仓库的最新内容覆盖",
+    )
     parser.add_argument("--dry-run", action="store_true", help="只打印将执行的命令，不真正执行")
     return parser.parse_args(argv)
 
@@ -2076,6 +2418,10 @@ def main(argv=None):
             # 只改版本就到此为止；带构建 / 安装参数则继续往下走
             if not (args.build or args.build_all or args.install):
                 return 0
+        if args.sync_private or args.private_repo is not None or args.private_token is not None:
+            code = cmd_sync_private(args)
+            if code != 0 or not (args.build or args.build_all or args.install):
+                return code
         if args.connect:
             connect_emulators()
             devices = list_devices(auto_connect=False)

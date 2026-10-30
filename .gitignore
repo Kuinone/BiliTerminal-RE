@@ -1,4 +1,4 @@
-﻿*.iml
+*.iml
 .gradle
 /.idea/*
 .DS_Store
@@ -92,3 +92,10 @@ bin/
 # 这是对外宣传素材的本地产物，不是客户端代码；zip 一入库就永久膨胀。
 # 与 outputs/ 同理，用护栏忽略，防止一次 `git add -A` 就带进去。
 /promo/
+
+# 可选私有功能源码（private/）：不进公开仓库的「扫码 / 视频二维码」等功能的实现，
+# 只在本机或 CI 注入后参与构建（app/build.gradle 检测到 private/src/main/java 才挂源集）。
+# 源码本体放在**私有仓库**，本地/发版时 checkout 到这里的 private/ 下。
+# 公共仓库里只有 util/OptionalFeatures 这个反射门面和几处条件注册，看不到实现。
+# 同理用护栏忽略，防止一次 `git add -A` 把私有源码推上 GitHub。
+/private/

@@ -5,6 +5,17 @@ plugins {
 
 int betaVer = 0
 
+// ── 可选私有功能源码（不入库）──────────────────────────────────────────────
+// 私有功能的源码/资源/清单放在仓库根目录的 private/ 下，已被 .gitignore 排除，永不进公开仓库。
+// 公共仓库里的挂点只有 util/OptionalFeatures（反射门面）和几处条件注册，不含任何实现。
+//   private/src/main/java/...  → 并进主源集
+//   private/res/...            → 并进资源
+//   private/manifest/…         → 并进合并清单（CAMERA 权限、两个 Activity 都在这里声明）
+//   private/keep.pro           → release 的 R8 保留规则（私有类只被反射引用，必须 keep）
+// 目录不存在时（公开 CI、PR 构建、其他开发者）以上全部跳过，工程照常编过、功能不存在。
+def privateFeatureRoot = project.rootProject.file('private')
+def hasPrivateFeature = new File(privateFeatureRoot, 'src/main/java').exists()
+
 android {
 
     namespace 'com.RobinNotBad.BiliClient'
@@ -13,6 +24,10 @@ android {
     sourceSets {
         main{
             jniLibs.srcDirs = ['libs']
+            if (hasPrivateFeature) {
+                java.srcDirs += new File(privateFeatureRoot, 'src/main/java')
+                res.srcDirs += new File(privateFeatureRoot, 'res')
+            }
         }
     }
 
@@ -81,6 +96,9 @@ android {
             shrinkResources true
             minifyEnabled true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            if (hasPrivateFeature) {
+                proguardFile new File(privateFeatureRoot, 'keep.pro')
+            }
             def localProps = project.rootProject.file("local.properties")
             if (localProps.exists()) {
                 Properties pro = new Properties()
@@ -165,6 +183,17 @@ android {
             reset()
             include 'armeabi-v7a', 'arm64-v8a', 'x86'
             universalApk true
+        }
+    }
+}
+
+// 私有清单（CAMERA 权限 + 两个 Activity）用 variant 的清单源目录并进合并清单。
+// 这是 AGP 8 的标准入口：等价于给每个变体多挂一个 src/<buildType>/AndroidManifest.xml。
+androidComponents {
+    onVariants(selector().all()) { variant ->
+        if (hasPrivateFeature) {
+            variant.sources.manifests?.addStaticManifestFile(
+                    new File(privateFeatureRoot, 'manifest/AndroidManifest.xml').absolutePath)
         }
     }
 }

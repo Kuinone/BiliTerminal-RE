@@ -20,6 +20,7 @@
 
 - **交互式构建 / 装包用 `build_tui.py`**（26.10.20 起，纯标准库、无第三方依赖）：`python build_tui.py` 进全屏 TUI —— 首两行切换「构建类型（Debug/Release）」与「发行渠道（普通版/共存版）」，下面是「构建 Debug / 构建 Release / **构建全部**（两渠道 × 两类型，4 个包一次出，带 `--continue` 所以某个变体失败其余照跑）/ **版本号 / 版本名**（`V`，直接改 `app/build.gradle` 的 `versionCode` / `versionName`，改完会询问是否同步改 `strings.xml` 的「【YY.MM.DD 本次更新】」锚点——不同步则 `check` / CI 的 `verifyVersionConsistency` 会失败，`assemble` 不受影响）/ 安装到真机 / 安装到模拟器」，安装时按设备 `ro.product.cpu.abi` 自动挑 ABI 分包（没有对应分包退通用包），包比源码旧会先自动构建。`↑↓` 选择、`←→` 切换、`Enter` 执行、`1-4` 直达、`A` 全构建、`V` 改版本、`R` 刷新设备、`C` 连接模拟器、`Q` 退出。
 - 非 TTY 环境（CI / 管道）自动降级为行式菜单；也可走参数：`--connect` / `--list-devices` / `--list-apks` / `--list-version` / `--build --type release --flavor coexist` / `--build-all`（四变体一次构建）/ `--install --target emulator` / `--version-name 26.10.20 --version-code 2610200 [--sync-anchor]`（可与 `--build` / `--build-all` 连用，先改版本再构建）/ `--dry-run`（只打印命令，ABI 也真读）。
+- **私有功能源码同步**：`P`（行式菜单 `[p]`）或 `--sync-private` 把 GitHub 私有仓库拉到 `private/`，机制与配置键见 `docs/optional-features.md`（`--private-repo` / `--private-token` / `--private-branch` 写进 `local.properties`，`--private-force` 覆盖已有目录）。菜单与构建横幅会显示 `私有功能：已就位 / 未获取`，未获取时构建出的就是公开版；`private/` 也算构建输入，同步完再构建不会误判「包是新的」。
 - **调用的就是上面那几条 Gradle 任务**，所以任务名变化时要同步改脚本里的 `task_name()`。adb 从 PATH / `ANDROID_HOME` / `local.properties` 的 `sdk.dir` 里找。改版本只动 `build.gradle` 那一行、按原样保留换行（CRLF / LF 都行，写后回读校验）。
 
 ## 模拟器与 adb
