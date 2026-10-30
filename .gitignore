@@ -1,4 +1,4 @@
-*.iml
+﻿*.iml
 .gradle
 /.idea/*
 .DS_Store
@@ -81,3 +81,8 @@ docs/superpowers/specs/2026-10-14-console-v2-design.md
 # 结论已按「一份知识一个落点」摘进 docs/bilibili-api-notes.md 与 docs/FEATURES.md §8.5，
 # 本目录只作可复现的证据来源，**不入库**（体积过大且属第三方 APK）。
 /biliapp/
+
+# Java 语言服务器（vscode-java / JDT）会在模块根下建 bin/ 放 .class，
+# 那是 IDE 的编译产物，不是源码，也不该进版本库。
+# 只匹配模块根下的 bin/（`/**/bin/` 会误伤其它路径）。
+bin/

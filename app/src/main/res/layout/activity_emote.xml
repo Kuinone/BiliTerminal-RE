@@ -49,7 +49,7 @@
         app:tabIndicatorFullWidth="false"
         app:tabMode="scrollable" />
 
-    <androidx.viewpager.widget.ViewPager
+    <com.RobinNotBad.BiliClient.ui.widget.SafeViewPager
         android:id="@+id/viewPager"
         android:layout_width="0dp"
         android:layout_height="0dp"

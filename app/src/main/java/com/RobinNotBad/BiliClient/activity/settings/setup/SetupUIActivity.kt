@@ -10,6 +10,7 @@ import com.RobinNotBad.BiliClient.activity.settings.UIPreviewActivity
 import com.RobinNotBad.BiliClient.util.Logu
 import com.RobinNotBad.BiliClient.util.MsgUtil
 import com.RobinNotBad.BiliClient.util.SharedPreferencesUtil
+import com.RobinNotBad.BiliClient.util.UiScaleInput
 import com.google.android.material.switchmaterial.SwitchMaterial
 
 class SetupUIActivity : BaseActivity() {
@@ -75,23 +76,22 @@ class SetupUIActivity : BaseActivity() {
     }
 
     private fun save() {
-        if (uiScaleInput.text.toString().isNotEmpty()) {
-            val dpiTimes = uiScaleInput.text.toString().toFloat()
-            if (dpiTimes >= 0.1F && dpiTimes <= 10.0F)
-                SharedPreferencesUtil.putFloat("dpi", dpiTimes)
-            Logu.i("dpi", uiScaleInput.text.toString())
+        // 三个框都可能装着非数字内容（粘贴 / IME 直接提交都能绕过 inputType），
+        // 解析与范围校验统一走 UiScaleInput：非法就跳过写盘，页面照常关。
+        // 旧代码直接 toFloat()/toInt()，线上因此崩过两次（"界面大小" / "确认设置"）。
+        UiScaleInput.parseDpi(uiScaleInput.text)?.let { dpiTimes ->
+            SharedPreferencesUtil.putFloat("dpi", dpiTimes)
+            Logu.i("dpi", dpiTimes.toString())
         }
 
-        if (uiPaddingH.text.toString().isNotEmpty()) {
-            val paddingH = uiPaddingH.text.toString().toInt()
-            if (paddingH <= 30) SharedPreferencesUtil.putInt("paddingH_percent", paddingH)
-            Logu.i("paddingH", uiPaddingH.text.toString())
+        UiScaleInput.parsePadding(uiPaddingH.text)?.let { paddingH ->
+            SharedPreferencesUtil.putInt("paddingH_percent", paddingH)
+            Logu.i("paddingH", paddingH.toString())
         }
 
-        if (uiPaddingV.text.toString().isNotEmpty()) {
-            val paddingV = uiPaddingV.text.toString().toInt()
-            if (paddingV <= 30) SharedPreferencesUtil.putInt("paddingV_percent", paddingV)
-            Logu.i("paddingV", uiPaddingV.text.toString())
+        UiScaleInput.parsePadding(uiPaddingV.text)?.let { paddingV ->
+            SharedPreferencesUtil.putInt("paddingV_percent", paddingV)
+            Logu.i("paddingV", paddingV.toString())
         }
     }
 }

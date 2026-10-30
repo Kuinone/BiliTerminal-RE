@@ -25,7 +25,7 @@
 - **依赖仓库**：`settings.gradle` 已把 aliyun 的 `google` / `public` / `gradle-plugin` 三个镜像前置，`google()`/`mavenCentral()`/jitpack 仅作兜底。
 - **改了 `res/` 文件集合时**：`:app:clean` 与后续命令**必须分两次 Gradle 调用**，且带 `--no-build-cache --no-configuration-cache`，否则会回放陈旧资源（症状是 `Unresolved reference 'R.layout.xxx'`）。
 - **版本一致性**：`:app:verifyVersionConsistency` 以 `strings.xml` 的 `update_log_current` 为锚点校验版本一致性；发版说明也由 CI 从它抽取（抽不到直接拒绝发版）。
-- **单测（26.10.30 实测，`testStandardDebugUnitTest`）**：**99 suites / 1045 tests**，两个 flavor 完全相同（同源码），0 失败 0 错误 0 跳过。计数方式：`app/src/test/` 下 `*Test.kt|java` 计源文件（另有共享假实现 `util/FakeSharedPreferences.kt`，26.10.30 计得 98 个），`app/build/test-results/testStandardDebugUnitTest/TEST-*.xml` 的 `tests=` 求和。用例数一律以机器产出为准，队友口述数字不进入文档。
+- **单测（26.10.30 修完理由表缓存串味后实测，`testStandardDebugUnitTest`）**：**104 suites / 1112 tests**，两个 flavor 完全相同（同源码），0 失败 0 错误 0 跳过。计数方式：`app/src/test/` 下 `*Test.kt|java` 计源文件（另有共享假实现 `util/FakeSharedPreferences.kt`，合并后计得 104 个），`app/build/test-results/testStandardDebugUnitTest/TEST-*.xml` 的 `tests=` 求和。用例数一律以机器产出为准，队友口述数字不进入文档。
 - **26.10.10 那一轮的构建记录（历史，留作「改 minSdk / 重跑 release 链路」时的验证口径）**：`minSdk 24 → 19` 全部改动（含 jsoup 1.16.1、7 个 `res/drawable-v21` 资源）落盘后，按「`clean` → `assembleRelease` → `lintRelease` → 单测」四步跑完（均带 `--no-configuration-cache`，`clean` 与 `assemble` 分两次调用），四步全 `BUILD SUCCESSFUL`（37s / 2m13s / 1m25s / 39s）。当时单测汇总 **49 suites / 460 tests / 0 failures**（任务名当时还是 `testDebugUnitTest`，现已带 flavor 前缀），最新 XML 时间 `2026-10-09T22:59:04`（晚于当轮 APK 出包时间 22:56:58，覆盖了当轮全部源码改动）。`:app:lintRelease` 的 **`NewApi` 从 22 条降到 2 条**，且这 2 条就是 `PlayerActivity.kt:1981` 的已知假阳性。发版前仍建议再跑一次确认。
 - **「自动跳过片头片尾」已恢复上线（26.10.22）**：26.10.10 的紧急撤回**已解除**，`SkipOpEdPrefs.FEATURE_ENABLED` 回到 `true`，设置入口与搜索索引均已恢复；口径按用户拍板改为**默认关闭**（`DEFAULT_ENABLED = false`，老用户存档里显式写的值仍然优先）。恢复细节见 §3.3「恢复记录」，乱跳的三个根因修复见 §3.55。
 - **本轮基建改动（26.10.10）**：**`minSdk 24 → 21 → 19（Android 4.4）`**，唯一落点是 `app/build.gradle:21`。两级下调的成本不同，分开记：
@@ -681,19 +681,21 @@
 - **缘起**：按控制台未处理反馈逐条核对源码，挑出「原因在代码里看得出来」的 7 条全修，另做两个新功能（#57 私信撤回、#53 内置选图页）。#49（推荐页长按改稍后再看）、#11（内置文件管理器）用户决定不做。括号里是控制台反馈编号。
 - **#55 短视频弹幕设置不生效**（此前已回复用户「已修复」，但源码里没有）：`ShortVideoPlayerActivity` 每个 `PageHolder` 写死 `isDanmakuVisible = true`，从不读「播放默认值 → 弹幕」。改成 Activity 级字段，用与长视频同一个 `PlayerDefaults.resolveTriState(PLAYER_DEFAULT_DANMAKU, PLAYER_LAST_DANMAKU)` 开播，切换时写回 `PLAYER_LAST_DANMAKU`。另一半根因在 `DanmakuManager`：`hide()` 有 `isPrepared` 守卫，prepare 之前调用只记状态就返回，所以 `prepared()` 回调里补一次 `danmakuView.hide()`。
 - **#44「收到的赞」不显示弹幕点赞**：`MessageApi` 的类型 switch 缺 `danmu`，落到「无法识别这个类别」。新增分支：显示弹幕原文，`NoticeHolder` 点卡片跳视频；BV 号用纯函数 `MessageApi.parseBvid` 从 uri 里提取（uri 后缀不固定，不能照 video 分支直接 replace）。`MessageApiTest` 3 例。
+  - **26.10.29 追加**：同一类条目在「回复我的」里也会出现（官方 Web 消息中心的 `type === "danmu"` 对应文案 `repliedToMyDanmu`「回复了我的弹幕」），而回复流没有这个分支、同样只显示「无法识别这个类别：danmu」。现在两个流共用三个纯函数：`parseBusinessId`（缺字段给 -1，不再抛）、`parseDanmuText`（点赞流取 `title`、回复流取 `source_content`，缺了互相兜底）、`parseDanmuBvid`；`NoticeHolder` 里两处「跳弹幕所在视频」合并成 `jumpToDanmuVideo`。`MessageApiDanmuTest` 9 例。
 - **#52 空关键词搜索后历史记录消失**：`SearchActivity.searchKeyword` 先 `hideDropdowns()` 再判空 `return`。判空挪到最前。
 - **#51 文件夹里点 P2 从 P1 开始播 / 老缓存没声音**：`LocalListActivity.playVirtualCollection` 的起播地址固定取 `[0]`，`startPageIndex` 只写进了选集高亮。改成按 `startPageIndex` 取；双文件（未合并 DASH）缓存原来只传 mp4，现在另传与 `videoFileList` 对齐的 `audioFileList`，起播带 `audio_track_url`，`PlayerActivity.switchToLocalPage` 切 P 时把对应音轨交给 `doSwitchPage`（新增 `newAudioTrackUrl` 参数，原来这里固定置 null）。
 - **#38 图片查看页仍响应右滑**：清单里的 `Theme.NoSwipe` 被 `BaseActivity.onCreate` 的 `setTheme` 覆盖。`ImageViewerActivity` 覆写 `forceNoSwipeTheme = true`（与短视频页同一钩子），退出走顶栏 / 返回键。
 - **#20 表冠默认转得很慢**：原本打算把 `RotaryEncoderSupport` 总开关默认改成开启（`DEFAULT_ENABLED = true`），**用户看过改动后要求回退**，已用 `revert` 撤销，保持默认关闭与原文案。反馈 #20 仍未解决——系统自带表冠滚动在多数页面偏慢，且维护者没有表冠设备可调手感；真正要改需要先拿到原版终端的滚动倍率做对照。
 - **#57 私信撤回（新功能）**：长按自己 120 秒内发出的文字 / 图片 → 菜单「复制文字 / 撤回」，撤回即发一条 `msg_type=5`、内容为目标 `msg_key` 的私信（`private_msg_content.md`「撤回消息」）。入口判据 `PrivateMsgApi.canRecall` 纯函数（自己发的、非撤回通知、本地时间看来未超 120 秒；本地时间比消息早时仍给入口，交服务端判，见 §3.72 的时间问题）。顺带：接口对被撤回的原消息仍回原文（`msg_status=1`），原先原文和「撤回了一条消息」两条都显示，现在 `shouldDisplay` 过滤掉原消息；撤回通知 seqno 必大于原消息，过滤不影响 refresh / loadMore 的分页起点。`PrivateMsgRecallTest` 5 例。
 - **#53 内置选图页（新功能）**：新增 `activity/ImagePickerActivity`（不导出）+ 纯逻辑 `util/ImagePickerAlbums`（相册分组 / 过滤 / 读图权限名，`ImagePickerAlbumsTest` 4 例）。读 MediaStore 按 `DATE_ADDED` 倒序铺三列缩略图（Glide 按格子尺寸、RGB_565 解码），可按相册筛选；顶部「系统选择器」退回原 `ACTION_GET_CONTENT` 并把结果原样转交。**结果格式与 `ACTION_GET_CONTENT` 相同**（`data.data` 为 content Uri），私信 / 写评论 / 发动态 / 换头像四个调用点只换了 Intent。清单新增 `READ_MEDIA_IMAGES`（Android 13+；13 以下沿用已有的 `READ_EXTERNAL_STORAGE`），只在打开选图页时申请，拒绝后显示说明并可走系统选择器。
-- **验证**：双 flavor `assembleDebug` 通过；`testStandardDebugUnitTest` 99 类 / 1039 例 / 0 失败。MuMu（Android 12L / SDK 32，共存版，已登录）：
+- **验证**：双 flavor `assembleDebug` 通过；`testStandardDebugUnitTest` 99 类 / 1039 例 / 0 失败（26.10.29 补 #44 回复流后为 **102 类 / 1087 例**）。MuMu（Android 12L / SDK 32，共存版，已登录）：
   - #52：搜索页空输入点搜索 → 日志出现「还没输入内容喵~」，历史记录列表仍可见（uiautomator 能取到两条历史）✔。
   - #55：`player_default_danmaku=off` 进短视频 → 弹幕 170 条已加载但不显示、按钮是关闭图标 ✔；点按钮打开 → 滚动弹幕出现、`pref_switch_danmaku=true` ✔；再关掉后上滑到下一条 → 仍为关闭 ✔。测完已删掉这两个设置项。
   - #53：选图页三列缩略图正常 ✔；相册弹窗列出「全部图片（226）/ 其他 / burst3 …」，选 burst3 后网格只剩 4 张 ✔；从发动态页进入选一张 → 回到发动态页显示「添加图片(1)」与预览 ✔；「系统选择器」拉起 `documentsui` 的 PickActivity，返回回到选图页 ✔。权限申请链路走到了 `GrantPermissionsActivity`（logcat 可见），但 MuMu 会自动授予，**「拒绝后」的分支没能测到**。
 - **遗留**：
-  - #44 弹幕点赞的 `type` 值 `danmu` 来自 B 站网页端「收到的赞」的已知取值，接口文档快照里没有，测试账号也没有弹幕点赞记录，**未用真实数据确认**；若真实值不同，表现与改前一样落到「无法识别这个类别：xxx」，从文案就能看出该改成什么。
-  - #51 没在模拟器上跑：伪造双文件缓存需要往 `Android/media/<包名>/` 写文件，这一步被会话权限拦下。需要真机用一条未合并的 1080P+ 老缓存验证「文件夹点 P2 从 P2 起播、有声音、切到 P1 也有声音」。
+  - ~~#44 弹幕点赞的 `type` 值 `danmu` 未用真实数据确认~~ → **26.10.29 补证**：`type` 取 `danmu` 是对的，证据是官方 Web 消息中心 bundle（`message-pc/static/js/index.59878243.js`）：回复流里写着 `let u = "danmu" === e.item.type`，并据此切文案 `repliedToMyDanmu`（「回复了我的弹幕」）、把动作参数的 `type` 换成 `0`。**仍然没有真实数据**：模拟器未登录，`msgfeed/like` / `msgfeed/reply` 都回 -101，所以「弹幕被点赞」和「弹幕被回复」两条渲染都没在设备上跑过（只做了空数据冒烟：`NoticeActivity` 正常渲染、`logcat -b crash` 为空）。
+  - **同一轮顺手补的**：`getReplyMsg` 的 `item.getString("source_content")` 与三个消息流共用的 `item.getInt("business_id")`，遇到没有该字段的条目会抛 `JSONException`，**把整页消息带崩**（不是少一条，是整页空白）；`@我的`（`getAtMsg`）只统一了字段读取，它的点击路由走 `GET_TYPE_AT` 分支、本来就支持 `danmu`。
+  - ~~#51 没在模拟器上跑~~ → **26.10.29 已在 MuMu 上验证通过**（伪造双文件缓存不需要真机，`adb root` 就能往 `Android/media/<包名>/` 写）：用 ffmpeg 造两条「只有视频轨的 mp4 + 独立 m4a」，按 `DownloadPathSpec` 建 `.folders_info.json` / `.video_meta.json` / `.quality`，实测三条全过——①点文件夹里排第二的视频 → `视频地址` 日志是**那一条**（换成合并前的旧包复测会固定播第一条，正好反证了修复）；②`AudioTrack>主文件轨道=[VIDEO]，外部文件可用=true，选择=EXTERNAL` → `已启用唯一的外部音频轨道`；③在选集面板切到另一 P → `setDisplay: url` 换成另一条、外部音轨重新初始化。配方见 `docs/review/agent-test-guide.md` §4.9。
   - #57 没在模拟器上实测撤回（会真的给对方发私信），只有判据单测；需要真机给自己的小号发一条再撤回。
   - #38 的手势本身只能在真手表上确认（MuMu 没有窗口层右滑返回）。
 
@@ -745,6 +747,64 @@
   - **加 elevation=0 之后**：同一条扫描变成 `(235,223,207)` → `(249,242,230)` 直接跳变，中间那圈 10~14px 的光边带消失，放大后按钮就是一个干净的圆角色块；暗色同页仍是 `#2A2A2A` 色块、无描边无阴影（黑底上本来也看不见阴影）。
   - 测完把模拟器状态还原：`coexist` 的 `shared_prefs/default.xml` 用测前备份覆盖回去（6102 字节、md5 与备份一致、属主仍是 `u0_a52`），`standard` 里临时插进去的 `ui_color_mode=light` 键删掉。
 - **遗留**：无。附带记两条：① 复现亮/暗要改 `shared_prefs/default.xml` 的 `ui_color_mode`（写回用 `cat` 覆写保持属主，`sed -i` 会留下 root 属主文件）；② 以后给**半透明底**的组件加 elevation/阴影一律按本条处理——亮色下会变成可见的脏边。
+
+### 3.83 新增「举报评论」（26.10.27，用户要求）
+
+- **缘起**：用户要求「加入举报功能，api 使用从 app 逆向的接口」。口径经确认收敛为 **只做评论举报 + 入口放在长按操作面板**（视频举报、弹幕举报本轮不做，原因见 `docs/bilibili-api-notes.md` §8）。
+- **改法**：
+  - 新增 `api/ReportApi.java`：理由表（**服务端 metadata 下发优先 + 官方 H5 静态兜底表**，见下面的修订记录）、纯函数 `buildReportForm(...)`（**不含 csrf**，csrf 由 `reportReply` 补，否则纯函数要读 `SharedPreferences`，JVM 单测必然空指针）、`reportReply(...)` 打 `POST https://api.bilibili.com/x/v2/reply/report`、`fetchReasons(...)` 打 `GET .../report/metadata` 并缓存。
+  - `errorMsg(code)` 覆盖 -101/-102/-111/-352/-412/-400/-403/-404/-500/-509/12002/12006/**12008（已举报过）**/12009/12019/12026/**12077（理由过长或过短）**；这些码取自快照的 json 回复段 ＋ 客户端「CD时间未到不能举报」的文案，**除 -352 外没有一条在真机上撞过**，所以每条都给具体文案而不是留白——撞到没见过的码时用户至少能读懂，而不是「操作失败（错误码 …）」。
+  - `adapter/ReplyAdapter.kt`：`ManageAction.Kind` 加 `REPORT`；`showManageMenu` 里**只在「不是自己的、也管不了这条」时**列出该项（自己的评论举报自己没意义，管理员的处置手段是删除），**不按登录态隐藏**——理由是重装丢了登录态之后，别人的评论会只剩「复制文字」一项，正好命中「只剩复制就直接进复制界面」那条捷径，用户看到的是「举报功能没了」；未登录点了由 `showReportDialog` 提示「请先登录后再举报」，不发那个注定 -352 的请求。`type` 传 `replyType` 而不是视频的 `type`（同点赞接口的约束：动态/专栏传 1 会被拒）；新增 `showReportDialog` / `askReportContent` / `submitReport`。
+  - 「其他」理由先 `TerminalDialog.input` 收正文，长度按 `ReportApi.isContentAcceptable`（2~200 字符，与官方 H5 一致），不合格**不提交**——服务端对长度不合规只回 12077，用户看不出是字数卡住的。`TerminalDialog.input` 的确认按钮是「先关窗再回调」，所以不合格时还会**重开输入框并把已输入内容带回去**（`askReportContent(..., initialText)`）：手表上打字本来就贵，不能让用户从「选理由」重来一遍。已实测。
+  - `api/ApiErrorText.kt` 新增 `riskRejected()`：原来 `-352/-412` 复用 `searchRejected()`「搜索被风控」，放在举报提示里会让人以为是搜索坏了。
+  - 新文案 `text_reply_report` / `title_report_reason` / `title_report_content` / `hint_report_content` / `btn_report_submit` / `msg_report_login_first` / `msg_report_content_too_short` / `msg_report_submitted` 进 `strings.xml`。
+- **验证**：
+  - `assembleDebug` 双 flavor 成功；`testStandardDebugUnitTest` / `testCoexistDebugUnitTest` 各 **94 个测试类 / 1032 例 / 0 失败**（`ReportApiTest` 共 30 例，覆盖官方 18 项理由表与码序、已废弃码不存在、metadata 两种格式解析、`content_required` 真值、2~200 正文闸门、请求体参数与「不需要正文就不带 content」、错误码翻译；其中 6 例是理由表重做后新增的）。
+  - `ReportApiTest` 里踩到一个坑：`NetWorkUtil.FormData.toString()` 会对值做 `URLEncoder.encode`，中文断言必须 `URLDecoder.decode` 回来；`FormData` 底层是 `HashMap`，**顺序不确定**，只能拆成 map 比对，不能断言整串。
+  - **设备侧（MuMu Android 15 / x86_64 / coexist debug）实测通过**。这轮先卡在「截不了图」上：MuMu 每次启动都把包丢到一个**新建副屏**，而 `screencap -d <id>` 对任何 display 都回 `Status: -2`（root 也一样）。改用 **`uiautomator dump --display <id>` 读控件树 + `input -d <id> tap/motionevent` 驱动**，不截图也能断言文字与位置（配方已写进 `docs/review/agent-test-guide.md` §6、`docs/agents/workflow.md`）。
+    - **未登录**（正式口径，26.10.27 二次修订后复测）：视频详情 → 评论页长按别人评论 → 面板**两项：`复制文字` / `举报评论`**；点「举报评论」→ 菜单关闭、logcat 只有 `I MsgUtil>showMsg: 请先登录后再举报`、**没有任何 `reply/report` 请求** ✔
+    - **临时把 `isLoggedIn()` 改成 `true` 复测**（仅本地验证用，已回退，`git diff` 确认无残留）：
+      - 长按 → 面板两项：`复制文字` / `举报评论` ✔
+      - 点「举报评论」→ 标题「选择举报理由」，9 项齐全：其他 / 垃圾广告 / 色情 / 刷屏 / 引战 / 剧透 / 政治 / 人身攻击 / 内容不相关，底部「点空白处取消」✔
+      - 选「其他」→ 标题「补充举报理由」、提示「至少3个字，说清哪里违规」、按钮「取消 / 提交」✔
+      - 输入过短正文提交 → logcat 出现长度提示，**弹窗重开且把原文带回**（输入框里仍是刚才那几个字）✔（当时判定是 3 字，现按官方 H5 改成 2 字，见下方修订记录）
+      - 补成 3 个字符再提交 → `D NetWorkUtil>post: post-url>https://api.bilibili.com/x/v2/reply/report`，`http>POST ... -> 200 (61ms) | req=reason=0&csrf=***&oid=170001&type=1&rpid=1353715029&content=abc`，`res={"code":-352}` → `I MsgUtil>showMsg: 操作被风控拦下了，过一会儿再试` ✔
+      - 选「垃圾广告」（reason=1）→ `req=reason=1&csrf=***&oid=170001&type=1&rpid=1353715029`，**不含 `content`**，同样 `-352` → 同一句提示 ✔（`-352` 是模拟器未登录的预期风控，**不是缺陷**）
+  - **修订记录（同日）**：第一版把入口按登录态藏起来，维护者重装后登录态丢失、长按直接进复制页，反馈「菜单没了」。已改成入口常显 + 点后提示登录，上面两条验证即为修订后结果。
+  - **理由表推翻重做（同日，维护者指出反编译不完整后重查）**：第一版照 `bilibili-API` 旧快照写成 `0..8`，并给出「9~17 无法核实」的结论。补全 33 个 dex 的全量扫描后发现**官方根本没有原生评论举报界面**——它把举报交给 H5（`comment.report_url` 默认 `https://www.bilibili.com/h5/comment/report`），理由表来自服务端 `GET /x/v2/reply/report/metadata`，H5 里另有一份静态兜底表。据此重做：
+    - 静态兜底表换成 H5 原文的 18 项（**非连续码**）：9 违法违规 / 2 色情 / 10 低俗 / 12 赌博诈骗 / 23 违法信息外链 / 19 涉政谣言 / 22 虚假不实信息 / 20 涉社会事件谣言 / 7 人身攻击 / 15 侵犯隐私 / 1 垃圾广告 / 4 引战 / 5 剧透 / 3 刷屏 / 8 **视频不相关** / 18 违规抽奖 / 17 青少年不良信息 / 0 其他。旧快照的 6（政治）、11、13、14、16、21 **都不存在**，第一版发过 `reason=6` 属于会撞空的码。
+    - 新增 `ReportApi.fetchReasons(oid, type)`（打 metadata、进程内缓存）＋ `cachedOrDefaultReasons()`：弹窗同步取缓存保证不打顿，同时在后台预热；拿不到就用兜底表。`content_required` 逐项来自服务端。
+    - 正文下限 **3 → 2**：H5 校验是 `length < 2`，文案「自定义举报内容长度为2-200字符」；APK 里「不能少于3个字」属更老版本。
+    - `ReportApiTest` 30 例（+6）：兜底表码序、已废弃码不存在、8/23/20/18 的文案、metadata 两种格式解析、`content_required` 的 1/"1" 真值、不可用返回 null 而不是空表、新码（9/10/12/...）确实进了请求体。
+    - **设备侧复测**（MuMu，临时放开登录判定后立刻回退）：理由弹窗按官方顺序渲染（违法违规 / 色情 / 低俗 / 赌博诈骗 / 违法信息外链 / 涉政谣言 / …），点「违法违规」→ `req=reason=9&csrf=***&oid=170001&type=1&rpid=1353715029`，回 `-352` 并提示「操作被风控拦下了」✔
+  - **评审跟进（同日，代码评审意见）**：
+    - 「错误码没覆盖 -102/-403/12008/12009/12019/12077」→ 已补齐（见改法第 2 条），`ReportApiTest` 相应新增 4 例（12008 说清「举报过」、12077 与 12008 可区分、12019/12026 两句不重复、-102 不写成「未登录」），共 24 例（理由表重做后总数为 30 例）。
+    - 「快照列了理由码 9~17，客户端没开放」→ **查证后决定暂不开放**，三条证据：①服务端先风控后校验参数，`reason=99` 与 `reason=1` 都回 -352，离线拿不到合法/非法信号；②APK 里「违法违规/赌博诈骗/侵犯隐私/抢楼」字符串确实存在，但按 `public.xml` 的资源 id 反查 `jadx` 全部代码**0 命中**，是历史遗留资源，不能判定仍在使用；③未知 `reason` 服务端是回 -400 还是降级成「其他」无证据。定论方法（登录后逐码试 `9..17`）写进 `docs/bilibili-api-notes.md` §8 与 `ReportApi` 类注释，验完补两个数组即可，UI 不用动。
+  - **评审跟进二（26.10.30，理由表缓存串味）**：评审指出 `ReportApi.java:124` / `:220` 与 `ReplyAdapter.kt:684` 存在真缺陷——**理由表缓存只有全局一份，而 `metadata` 请求和举报提交都带评论区 `type`**。失败路径：先在视频评论区（`type=1`）打开举报，缓存写满视频那套理由；再去动态评论区（`type=17`），`cachedOrDefaultReasons()` 命中缓存，弹窗显示的是**视频的分类**，而 `reportReply(...)` 带的是 `type=17`，于是「用户看到的理由」与「服务端按该 type 解读的理由码」对不上。第一次打开用兜底表、之后用服务端表的预热逻辑同理，`warmReportReasons()` 里 `cachedReasons() != null` 会让动态评论区永远等不到自己那份。
+    - `cachedReasons` 改为 `ConcurrentHashMap<Integer, List<Reason>>`（后台线程写、主线程读）；`cachedReasons(int type)` / `cachedOrDefaultReasons(int type)` 都加 `type` 参数；`clearReasonCache()` 清整张表；新增包内可见 `putReasonCache(type, reasons)`（供 `fetchReasons` 与单测注入，避免单测真发网络请求），空表不入缓存、类型数超 16 时整表清空（防御异常 `type` 撑爆内存）。
+    - `ReplyAdapter` 两处调用改为按 `replyType` 取：`cachedOrDefaultReasons(replyType)` / `cachedReasons(replyType)`。
+    - **不按 `oid` 再细分**的判断依据写进字段注释：举报分类是**评论区类型级**的平台配置，官方 H5 的静态兜底表也只按分类组织、不区分稿件；若将来发现确实按稿件差异化，把 key 换成 `type + ":" + oid` 即可，调用方签名不用动。
+    - 单测 +4 例（30 → 34）：不同类型各存一份互不串味、未缓存的类型必须回退兜底表而不是借用别人的、空表不污染槽位、`clearReasonCache` 清干净所有类型。
+- **遗留**：①**登录态下的成功提交（code=0）没验**——模拟器没有可用登录态，登录要扫码，只能等真机；已验证到「请求体正确、服务端确实在回业务码」这一步；②视频/弹幕举报未做（各有明确理由，见 api notes §8）；③举报后列表不会变（服务端审核结果不回写列表，也不打算轮询）。
+
+### 3.84 按线上崩溃报告修 7 类缺陷（26.10.28，用户要求，mapping 还原后定位）
+
+- **缘起**：控制台积了 50 条待处理崩溃。第一轮只按「堆栈里未混淆的帧」推断，结论不可用；用户提示「编译一遍 release 就有 mapping」后重新做：`./gradlew.bat :app:minifyStandardReleaseWithR8 :app:minifyCoexistReleaseWithR8`（本机没有 `key.jks`，只跑 R8 阶段即可）产出 `app/build/outputs/mapping/{standard,coexist}Release/mapping.txt`，逐帧还原后 **50 条全部归类**，其中 7 类能落到代码。
+- **还原的可信度校验**（重要，否则等于瞎猜）：崩溃文本自带的 `adapter:d1.r@…` → mapping 里 `d1.r = MenuSettingAdapter`；`UpdateActivity.O` 的相邻帧 `R0.v` → `UpdateActivity$$ExternalSyntheticLambda0`；页面轨迹与解出的类一致。**跨版本的报告只能解出方法名、行号不可用**（mapping 来自当前 `main`），所以 26.10.19/26.10.16 的那 3 条 NPE 与 3 条 Fragment 崩溃仍未定位。
+- **改法（7 处 + 1 个新类 + 1 组单测）**：
+  1. `adapter/MenuSettingAdapter.kt` `dragCallback.clearView` → `recyclerView.post { ensureStartValid() }`。ItemTouchHelper 是在 RecyclerView 的 layout/scroll 过程中回调 `clearView` 的，当场 `notifyItemChanged` 必然抛 `Cannot call this method while RecyclerView is computing a layout or scrolling`（**6 例**）。
+  2. `activity/settings/UpdateActivity.kt` `startDownload()`：`updateConfig!!.downloadUrl!!` → 先取 `downloadUrl` 判 `isNullOrBlank`，为空提示新文案 `msg_update_no_download_url` 直接返回。根因是强制更新拦截把 SP 里可能为 null 的 `force_update_download_url`（`BiliTerminal.kt` 的 `getString(..., null)`）塞进 intent（**5 例**，NPE 消息为 `null`，Kotlin `!!` 的指纹）。
+  3. `activity/video/ShortVideoPlayerActivity.kt` 封面加载套 `GlideUtil.canLoad(coverImage)`；`adapter/user/UserListAdapter.kt` 头像加载套 `GlideUtil.canLoad(holder.itemView)`。Glide 4 的 `with(Activity)`/`with(View)` 会在宿主销毁时抛 `You cannot start a load for a destroyed activity`（**4 例**能确认到这两个调用点）。**注意 `Glide.with(BiliTerminal.context!!)` 不受影响**——那是 `createConfigurationContext(applicationContext)`，走 application manager，不做销毁校验；Opus/私信那几处就是被 R8 lambda 合并误指的。
+  4. `activity/video/ShortVideoFeedFragment.kt` 三条 `preloadManager` 回调（`onItemsLoaded` / `onLoadError` / `onRelatedLoaded`）开头加 `if (!isAdded) return@label`。预加载是后台线程拉、回主线程才回调，中间用户可能已退出（**4 例** `Fragment ... not attached to an activity`）。
+  5. `activity/settings/setup/SetupUIActivity.kt` 的 `save()` 改走新纯函数 `util/UiScaleInput.kt`（`parseDpi` / `parsePadding`，`toFloatOrNull` + 原范围校验）。旧代码直接 `toFloat()`，线上两次 `For input string: "界面大小"` / `"确认设置"`——都是页面自己的文案，疑似被粘贴进框（**2 例**）。
+  6. `activity/player/PlayerActivity.kt` `onDestroy` 里 `requestedOrientation = …` 包 `try/catch (IllegalStateException)`。Android 8.0 在非全屏（分屏/悬浮）下调它抛 「Only fullscreen activities can request orientation」，在 `onDestroy` 里会升级成 `Unable to destroy activity` 直接崩在退出路径（**4 例**，全部 sdk 26 / HONOR HWDUK）。
+  7. 新增 `ui/widget/SafeViewPager.kt` 并让 3 个布局（`activity_simple_viewpager.xml` / `activity_emote.xml` / `activity_short_video_player.xml`）改用它：只吞 message 含 `pointerIndex` 的 `IllegalArgumentException`，其余照抛。老 ViewPager 的多指下标越界是已知库缺陷（**7 例**：4 例 `pointerIndex out of range` + 3 例 `invalid pointerIndex -1 for MotionEvent`，全部停在该类的 `onInterceptTouchEvent`）。
+- **验证**：
+  - `assembleDebug` 双 flavor 成功；两 flavor 单测各 **95 个测试类 / 1041 例 / 0 失败**（新增 `UiScaleInputTest` 9 例，钉住 `"界面大小"` / `"确认设置"` / 空串 / null / 越界 / 保留旧口径的负边距）。
+  - 设备侧（MuMu Android 15 / coexist debug）：`SettingMenuActivity` 正常渲染；`VideoInfoActivity` 左右滑能在「简介 / 评论」间切换（走的正是新的 `SafeViewPager`）；`ShortVideoPlayerActivity` 打开并来回滑 3 轮，`logcat -b crash` **为空**。
+  - **没能复现验证的部分（如实记录）**：①`clearView` 的崩溃依赖「拖拽结束恰好落在 smoothScroll 期间」，adb 手势造不出来，只改了 1 行 `post`；②`PlayerActivity` 的方向异常要设备处于分屏/悬浮窗口才触发，单窗口模拟器造不出；③DPI 框的中文输入无法用 `adb input text` 复现（走 KeyEvent，被 `DigitsKeyListener` 挡掉），改由 `UiScaleInputTest` 覆盖。
+- **遗留**：①仍 6 条无法定位（3 条 26.10.16 的 NPE、3 条 26.10.19 的 Fragment not attached）——需要按对应版本再编一次 release 取 mapping；②`Inconsistency detected`（4 例）与第 1 条同源但无法定位到具体 notify 点；③全仓仍有 ~58 处裸 `Glide.with(...)`，建议后续统一收敛到 `GlideUtil.request*`（已自带 `canLoad`）或 `AccountSwitchActivity` 那种「一次取 RequestManager」的写法。
+- **另一条结构性建议**：`mapping.txt` 现在是构建副产物，`build/` 一清就没了，下次再有人报崩溃又回到解不出来的状态。建议在 `build-release.yml` 里把它作为 artifact 按 `versionCode` 归档。
 
 ## 4. 历史章节索引
 

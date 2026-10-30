@@ -46,6 +46,35 @@ public class MessageApi {
         return matcher.find() ? matcher.group() : "";
     }
 
+    /**
+     * 读消息条目的 {@code business_id}。**不是每条都有**：官方 Web 消息中心的动作参数写的是
+     * {@code type: "danmu" === item.type ? 0 : item.business_id}，即弹幕类条目不带这个字段。
+     * 原来三个消息流都用 {@code getInt}，遇到这种条目直接抛 JSONException，
+     * 把整页消息带崩（不是少一条，是整页空白）。统一走这里，缺省 {@code -1}。
+     */
+    public static int parseBusinessId(JSONObject item) {
+        return item == null ? -1 : item.optInt("business_id", -1);
+    }
+
+    /**
+     * 弹幕类条目（{@code item.type == "danmu"}）里的「弹幕原文」。
+     *
+     * <p>两个消息流放的位置不一样：「收到的赞」在 {@code title}；「回复我的」把被回复的原文
+     * 放在 {@code source_content}、{@code title} 换成了视频标题。所以先取 {@code source_content}
+     * 再退回 {@code title}，两个流共用一份口径。
+     */
+    public static String parseDanmuText(JSONObject item) {
+        if (item == null) return "";
+        String text = item.optString("source_content", "");
+        if (text.isEmpty()) text = item.optString("title", "");
+        return text;
+    }
+
+    /** 弹幕类条目所在视频的 BV 号；服务端只给 uri，抠不到返回空串。 */
+    public static String parseDanmuBvid(JSONObject item) {
+        return item == null ? "" : parseBvid(item.optString("uri", ""));
+    }
+
     public static JSONObject getUnread() throws IOException, JSONException {
         JSONObject data = getUnreadData();
         JSONObject jsonObject = new JSONObject();
@@ -119,7 +148,7 @@ public class MessageApi {
                 likeInfo.timeStamp = object.getLong("like_time");
 
                 JSONObject item = object.getJSONObject("item");
-                likeInfo.businessId = item.getInt("business_id");
+                likeInfo.businessId = parseBusinessId(item);
                 likeInfo.subjectId = item.getLong("item_id");
                 likeInfo.sourceId = item.optLong("source_id", -1);
                 likeInfo.rootId = item.optLong("root_id", -1);
@@ -181,17 +210,18 @@ public class MessageApi {
                         break;
                     case "danmu":
                         // 弹幕被点赞（反馈 #44）：原先落进 default，只显示「无法识别这个类别：danmu」。
-                        // title 是弹幕原文，uri 指向弹幕所在视频；点卡片跳视频（见 NoticeHolder）。
+                        // 弹幕原文与所在视频的取值口径见 parseDanmuText / parseDanmuBvid；
+                        // 点卡片跳视频（见 NoticeHolder）。
                         likeInfo.content = BiliTerminal.context.getString(
                                 R.string.text_like_danmaku, object.getLong("counts"));
                         Reply replyInfo_danmu = new Reply();
                         replyInfo_danmu.rpid = item.getLong("item_id");
                         replyInfo_danmu.sender = null;
-                        replyInfo_danmu.message = new SpannableString(item.optString("title", ""));
+                        replyInfo_danmu.message = new SpannableString(parseDanmuText(item));
                         replyInfo_danmu.pictureList = new ArrayList<>();
                         replyInfo_danmu.childCount = 0;
                         replyInfo_danmu.childMsgList = new ArrayList<>();
-                        replyInfo_danmu.ofBvid = parseBvid(item.optString("uri", ""));
+                        replyInfo_danmu.ofBvid = parseDanmuBvid(item);
                         likeInfo.replyInfo = replyInfo_danmu;
                         break;
                     default:
@@ -236,7 +266,7 @@ public class MessageApi {
                 replyInfo.timeStamp = object.getLong("reply_time");
 
                 JSONObject item = object.getJSONObject("item");
-                replyInfo.businessId = item.getInt("business_id");
+                replyInfo.businessId = parseBusinessId(item);
                 replyInfo.subjectId = item.getLong("subject_id");
                 replyInfo.sourceId = item.optLong("source_id", -1);
                 replyInfo.rootId = item.optLong("root_id", -1);
@@ -244,7 +274,9 @@ public class MessageApi {
                 replyInfo.getType = MessageCard.GET_TYPE_REPLY;
                 replyInfo.targetId = item.optLong("target_id", -1);
 
-                replyInfo.content = item.getString("source_content");
+                // source_content 是「被回复的内容」。回复流对所有类型都读它，但弹幕类条目
+                // 未必带这个字段；用 getString 会抛 JSONException 把整页带崩，所以改成 optString。
+                replyInfo.content = item.optString("source_content", "");
 
                 switch (replyInfo.itemType) {
                     case "video":
@@ -294,6 +326,21 @@ public class MessageApi {
                         replyChildInfo_article.message = new SpannableString("[专栏] " + item.getString("title"));
                         replyChildInfo_article.childCount = 0;
                         replyInfo.replyInfo = replyChildInfo_article;
+                        break;
+                    case "danmu":
+                        // 「有人回复了我的弹幕」（反馈 #44 的另一半）：官方 Web 消息中心对
+                        // `type === "danmu"` 渲染成「回复了我的弹幕」，我们的回复流原先没有这个分支，
+                        // 落进 default 后只显示「无法识别这个类别：danmu」。
+                        // 弹幕类条目可能不带 business_id，所以 NoticeHolder 那边按 itemType 先判一次。
+                        Reply replyChildInfo_danmu = new Reply();
+                        replyChildInfo_danmu.rpid = item.getLong("target_id");
+                        replyChildInfo_danmu.sender = null;
+                        replyChildInfo_danmu.message = new SpannableString(parseDanmuText(item));
+                        replyChildInfo_danmu.pictureList = new ArrayList<>();
+                        replyChildInfo_danmu.childCount = 0;
+                        replyChildInfo_danmu.childMsgList = new ArrayList<>();
+                        replyChildInfo_danmu.ofBvid = parseDanmuBvid(item);
+                        replyInfo.replyInfo = replyChildInfo_danmu;
                         break;
                     default:
                         replyInfo.content = "无法识别这个类别：" + replyInfo.itemType;
@@ -385,7 +432,7 @@ public class MessageApi {
                     replyInfo.replyInfo = replyChildInfo;
                 }
                 JSONObject item = object.getJSONObject("item");
-                replyInfo.businessId = item.getInt("business_id");
+                replyInfo.businessId = parseBusinessId(item);
                 replyInfo.subjectId = item.getLong("subject_id");
                 replyInfo.sourceId = item.optLong("source_id", -1);
                 replyInfo.rootId = item.optLong("root_id", -1);

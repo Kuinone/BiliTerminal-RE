@@ -54,13 +54,18 @@ open class UserListAdapter(
             holder.avatar.visibility = View.GONE
             holder.desc.isSingleLine = false
         } else {
-            // 使用 holder.itemView 作为 Glide 的 lifecycle 绑定，确保 View 回收时自动取消请求
-            Glide.with(holder.itemView.context)
-                .asDrawable()
-                .load(GlideUtil.url(user.avatar))
-                .skipMemoryCache(false)
-                .apply(AVATAR_OPTIONS)
-                .into(holder.avatar)
+            // 使用 holder.itemView 作为 Glide 的 lifecycle 绑定，确保 View 回收时自动取消请求。
+            // 但 Glide.with(context) 仍会在宿主 Activity 销毁时抛
+            // "You cannot start a load for a destroyed activity"（线上实测 2 例：列表回到前台
+            // 时网络数据才回来，onBind 撞上正在 finish 的页面），所以先过 canLoad。
+            if (GlideUtil.canLoad(holder.itemView)) {
+                Glide.with(holder.itemView.context)
+                    .asDrawable()
+                    .load(GlideUtil.url(user.avatar))
+                    .skipMemoryCache(false)
+                    .apply(AVATAR_OPTIONS)
+                    .into(holder.avatar)
+            }
             holder.avatar.visibility = View.VISIBLE
             holder.desc.isSingleLine = true
         }

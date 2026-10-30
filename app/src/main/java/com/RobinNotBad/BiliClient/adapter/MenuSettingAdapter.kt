@@ -214,7 +214,9 @@ class MenuSettingAdapter(
 
     /**
      * 拖拽离手时校正启动页：选中项被拖入未启用区后自动改选默认启动页并回调写回。
-     * 放在 clearView 而非 onMove，避免拖拽过程中 notifyItemChanged 打断 ItemTouchHelper 的手势。
+     *
+     * <p>调用时机见 [dragCallback] 的 `clearView`：那里必须 post 一次再调，
+     * 否则 `notifyItemChanged` 会落在 RecyclerView 的 layout/scroll 里。
      */
     private fun ensureStartValid() {
         if (startKey in enabled) return
@@ -297,7 +299,12 @@ class MenuSettingAdapter(
             viewHolder: RecyclerView.ViewHolder
         ) {
             super.clearView(recyclerView, viewHolder)
-            ensureStartValid()
+            // 这里的 notify 必须延后一拍：ItemTouchHelper 是在 RecyclerView 的
+            // scrollBy/layout 过程中回调 clearView 的，当场 notifyItemChanged 会撞上
+            // "Cannot call this method while RecyclerView is computing a layout or scrolling"
+            // （线上实测 6 例，全部落在本方法）。post 到下一帧既避开 layout pass，
+            // 也不会打断 ItemTouchHelper 的手势——手势此时已经结束了。
+            recyclerView.post { ensureStartValid() }
         }
 
         override fun onSwiped(viewHolder: RecyclerView.ViewHolder, direction: Int) {}

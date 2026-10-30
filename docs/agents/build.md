@@ -63,6 +63,13 @@
 - 报 `org.jetbrains.kotlin.util.FileAnalysisException … FileNotFoundException: app\build\tmp\kotlin-classes\debug\…\Xxx.class`（某个 class 被删了但增量状态没更新）：`clean` 后重建解决。
 - **同一个坏状态的第二种长相（26.10.21 实测，更坑）**：某个 flavor 的 Kotlin 模块元数据被写成空文件，单测编译报一堆 `Unresolved reference`（顶层函数 / DSL / 扩展函数全解析不到，**类却能正常解析**），看着像主源码真的删了符号。判据是 `app/build/tmp/kotlin-classes/<flavor>Debug/META-INF/app_<flavor>Debug.kotlin_module` 的大小——正常 233 字节左右，坏的时候只有 24 字节。只删该 flavor 的 `kotlin-classes/<flavor>Debug` 与 `build/kotlin/compile<Flavor>DebugKotlin` 后重编即可恢复，不必整包 clean。
 
+## VS Code 的 Java 语言服务器（不是编译问题）
+
+- 症状：任意 `.java` 文件首行报 **`X.java is not on the classpath of project app, only syntax errors are reported`**，多个文件一起报，`Project Settings` 里对应项目的 `Sources` 显示 **「No source paths are configured」**。
+- 判据：`%APPDATA%\Code\User\workspaceStorage\<hash>\redhat.java\jdt_ws\.metadata\.log` 里是 `src/main/java/... [in app] does not exist`（Java Model Exception code 969），且 `jdt_ws` 下**只有 `.metadata` 没有项目实体**。Gradle 侧同期是 `CONFIGURE SUCCESSFUL`，所以**编译/单测/打包全都正常**，坏的只是 JDT 的模型。
+- **修法：重启 VS Code**（26.10.29 实测一次就好）。不要先去 `+ Add Source Root...` 手动补——项目是空壳时补的路径不会落地，还可能把错状态固化下来。
+- 根因：vscode-java 用 Buildship 导入 Gradle 项目，而 Buildship **不认识 AGP 的 `android { sourceSets }`**（日志里多出来的根项目 `BiliTerminal-BiliTerminal-RE` 也是同一原因）。所以这类报错在 AGP 工程里会反复出现，**重启即可，不必当作代码缺陷去查**；要稳定的代码导航请用 Android Studio。
+
 ## 量体积与 APK 构成
 
 - **量体积必须先 clean**：debug 包在**增量**构建下会产生大量 `classesN.dex` 分片，体积可以虚高 3~4 MB（实测同一份代码增量构建 19.96 MB、clean 构建 15.44 MB）。任何"改动前后比体积"的结论都必须在 `:app:clean` 之后分别测量。

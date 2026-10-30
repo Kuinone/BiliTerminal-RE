@@ -17,7 +17,7 @@
 
 - **改完必须自测，不许只说"应该没问题"**（26.10.22 起）：本机常驻 **MuMu 模拟器**（`adb connect 127.0.0.1:7555`，Android 15 / x86_64，`adb root` 可用 → 用 `app-coexist-x86-debug.apk`）。
 - 凡涉及播放器 / 网络 / UI 时序的改动，改完自己装包、跑一遍、看日志与截图，把实测结论（日志原文、关键截图、未复现的原因）写进 `docs/review/fix-progress.md`。**"编译通过 + 单测绿"只证明纯函数没写错，不证明功能可用**（见 `docs/archive/review/device-test-plan.md` 〇节）。测法见 `docs/review/agent-test-guide.md`。
-- MuMu 的两个坑：**活动会落在 display 3/4/5 等副屏**（`screencap -d 0` 拍到的是桌面，要用 `screencap -p -d <physicalId>`、`input -d <displayId>`，映射由 `dumpsys display | grep -o 'displayId=[0-9]*, uniqueId=.local:[0-9]*'` 查），且 `input` **必须带 `-d <displayId>`**，否则点击落在桌面。
+- **MuMu 的坑（26.10.27 更新）**：活动会落在 `display 14/15/16...` 等**副屏**（每次启动新建一个，`dumpsys window displays | grep mDisplayId` 查）。26.10.27 实测 **`screencap -d <id>` 对任何 display 都回 `Failed to take screenshot. Status: -2`**（root 也一样），所以副屏上**截不了图**；`screencap -d 0` 拍到的是桌面。可行替代：**`uiautomator dump --display <displayId>` 拿控件树与 bounds**（文字/位置/状态都能验），配合 **`input -d <displayId> tap/swipe/motionevent`** 驱动；**`input` 不带 `-d` 一律落在桌面**。长按用 `input -d <id> motionevent DOWN x y` → sleep 1s → `motionevent UP x y`（`swipe x y x y 1200` 同点同终点会被当成滚动）。
 
 ## 小改动不必上模拟器
 

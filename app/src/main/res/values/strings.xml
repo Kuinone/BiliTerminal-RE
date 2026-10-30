@@ -793,6 +793,8 @@
     <string name="text_update_beta_code_hint">纯数字内测码</string>
     <string name="msg_update_beta_code_invalid">内测码只能是数字</string>
     <string name="msg_update_beta_code_wrong">内测码错误</string>
+    <!-- 更新配置里没有下载地址时的提示；旧代码在这里会 NPE -->
+    <string name="msg_update_no_download_url">没有可用的下载地址，请重新检查更新</string>
     <string name="btn_update_beta_download">下载</string>
     <string name="text_update_beta_checking">正在解析内测包…</string>
     <string name="text_update_beta_text_loading">正在下载内测文本…</string>
@@ -2447,6 +2449,21 @@
     <string name="msg_reply_translate_failed">翻译失败，请稍后再试</string>
     <!-- 请求成功但服务端没给译文（已是目标语言/不支持翻译）时的提示 -->
     <string name="msg_reply_translate_none">该评论暂无译文（可能已是目标语言或不支持翻译）</string>
+
+    <!-- ==================== 举报评论（长按操作面板入口） ==================== -->
+    <!-- 操作面板里的入口文案 -->
+    <string name="text_reply_report">举报评论</string>
+    <!-- 选理由弹窗的标题 -->
+    <string name="title_report_reason">选择举报理由</string>
+    <!-- 理由选「需正文」那一档时再收一次正文；长度口径与官方 H5 一致（2~200 字符） -->
+    <string name="title_report_content">补充举报理由</string>
+    <string name="hint_report_content">2-200 字符，说清哪里违规</string>
+    <string name="btn_report_submit">提交</string>
+    <!-- 未登录时不给提交（服务端会回 -101/-352），先提示而不是让请求白跑一趟 -->
+    <string name="msg_report_login_first">请先登录后再举报</string>
+    <!-- 与官方 H5 文案「自定义举报内容长度为2-200字符」一致 -->
+    <string name="msg_report_content_too_short">举报理由需在 2-200 字符之间</string>
+    <string name="msg_report_submitted">举报已提交，感谢你的反馈~</string>
 
     <!-- ==================== 消息：收到的赞 ==================== -->
     <!-- 弹幕被点赞；%1$d 为点赞总人数 -->
