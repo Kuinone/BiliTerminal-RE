@@ -52,6 +52,42 @@
 - 调试页只进 Debug 包，入口用编译期常量 `BuildConfig.DEBUG` 包住；Debug 包的外部可达组件必须挂 `android.permission.DUMP`。
 - 调试开关必须"改完即生效"（统一走 `BiliTerminal.applyLogSwitches()`）。
 
+## 私有功能仓库（不进开源）
+
+本机还有一份**不公开**的私有功能源码仓库 `zisekongling/BiliTerminal-RE-private`（private）。
+它不属于 GPL 发布内容，也不随公开仓库分发；公开仓库里只有反射门面和条件挂点。
+
+- **本地位置**：公开仓库根目录下的 `private/`（已 gitignore）。没同步时构建出来就是公开版。
+- **同步**：本机 `python build_tui.py --sync-private`（TUI 里 `P`，行式菜单 `[p]`）；CI 由
+  `.github/workflows/build-release.yml` 的「注入可选私有功能源码」一步用 Secrets 拉取。
+- **机制**（构建期注入点、门面规则、挂点写法）：`docs/optional-features.md`。
+- **硬要求**：没有 `private/` 时公开仓库必须能独立编译、单测全绿；私有功能整个缺失也不许崩。
+
+### 对 agent 的态度
+
+1. 私有代码按「可以读、可以改、**绝不能外传**」对待：不要贴进公开仓库、issue、PR、评论、
+   文档、回复或任何外部服务（含截图与日志）。
+2. 公开侧只保留「门面 + 条件挂点」（如 `util/OptionalFeatures.kt`）；算法、交互流程、数据格式、
+   文案细节一律留在 `private/`。**「换个说法提一句」同样禁止**——改名、拆片段、塞进注释/测试/
+   截图都是变相公开。
+3. 改私有功能就改私有仓库，与公开仓库分开提交；commit 格式与公开仓库一致
+   （见 `docs/agents/workflow.md`），一条提交说清一件事。
+4. 不许 `git add -f` 绕过 `.gitignore`；新增文件先判断它属于公开还是私有。
+5. 私有功能的实测记录写私有仓库的 `README.md`，**不写**公开的 `docs/review/fix-progress.md`。
+6. 拿不准某个改动该进哪一边时，**先问用户**，不要自行决定。
+
+### 私有仓库的规矩
+
+- 仓库根目录就是 `private/` 的内容：`manifest/`、`res/`、`src/main/java/…`、`keep.pro`、`README.md`。
+- **只放源码**：截图、日志、APK、临时产物一律不进（放 `outputs/`，已 gitignore）。
+- 默认分支 `main`。本机 `private/` 保留 `.git` 可以继续提交；CI 检出后立刻删 `.git`
+  （token 不许留在磁盘上）。
+- 同步只需要只读 PAT（细粒度，Contents: Read）；写权限只在用户自己的机器上。
+- 硬约束：包名固定 `com.RobinNotBad.BiliClient.feature`；Kotlin 不自动解析父包的 `R`，
+  用到资源必须显式 `import com.RobinNotBad.BiliClient.R`。
+- 私有 Activity 同样遵守安全红线：`android:exported="false"` + `android:screenOrientation="locked"`。
+- 私有类只被反射调用，R8 保留规则写在私有仓库的 `keep.pro` 里。
+
 ## 构建
 
 ```bash
