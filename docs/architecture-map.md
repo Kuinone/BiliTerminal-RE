@@ -728,7 +728,9 @@ CenterThreadPool.supplyAsyncWithLiveData { fetch...().getOrThrow() }
 
 **26.10.12 双击与旋转解耦**：`PlayerActivity.clickUI()` 与双击快进手势的中间区域统一走 `handleDoubleTapAction()`，判据抽在 `activity/player/PlayerDoubleTapPolicy.kt`（纯 JVM 单测）。只读取 `layout_video.scaleX/scaleY` 的实际比例，**方向不参与判定，复位分支只还原缩放与居中位置，不能写 `screen_landscape` / `requestedOrientation` 或调用 `softwareRotate()`**。`PLAYER_DOUBLETAP_RESTORE_SCREEN` 保留旧存储键，但语义改为“有缩放时，双击优先恢复缩放”；关闭时双击播放/暂停。`ViewScaleGestureListener.can_reset` 已删除，不再维护易过期的复位标志。左右两侧双击快退/快进与直播不暂停的既有行为保留。
 
-**26.10.20 左右滑动调进度的缩放判据**：`PlayerActivity.handleSwipeSeekTouch()` 的「未缩放视频才生效」不能读 `gesture_scaled`——那个标志只表示「本轮触摸里捏合过」，ACTION_UP 一到就复位，捏合放大后松手会把调进度重新放行（26.10.20 修的正是这个 bug）。判据抽在 `activity/player/PlayerGesturePolicies.kt`：`PlayerZoomPolicy.isZoomed(scaleX, scaleY)`（ε=0.001f）是「画面是否仍缩放」的唯一判据；`PlayerSwipeSeekPolicy.isSeekAllowed(...)` 汇总「设置开 + 已准备 + 非直播 + 播放器就绪 + 未缩放」；`PlayerDoubleTapPolicy` 也复用 `PlayerZoomPolicy`。`PlayerActivity.isVideoZoomed()` 读 `layout_video.scaleX/scaleY` 的实际比例，单指拖动闸门同样按实际缩放与 `SettingsKeys.PLAYER_DOUBLEMOVE` 判定。`gesture_scaled` 只剩「吞掉手势结束那次点击」一个用途，别给它加语义。
+**26.10.20 左右滑动调进度的缩放判据**：`PlayerActivity.handleSwipeSeekTouch()` 的「未缩放视频才生效」不能读 `gesture_scaled`——那个标志只表示「本轮触摸里捏合过」，ACTION_UP 一到就复位，捏合放大后松手会把调进度重新放行（26.10.20 修的正是这个 bug）。判据抽在 `activity/player/PlayerGesturePolicies.kt`：`PlayerZoomPolicy.isZoomed(scaleX, scaleY)`（ε=0.001f）是「画面是否仍缩放」的唯一判据；`PlayerSwipeSeekPolicy.isSeekAllowed(...)` 汇总「设置开 + 已准备 + 非直播 + 播放器就绪 + 未缩放 + 未长按加速」；`PlayerDoubleTapPolicy` 也复用 `PlayerZoomPolicy`。`PlayerActivity.isVideoZoomed()` 读 `layout_video.scaleX/scaleY` 的实际比例，单指拖动闸门同样按实际缩放与 `SettingsKeys.PLAYER_DOUBLEMOVE` 判定。`gesture_scaled` 只剩「吞掉手势结束那次点击」一个用途，别给它加语义。
+
+**26.10.30 长按三倍速期间不消费横滑**：`handleSwipeSeekTouch()` 把 `PlayerActivity.onLongClick` 作为 `PlayerSwipeSeekPolicy.isSeekAllowed(...)` 的 `longPressBoost` 参数传入，按住加速时横滑被门闸拒绝并 `cancelSwipeSeekIfActive()`。**`onLongClick` 的复位必须覆盖 ACTION_UP 与 ACTION_CANCEL**（`PlayerActivity.endLongPressBoost()`，两套 `layout_control` 触摸分支都接到）：只按 UP 复位时，触摸被父容器/失焦 CANCEL 后标志卡 true，会把滑动调进度永久锁死、倍速也停在 3 倍。
 
 **26.10.11 起的网络韧性与状态恢复（§四十四，明细见 `docs/review/fix-progress.md` §3.4）**：
 

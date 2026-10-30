@@ -25,7 +25,7 @@
 - **依赖仓库**：`settings.gradle` 已把 aliyun 的 `google` / `public` / `gradle-plugin` 三个镜像前置，`google()`/`mavenCentral()`/jitpack 仅作兜底。
 - **改了 `res/` 文件集合时**：`:app:clean` 与后续命令**必须分两次 Gradle 调用**，且带 `--no-build-cache --no-configuration-cache`，否则会回放陈旧资源（症状是 `Unresolved reference 'R.layout.xxx'`）。
 - **版本一致性**：`:app:verifyVersionConsistency` 以 `strings.xml` 的 `update_log_current` 为锚点校验版本一致性；发版说明也由 CI 从它抽取（抽不到直接拒绝发版）。
-- **单测（静态计数，26.10.25 合并上游（DASH 合并单文件 / wrapper 8.14.5）+ 本方开发者列表后实测）**：**88 个测试类 / 954 个用例**，两个 flavor 完全相同（同源码），0 失败 0 错误 0 跳过。计数方式：`app/src/test/` 下 `*Test.kt|java` 计数（另有共享假实现 `util/FakeSharedPreferences.kt`），`app/build/test-results/testStandardDebugUnitTest/TEST-*.xml` 的 `tests=` 求和。用例数一律以机器产出为准，队友口述数字不进入文档。
+- **单测（26.10.30 实测，`testStandardDebugUnitTest`）**：**99 suites / 1045 tests**，两个 flavor 完全相同（同源码），0 失败 0 错误 0 跳过。计数方式：`app/src/test/` 下 `*Test.kt|java` 计源文件（另有共享假实现 `util/FakeSharedPreferences.kt`，26.10.30 计得 98 个），`app/build/test-results/testStandardDebugUnitTest/TEST-*.xml` 的 `tests=` 求和。用例数一律以机器产出为准，队友口述数字不进入文档。
 - **26.10.10 那一轮的构建记录（历史，留作「改 minSdk / 重跑 release 链路」时的验证口径）**：`minSdk 24 → 19` 全部改动（含 jsoup 1.16.1、7 个 `res/drawable-v21` 资源）落盘后，按「`clean` → `assembleRelease` → `lintRelease` → 单测」四步跑完（均带 `--no-configuration-cache`，`clean` 与 `assemble` 分两次调用），四步全 `BUILD SUCCESSFUL`（37s / 2m13s / 1m25s / 39s）。当时单测汇总 **49 suites / 460 tests / 0 failures**（任务名当时还是 `testDebugUnitTest`，现已带 flavor 前缀），最新 XML 时间 `2026-10-09T22:59:04`（晚于当轮 APK 出包时间 22:56:58，覆盖了当轮全部源码改动）。`:app:lintRelease` 的 **`NewApi` 从 22 条降到 2 条**，且这 2 条就是 `PlayerActivity.kt:1981` 的已知假阳性。发版前仍建议再跑一次确认。
 - **「自动跳过片头片尾」已恢复上线（26.10.22）**：26.10.10 的紧急撤回**已解除**，`SkipOpEdPrefs.FEATURE_ENABLED` 回到 `true`，设置入口与搜索索引均已恢复；口径按用户拍板改为**默认关闭**（`DEFAULT_ENABLED = false`，老用户存档里显式写的值仍然优先）。恢复细节见 §3.3「恢复记录」，乱跳的三个根因修复见 §3.55。
 - **本轮基建改动（26.10.10）**：**`minSdk 24 → 21 → 19（Android 4.4）`**，唯一落点是 `app/build.gradle:21`。两级下调的成本不同，分开记：
@@ -709,6 +709,24 @@
 - **设备侧（SDK AVD `wear5`，`sdk_gwear_x86_64` / Android 14 / 466×466 圆屏 / 320dpi，装 `coexistDebug` universal 包）**：经 DebugBridge 拉起 `FavoriteFolderEditActivity` 核对结构与文案——默认夹（extras `mediaId=1;isDefault=true;title=DemoFolder`）顶栏「收藏夹管理」、`hintDefault` 显示「默认收藏夹仅支持管理内容，不能改名或删除」、`groupInfo`/`groupDanger` 均不在 dump 里（已隐藏）、内容管理小标题 + 「批量删除内容 / 勾选要移除的内容后删除」「清空失效内容 / 清理已失效（被删除或不可见）的收藏」两行卡片；非默认夹（`mediaId=123456;isDefault=false`）`groupInfo` 可见、标题回填 `DemoFolder`、滚动后「保存」行与两行内容管理入口都在；点「批量删除内容」成功开出 `FavoriteVideoListActivity`，顶栏显示 `DemoFolder`（`name` extra 透传成功）。**没有登录态**，故列表拉不到、多选态与两个写操作的成功提示未验。另记一条环境结论：该 AVD 上**所有页面**（含未改动的 `SettingMainActivity`）都渲染成内容放大溢出、左侧与底部被裁的样子，所以只能用来核对结构与文本，**不能做像素级版式对照**；同时 `android_find_text` 在本机不可用（无 Tesseract），`uiautomator dump` 是唯一可靠的判读手段。
 - **调试踩坑（对后续设备测试有用）**：PowerShell 5.1 往原生程序传参时会吃掉内嵌双引号，`adb shell 'am broadcast ... --es extras "a=1;b=2"'` 到设备端只剩 `a=1`（分号被设备 shell 当命令分隔符）。可靠写法是 `adb --% shell "am broadcast ... --es extras 'mediaId=1;isDefault=true'"`——`--%` 停止 PowerShell 解析、内层改用**单引号**给设备 shell。
 - **遗留**：① 「批量删除内容」是否**直达多选态**、「清空失效内容」的确认框与「清理完成」提示要在登录态下再验（空列表/只读夹按设计不进多选）；② 真手表/圆屏上的实际观感未看，AVD 渲染本身不可信；③ 音频/合集卡片点击仍按视频处理（`aid` 里装 auid/合集 id 走详情/虚拟合集），是改动前既有行为，本次未扩大范围。
+
+### 3.81 长按三倍速期间不再响应横滑调进度（26.10.30，用户报告）
+
+- **缘起**：用户报告「长按触发三倍速时，仍然能触发滑动控制进度」。长按是「按住不放」的动作，手指在加速期间几乎必然有几十像素的横向漂移；旧逻辑把这段漂移当成滑动调进度，浮层跳变、松手还会 seek 到漂移后的位置——本来只想加速看一段，进度却被拽走。
+- **根因**：`PlayerActivity.handleSwipeSeekTouch()` 的判据只有「设置开 + 已准备 + 非直播 + 播放器就绪 + 未缩放」（`PlayerSwipeSeekPolicy.isSeekAllowed`），**完全没看 `onLongClick`**；而 `handleSwipeSeekTouch()` 在两套 `layout_control` 触摸分支的 ACTION_MOVE 里都会被调用，所以加速期间横滑照样激活 `swipe_seek_overlay` 并改 `seekbar_progress`。
+- **修法**：
+  - `app/src/main/java/com/RobinNotBad/BiliClient/activity/player/PlayerGesturePolicies.kt`：`PlayerSwipeSeekPolicy.isSeekAllowed(...)` 增加第 7 个参数 `longPressBoost: Boolean`（**不设默认值**，逼调用点显式表态），判据追加 `&& !longPressBoost`；`handleSwipeSeekTouch()` 把 `onLongClick` 作为该参数传入，被拒后走原有的 `cancelSwipeSeekIfActive()`（浮层不出现、进度不动）。
+  - `PlayerActivity`：新增 `private fun endLongPressBoost()` 收口「松手还原倍速」——复位 `onLongClick`、`ijkPlayer?.setSpeed(speed_values[seekbar_speed.progress])`、`danmakuManager?.setSpeed(...)`、恢复 `text_speed` 文案；两套触摸分支的 ACTION_UP 都改调它，并**同时接 ACTION_CANCEL**。
+  - **ACTION_CANCEL 必须接**：这是本次翻出来的连带缺陷。改前 `onLongClick` 只在 ACTION_UP 复位，触摸被父容器拦截或失焦 CANCEL 后标志卡在 true，倍速停在 3 倍；一旦把 `onLongClick` 做成滑动门闸，同一个 bug 还会把「横滑调进度」永久锁死（这辈子不再恢复）。
+  - 文案：设置项 `settingtext_settingterminalplayeractivity_005` 改为「在视频区域左右滑动快进/快退（未缩放视频、未长按加速时生效）」。
+- **验证**：`./gradlew.bat :app:assembleDebug :app:testStandardDebugUnitTest` 通过（两 flavor，1m18s）；`testStandardDebugUnitTest` **99 suites / 1045 tests / 0 失败 0 错误 0 跳过**，`PlayerGesturePoliciesTest` 11 例（新增 `longPressBoost_blocksSwipeSeek`、`longPressRelease_restoresSwipeSeek`）。
+  - 设备侧（SDK AVD `wear5`，`sdk_gwear_x86_64` / Android 14 / 466×466，装 `coexistDebug`；`player_scale` / `player_swipe_seek` / `player_longclick` 全开，走的是 `layout_control` 缩放触摸分支）：样本是 `screenrecord` 自录的 44 秒本地 mp4，经 DebugBridge 直接拉起 `PlayerActivity`（`extras url=<本地路径>`，不需要登录）。
+    - **对照**：普通横滑（DOWN → 3 次 MOVE）→ dump 出现 `swipe_seek_overlay`、无 `longclick` 日志 → 调进度正常 ✔。
+    - **修复后**：DOWN 后按住 1000ms（logcat 出现 `gesture>longclick_down`，三倍速已触发）再 MOVE 两次 → dump **无** `swipe_seek_overlay`、进度文本不动 ✔。
+    - **松手恢复**：加速拖到 x=330 期间进度不变，UP 后 logcat `IJKMEDIA: Playback rate: 3.000000` → `Playback rate: 1.000000`，紧接着普通横滑 → 浮层出现（`00:24 / 00:44 (55%)`）✔。
+    - **ACTION_CANCEL**：按住加速后发 `input motionevent CANCEL` → 倍速 3.0 → 1.0；CANCEL 之后再普通横滑 → 浮层出现（`00:37 / 00:44 (82%)`）→ `onLongClick` 没卡 true ✔。
+- **调试踩坑（对后续播放器设备测试有用）**：① `adb shell input motionevent DOWN/MOVE/UP/CANCEL x y` 能跨进程拼出一条真实触摸序列，`input swipe` 做不到「按住不动再横移」这种时序；② `screenrecord` 录静止画面只产出 3~4 秒、几 KB 的短片，播放器立刻 `FFP_MSG_COMPLETED`、`isPlaying` 不成立就没法测长按，录的时候要同时在设备上制造画面变化（这次录出 44 秒 / 15MB），录完还要 `chmod 660`（属主是 shell，app 读不到）；③ CANCEL 之后前台偶尔被 Wear 系统 UI 抢走，dump 取不到播放器控件是**假阴性**，先用 `dumpsys window | Select-String mCurrentFocus` 确认焦点在 `PlayerActivity` 再判读。
+- **遗留**：① 只实测了「开启视频可缩放」的触摸分支（默认设置）；未缩放分支的 UP/CANCEL 收尾代码同构，没单独跑；② 圆屏 AVD 的命中区与真手表手感不同，系统 long press 阈值在真机上的误触率仍待真机观察；③ 长按加速期间**双指缩放/拖动**仍被吞（既有行为，本次未扩大范围）。
 
 ## 4. 历史章节索引
 

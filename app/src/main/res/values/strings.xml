@@ -1190,7 +1190,7 @@
     <string name="settingtext_settingterminalplayeractivity_002">关</string>
     <string name="settingtext_settingterminalplayeractivity_003">沿用上次</string>
     <string name="settingtext_settingterminalplayeractivity_004">左右滑动控制进度</string>
-    <string name="settingtext_settingterminalplayeractivity_005">在视频区域左右滑动快进/快退（未缩放视频时生效）</string>
+    <string name="settingtext_settingterminalplayeractivity_005">在视频区域左右滑动快进/快退（未缩放视频、未长按加速时生效）</string>
     <string name="settingtext_settingterminalplayeractivity_006">退到后台或熄屏时继续播放，并挂出通知栏遥控</string>
     <string name="settingtext_settingterminalplayeractivity_007">开播时的弹幕开关；「沿用上次」= 上次退出播放器时的实际状态</string>
     <string name="settingtext_settingterminalplayeractivity_008">单集播放结束后循环重播当前视频</string>
