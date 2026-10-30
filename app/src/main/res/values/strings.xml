@@ -1302,6 +1302,9 @@
     <string name="err_qr_no_info">无法获取二维码信息，点击上方重试\n%1$s</string>
     <string name="err_qr_tv_api">TV端登录接口返回异常\n%1$s</string>
     <string name="err_qr_tv_network">TV端网络错误，点击重试\n%1$s</string>
+    <string name="text_qr_retrying">网络异常，正在重试……</string>
+    <string name="err_qr_unknown_code">登录接口返回未知状态（%1$d），点击上方重新获取</string>
+    <string name="err_qr_no_mid">登录凭证不完整（缺少用户ID），点击上方重新获取</string>
     <string name="err_sms_api">验证码接口异常: %1$s</string>
     <string name="err_sms_send_failed">发送失败: %1$s</string>
     <string name="err_sms_login_failed">登录失败: %1$s</string>

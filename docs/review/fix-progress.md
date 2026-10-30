@@ -819,6 +819,32 @@
   - **回归**：`严炜` 不再弹彩蛋、正常留在 `SearchActivity` 拉真实搜索（旧组已删）；`Robin 纳西妲` 仍弹彩蛋 2、`抑郁` 仍弹暖心词；单搜 `紫色空灵` 不触发（正常搜索）。
   - 说明：DebugBridge 的 intent 入口与真实 UI 提交走的是同一个 `searchKeyword()`（`SearchActivity.kt:329-331` 调用点），故 intent 验证对 UI 路径等效。
 
+### 3.86 扫码登录补齐健壮性：轮询分档 / 失败退避 / 状态码收敛 / web 落地修正（26.10.30，用户要求）
+
+- **缘起**：用户要求「扫码登录体验补齐健壮性」。先做只读审计（对照官方 App 9.16.1 的逆向结论），查出 9 处问题，本轮修其中 7 处；`NetWorkUtil` 的重试/超时与 `AccountManager.saveCurrentAccount()` 的同步网络**按决策不动**。
+- **改法（只动 `activity/settings/login/QRLoginFragment.kt` 与 `res/values/strings.xml`，`api/LoginApi.java` 无需改）**：
+
+| 问题 | 改法 | 实测结论 |
+| --- | --- | --- |
+| 轮询固定 1s、无次数上限（旧 `:263`） | `PollCount` 分档：第 1–30 次 2s、31–60 次 4s、61 次起 6s；`MAX_POLL_COUNT = 90`，到顶即停并提示重取码。Timer 改成「每拍只排一发」（`scheduleNextPoll()`），才能变间隔 | ✔ 2s→4s 在设备上实测到切换（见验证第 3 条）；上限 90 仅代码复核 |
+| 一次网络异常就永久停轮询（旧 `:253-261`） | 新增 `onPollFailure()`：连续失败 <3 次 → 提示「网络异常，正在重试……」并以 3s 退避续轮询；第 3 次才停、恢复可点、按模式给 `err_qr_*` 文案。**理由**：手机扫码后用户可能要隔几秒才点确认，一次抖动就让人重扫的代价远大于多轮询两下 | ✔ 实测：失败第 1、2 次各 3s 退避续轮询且显示「网络异常，正在重试……」，第 3 次才停（见验证第 4 条） |
+| 未知状态码不停轮询（旧 `:432` / `:349-351`） | 两个 detect 的 `else` 分支：`stopPolling()` + `need_refresh=true` + 恢复二维码可点 + 新文案 `err_qr_unknown_code(%1$d)` | ⚠ 仅代码复核（服务端造不出未知码）；已知码 `86101`/`86039`/`86090` 的分支在设备上跑通 |
+| 模式开关卡片可连点，连点两下出两套 Timer（旧 `:113-120` + `:238`） | `startLoginDetect()` 入口先 `stopPolling()`（幂等）；`refreshQrCode()` 期间 `loginModeSwitch.isEnabled=false`，出码/失败回调再恢复 | ✔ 实测：三连点只发出一次 `auth_code` 请求、TV 轮询单条流 2.07–2.12s（见验证第 5 条） |
+| 页面切走/销毁只 cancel 不置标志位，正在跑的那一拍会把轮询续回来 | 新增 `pollStopped` 标志 + `stopPolling()`（`pollStopped=true` → `timer.cancel()` → `timer=null`）；`onDestroy` 与三个跳转卡片都不再裸调 `timer?.cancel()` | ✔ 代码复核：文件内只剩 `scheduleNextPoll()` 与 `stopPolling()` 两处 cancel |
+| web 成功落地：`.toLong()` 可能崩、`access_key` 不清、`requestSSOs` 抛异常会把成功报成失败 | 新增 `handleWebLoginSuccess()`：cookie 改取 `NetWorkUtil.getCachedCookies()`；`DedeUserID` 用 `toLongOrNull()`，取不到给 `err_qr_no_mid` 而不是崩；`refresh_token` 用 `optString`；**显式 `putString(access_key, "")` 清残留 TV token**（否则 `SplashActivity.kt:396-408` 会走 APP token 刷新分支，web 会话拿不到 cookie 续期）；`requestSSOs()` 包 try 且移到导航之后 | ✔ 端到端实测通过（见验证第 2 条） |
+| `refreshQrCode()` 在 IO 线程改 View（旧 `:180-181`） | 换图/置灰/清标志全部挪到 UI 线程，`CenterThreadPool.run{}` 里只留网络 | ✔ 代码复核 |
+| 文案：重试/未知码/凭证不全都只有一句模糊提示 | 新增 `text_qr_retrying`、`err_qr_unknown_code`、`err_qr_no_mid`；`err_qr_no_info` 等处的 `%1$s` 兜空串，不再显示 "null" | ✔ 见截图 |
+
+- **验证**：
+  - `./gradlew.bat :app:assembleStandardDebug :app:testStandardDebugUnitTest` 通过，**104 suites / 1112 tests / 0 failures / 0 errors**（日志 `outputs/build_login2.log`；工作区同期的私有页测试也在其中，本轮改动前后都是 0 失败）；早前一轮（不含维护者新增测试）为 104 suites / 1076 tests，日志 `outputs/build_login.log`。另编 `assembleCoexistDebug` 供设备实测（代码同源）。
+  - 设备侧（emulator-5554 / Wear OS 14 / `coexistDebug` universal 包）：web 模式出码正常（`outputs/smoke/qr_login_web_3.png`）；轮询 130s 窗口抓 38 拍（`outputs/smoke/poll_cadence_130s.log`）——前 27 拍间隔 2.07–2.27s，第 28 拍起 4.07–4.34s，与「第 30 次进 4s 档」的设计一致（抓包前已轮询约 9s，绝对计数≈30）。
+  - 该窗口内二维码被外部扫走（`86090` → 2 秒后 `code:0`），**意外把 web 成功链路端到端跑通了**：`saveCookiesLocked` 落地 `SESSDATA/bili_jct/DedeUserID/DedeUserID__ckMd5/sid`，随后 `x/web-interface/card`、`space/notice`、`wbi/acc/info`，最后 GET `data.url`（`passport.biligame.com/.../crossDomain`）；落盘核对 `access_key` 为空串、`cookies` 466B、`csrf` 32B、`refresh_token` 32B、`mid` 已写、`setup=true`、`account_list` 已写；**无崩溃、无 ANR**。
+  - **P2 断网实测（三个窗口）**：①连续失败到停——15:21:58.905 起连续 3 次失败（15:21:58.9 / 15:22:02.3 / 15:22:05.7，间隔 3.4s＝3s 退避＋约 0.45s 请求），第 3 次后 `MsgUtil` 打「网络错误(＃°Д°)」、文案回 `err_qr_no_info`，此后 40s 内没有任何 poll（`outputs/smoke/p2_retry_3.png`、`p2_stage3.log`）；②重试文案——离线 2.2s 时截图拍到「网络异常，正在重试……」（`outputs/smoke/p2_retrying_live.png`）；③短暂抖动自愈——失败 2 次后网络恢复，15:24:16.670 轮询成功回到 `86101` 并按 2s 档继续（`outputs/smoke/p2_transient_recovery.log`、`p2_recovered_transient.png`）。**首拍失败很快**：DNS 直接 `UnknownHostException`，`NetWorkUtil` 的内部 5 次重试每次约 0.1s，所以 3 次上限约 7s 就会触发。
+  - **P4 连点实测**：在模式卡上 `input tap` 连点 3 下（间隔约 50–100ms）→ 只发出一次 `POST .../passport-tv-login/qrcode/auth_code`（15:24:41.990），没有第二次取码、也没有回切 web 分支；随后 TV 轮询单条流：42.589 / 44.655 / 46.731 / 48.848 / 50.923 / 52.984 / 55.044，间隔 2.07–2.12s、每拍只有一条 `tv_login_state`，说明只有一套 Timer（`outputs/smoke/p4_doubletap.log`、`p4_doubletap_2s.png`、`p4_doubletap_12s.png` 显示「（TV端模式）」）。
+  - 环境事实（不是缺陷）：App 退到后台约 100s 后被系统 `ActivityManager: freezing <pid>` 冻结，轮询随之暂停——这是系统对 cached 进程的常规策略，不是 P2 退避在停轮询；回到前台后是否续跑未单独验证。
+  - 另一个观察（本轮未改）：停轮询后 `err_qr_no_info` 会把异常原文拼进 UI，截图里是「…取二维码信息，点击上…\nUnable to resolve host …」——`%1$s` 拿到的是 `e.message`，本轮只兜了 null 的情况。
+- **遗留**：①P2 的 3 次上限在「快速失败」网络下约 7s 就停，10 秒级的电梯/地铁断网仍要用户手点重试（这是拍板口径的必然结果，想更宽容只需调大 `MAX_POLL_FAIL`）；②未知状态码分支服务端造不出来，只有代码复核；③TV 模式只跑了轮询（`86039` 正常），**TV 成功落地（access_token/refresh_token 写盘）未实测**；④90 次上限（≈180s＋C 端耗时）没有跑满，按代码复核；⑤`err_qr_no_info` 会外露英文异常原文（见上），建议后续换成不带 `%1$s` 的专用文案；⑥`refreshQrCode()` 里 `CookiesApi.checkCookies()` 仍可能耗时数秒，取码阶段最坏仍会卡在「正在获取二维码」（`NetWorkUtil` 重试策略未动，属已知边界）。
+
 ## 4. 历史章节索引
 
 > 完整正文在 `docs/archive/review/fix-progress-history.md`；§3.0~§3.51 的状态快照（26.10.09~26.10.21）在 `docs/archive/review/fix-progress-snapshots-261009-261021.md`。**编号在历史上有重复**（`## 二十二` / `## 二十九` 各出现两次、`## 30.` 是阿拉伯数字写法，原为不打断既有交叉引用而保持不动），下表**以归档文件的物理行序为准**。
