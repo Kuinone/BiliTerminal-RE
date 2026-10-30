@@ -1887,6 +1887,23 @@ TTF/OTF/TTC，应用把它**拷进私有目录**（`filesDir/custom_font/custom_
 
 ---
 
+### 7.57 播放器内切换 1080P：播放链路必须按清晰度选接口（26.10.30）
+
+- **根因不是 UI，是取流**：播放器内切清晰度原来一律 `PlayerApi.getVideo()`（`fnval=1` 的音视频合一 MP4），这条流**清晰度天花板就是 720P**，`qn=80` 会被服务端降级成 `quality=64`；但响应的 `accept_quality` 里**照样列出 1080P/1080P+**，所以界面能看到 1080P、点了却没有效果（`docs/bilibili-api-notes.md` §3.12 记了实测）。1080P 及以上只有 DASH（`fnval=4048`）拿得到，而 DASH 是「纯视频 + 纯音频」两条流，播放侧必须自己起第二路音频。
+- **判据抽成纯函数**：`player/PlayerStreamPolicy.kt` —— `QN_720P = 64`、`requiresDash(qn) = qn > 64`、`isPlayableDash(videoUrl, audioUrl)`（缺任一条就不能当 DASH 播，回退合一 MP4）、`isRemoteAudioTrack(url)`（`http(s)://` 前缀；本地缓存双文件仍是文件路径）。`PlayerStreamPolicyTest` 6 例钉死。
+- **取流入口**：`PlayerApi.getPlaybackVideo` / `getPlaybackBangumi` 是播放侧唯一入口——`qn>64` 先试 `getVideoDash` / 新增的 `getBangumiDash`，`isPlayableDash` 不成立就清掉 `dashData/audioUrl` 并回退 `getVideo` / `getBangumi`。`getVideoDash`/`getVideo`/`getBangumi` 的 `accept_*` 解析统一走 `fillQualityLists`，dash 落字段统一走 `applyDashStreams`。**番剧也有 `getBangumiDash`**（`pgc/player/web/playurl` + `fnval=4048&fourk=1`，`result` 下取 `dash`），否则番剧永远拿不到 1080P。
+- **播放器侧**：`audioTrackUrl` 现在承载两种东西——本地双文件路径与在线 DASH 音轨 URL；`initAudioTrack()` 先按 URL 形态分流，远程走新增 `initRemoteAudioTrack()`（`android.media.MediaPlayer` + `setDataSource(Context, Uri, headers{Referer/User-Agent/Cookie})` + `prepareAsync()`）。**必须用带 `Context`/`Uri` 的重载**：`MediaPlayer` 没有 `setDataSource(String, Map)`，只用 `setDataSource(String)` 拿不到带 Referer 的 CDN 流（403）。
+- **失败兜底只回退一次**：音轨 `onError`/初始化异常 → 先 `retryRemoteAudioTrack()`（600ms 后同 URL 重试，`MAX_DASH_AUDIO_RETRY = 1`，`dashAudioRetryCount` 每次切清晰度/重新载入归零）→ 仍失败才 `onHighQualityAudioFailed()` → `applyQuality(64, allowDash = false)` 切回 720P 合一 MP4；`dashAudioFallbackInFlight` 防重入（否则反复重建播放器）。`applyQuality` 是 `switchQuality` 拆出来的唯一落地路径（`switchQuality` 只负责 `requiresDash` 判据），切P（`switchToOnlinePage`）与互动跳转（`jumpToInteractionPage`）也都改走 `getPlayback*` 并把 `playerData.audioUrl` 带进 `doSwitchPage(..., newAudioTrackUrl)` / `audioTrackUrl`。
+- **`-38` 的真正根因：对 preparing 中的音轨 `seekTo`**（26.10.30 模拟器实测钉死）。切清晰度时远程音轨刚 `prepareAsync`，`currentPosition` 固定是 0，而 `video_now` 已经续播到十几秒；`progressChange` 的偏差校正（>800ms 就 seek）因此对**还没 prepared** 的 `MediaPlayer` 调 `seekTo` → 框架以 `INVALID_OPERATION`(-38) 直接回调 `onError` → 刚切好的 1080P 音轨被判死、回退 720P，用户看到的就是「一切 1080P 就被踢回 720P」。修法是加 `audioTrackPrepared` 守卫（远程 `onPrepared` 里置真、`releaseAudioTrack` 置假），校正只在它就绪后生效。
+- **只纠「还在变大」的漂移，不纠固定偏差**：两路时钟基准天然差一截（模拟器上稳定 ~850ms，视频渲染慢），拿绝对偏差当判据会每 2~5 秒 seek 一次音轨（听感持续一顿一顿）。`progressChange` 因此先采样一次偏差当基线（`audioDriftBaseline`/`audioDriftSampled`），之后只有偏离基线超过 800ms 才对齐；用户拖动（`seekToVideo`）后基线作废重采样。
+- **回退时不要覆盖清晰度列表**：回退成合一 MP4 后服务端 `accept_quality` 只剩 720P/360P，直接覆盖会让用户再也点不到 1080P（连重试入口都没了）。`applyQuality` 只在「新列表最高档不低于旧列表最高档」时才替换 `qnStrList/qnValueList`。
+- **倍速必须同步到音轨**：DASH 双流下两路各走各的，倍速只给视频会持续漂移（`progressChange` 每 800ms 强行 seek 一次，听感是「一顿一顿」）。新增 `applyAudioSpeed()` 用 `PlaybackParams`（API 23+），接在 `applySpeedFromSeekbar` / 倍速滑条 / 长按三倍速 / `endLongPressBoost` / 两处音轨 `onPrepared`；**API < 23 没有 `PlaybackParams`，只能靠 800ms 偏差校正**。
+- **两个仍在的坑**：① `fnval=1` 的合一 MP4 自带音轨，**绝不能再挂外部音轨**（会两轨同时出声，见 §7.4 的 B1）；② DASH 流地址约 120 分钟过期（§7.35），超长视频中途 `reconnect_streamed` 重连用的是同一条过期 URL，可能 403 —— 目前未处理，属已知遗留。
+- **模拟器验证边界**（`emulator-5554`，AVD `wear5`，未登录）：`play_qn=80` 起播走 `fnval=4048&qn=80`，播放器内切「高清 1080P60」→ `fnval=4048&qn=116` → `在线 DASH 音轨已就绪`，不再出现 `-38`；但未登录账号实际只拿到 DASH 的 720P 视频流，**1080P 画面本体仍需登录（480P+）与大会员（1080P+/60fps）真机复核**。
+- 文档同步：`docs/bilibili-api-notes.md` §3.12（取流结论）、`docs/FEATURES.md`（播放清晰度）、`docs/review/fix-progress.md`（本轮实测结论）。
+
+---
+
 ## 10. 动手前的检查清单
 
 1. 确认要改的类属于哪一层：`activity/`（UI）→ `api/`（网络+解析）→ `util/`（基建）→ `model/`（数据）。

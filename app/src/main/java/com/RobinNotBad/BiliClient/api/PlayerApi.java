@@ -21,6 +21,7 @@ import com.RobinNotBad.BiliClient.model.PlayerData;
 import com.RobinNotBad.BiliClient.model.Subtitle;
 import com.RobinNotBad.BiliClient.model.SubtitleLink;
 import com.RobinNotBad.BiliClient.model.VideoInfo;
+import com.RobinNotBad.BiliClient.player.PlayerStreamPolicy;
 import com.RobinNotBad.BiliClient.service.DownloadService;
 import com.RobinNotBad.BiliClient.util.FileUtil;
 import com.RobinNotBad.BiliClient.util.Logu;
@@ -129,20 +130,7 @@ public class PlayerApi {
 
         // 解析DASH数据
         if (data.has("dash")) {
-            JSONObject dashJson = data.getJSONObject("dash");
-            playerData.dashData = DashData.fromJson(dashJson);
-
-            // 设置视频URL（选择指定清晰度的视频流）
-            DashVideoStream videoStream = playerData.dashData.getVideoStream(playerData.qn);
-            if (videoStream != null) {
-                playerData.videoUrl = videoStream.baseUrl;
-            }
-
-            // 设置音频URL（选择最高质量的音频流）
-            DashAudioStream audioStream = playerData.dashData.getBestAudioStream();
-            if (audioStream != null) {
-                playerData.audioUrl = audioStream.baseUrl;
-            }
+            applyDashStreams(playerData, data.getJSONObject("dash"));
         } else {
             getVideo(playerData, true);
             return;
@@ -159,11 +147,123 @@ public class PlayerApi {
         }
         Logu.d("history", playerData.progress + "," + playerData.cidHistory);
 
-        JSONArray accept_description = data.getJSONArray("accept_description");
-        JSONArray accept_quality = data.getJSONArray("accept_quality");
-        String[] qnStrList = new String[accept_description.length()];
-        int[] qnValueList = new int[accept_description.length()];
-        for (int i = 0; i < qnStrList.length; i++) {
+        fillQualityLists(playerData, data);
+    }
+
+    /**
+     * 播放取流：不高于 720P 用音视频合一的 MP4；1080P 及以上只有 DASH 拿得到。
+     *
+     * <p>为什么不在 {@link #getVideo} 里直接改：下载、缓存预取、详情页预取都依赖它的合一流结果，
+     * 这里只给**播放链路**加一层"该走 DASH 时走 DASH"的分派，既有调用点行为不变。
+     *
+     * <p>DASH 成功时 {@code playerData.audioUrl} 会被填上音轨地址，必须随 Intent 传进播放器
+     * （见 {@link #jumpToPlayer}），由播放器起第二路音频 —— 否则高清只有画面没有声音。
+     *
+     * @param playerData 传入 aid、cid、qn 等必要数据；返回时带 videoUrl/audioUrl/清晰度列表
+     */
+    public static void getPlaybackVideo(PlayerData playerData) throws JSONException, IOException {
+        if (PlayerStreamPolicy.requiresDash(playerData.qn) && fetchDashForPlayback(playerData, false)) return;
+        getVideo(playerData, false);
+    }
+
+    /**
+     * 番剧版 {@link #getPlaybackVideo}。
+     *
+     * <p>番剧取流走 pgc 接口，所以 DASH 也要走 pgc（{@link #getBangumiDash}）；续播进度仍由
+     * {@link #getBangumi} 那套单独查询（pgc 的 result 不返回 last_play_*）。
+     */
+    public static void getPlaybackBangumi(PlayerData playerData) throws JSONException, IOException {
+        if (PlayerStreamPolicy.requiresDash(playerData.qn) && fetchDashForPlayback(playerData, true)) return;
+        getBangumi(playerData);
+    }
+
+    /**
+     * 取 DASH 流并判断结果够不够起播。
+     *
+     * <p>判据是视频与音轨都拿到（{@link PlayerStreamPolicy#isPlayableDash}）：DASH 是音视频分离的，
+     * 缺音轨硬播就是"有画面没声音"，而播放器里没有补救入口，所以宁可整体回退到合一 MP4。
+     *
+     * @return true 表示已经拿到可播的 DASH 双流；false 表示调用方应回退到合一 MP4
+     */
+    private static boolean fetchDashForPlayback(PlayerData playerData, boolean bangumi) {
+        try {
+            if (bangumi) getBangumiDash(playerData);
+            else getVideoDash(playerData);
+            if (PlayerStreamPolicy.isPlayableDash(playerData.videoUrl, playerData.audioUrl)) return true;
+            Logu.w("playback", "DASH 取流不完整（缺视频或音轨），回退合一 MP4：qn=" + playerData.qn);
+        } catch (Exception e) {
+            Logu.e("playback", "DASH 取流失败，回退合一 MP4：" + e.getMessage());
+        }
+        // 回退前把半成品清掉：否则播放器可能拿着"有视频没音轨"的 dashData 当成 DASH 播放
+        playerData.dashData = null;
+        playerData.audioUrl = "";
+        return false;
+    }
+
+    /**
+     * 番剧 DASH 取流。
+     *
+     * <p>与 {@link #getVideoDash} 的差别只在接口（pgc 的响应包在 result 里）与请求参数；
+     * dash 结构与投稿接口一致，解析共用 {@link #applyDashStreams}。
+     * 请求头由 {@link NetWorkUtil#getJson(String)} 自带的 webHeaders 提供（含 Referer），
+     * 缺 Referer 时 1080P 以上拿不到流。
+     */
+    public static void getBangumiDash(PlayerData playerData) throws JSONException, IOException {
+        NetWorkUtil.FormData reqData = new NetWorkUtil.FormData()
+                .setUrlParam(true)
+                .put("aid", playerData.aid)
+                .put("cid", playerData.cid)
+                .put("fnval", 4048) // 4048: DASH|HDR|4K|杜比全景声|杜比视界|8K|AV1
+                .put("fnvar", 0)
+                .put("qn", playerData.qn)
+                .put("season_type", 1)
+                .put("session",
+                        ToolsUtil.md5(
+                                String.valueOf(System.currentTimeMillis() - SystemClock.currentThreadTimeMillis())))
+                .put("platform", "pc")
+                .put("fourk", 1);
+
+        String url = "https://api.bilibili.com/pgc/player/web/playurl" + reqData.toString();
+
+        JSONObject body = NetWorkUtil.getJson(url);
+        JSONObject data = body.getJSONObject("result");
+
+        playerData.danmakuUrl = "https://comment.bilibili.com/" + playerData.cid + ".xml";
+        if (!data.has("dash")) {
+            Logu.w("playback", "番剧取流没有 DASH 数据，回退合一 MP4");
+            return;
+        }
+        applyDashStreams(playerData, data.getJSONObject("dash"));
+        fillQualityLists(playerData, data);
+    }
+
+    /** 把 dash 里的视频/音频流写进 PlayerData：视频按 qn 选档，音频取最高质量的一条。 */
+    private static void applyDashStreams(PlayerData playerData, JSONObject dashJson) throws JSONException {
+        playerData.dashData = DashData.fromJson(dashJson);
+        DashVideoStream videoStream = playerData.dashData.getVideoStream(playerData.qn);
+        if (videoStream != null) {
+            playerData.videoUrl = videoStream.baseUrl;
+        }
+        DashAudioStream audioStream = playerData.dashData.getBestAudioStream();
+        if (audioStream != null) {
+            playerData.audioUrl = audioStream.baseUrl;
+        }
+    }
+
+    /**
+     * 解析 accept_description/accept_quality 成播放器的清晰度列表。
+     *
+     * <p>这张列表**与 fnval 无关**：fnval=1 的响应同样会列出 1080P/1080P+（见仓库里的接口快照），
+     * 只是返回的 quality 被降级成 64。播放器里能看到 1080P 却切不过去，根源就在这里。
+     */
+    private static void fillQualityLists(PlayerData playerData, JSONObject data) {
+        JSONArray accept_description = data.optJSONArray("accept_description");
+        JSONArray accept_quality = data.optJSONArray("accept_quality");
+        if (accept_description == null || accept_quality == null) return;
+        int size = Math.min(accept_description.length(), accept_quality.length());
+        String[] qnStrList = new String[size];
+        int[] qnValueList = new int[size];
+        for (int i = 0; i < size; i++) {
             qnStrList[i] = accept_description.optString(i);
             qnValueList[i] = accept_quality.optInt(i);
         }
@@ -281,18 +381,7 @@ public class PlayerApi {
         }
         Logu.d("history", playerData.progress + "," + playerData.cidHistory);
 
-        JSONArray accept_description = data.getJSONArray("accept_description");
-        JSONArray accept_quality = data.getJSONArray("accept_quality");
-        String[] qnStrList = new String[accept_description.length()];
-        int[] qnValueList = new int[accept_description.length()];
-        for (int i = 0; i < qnStrList.length; i++) {
-            qnStrList[i] = accept_description.optString(i);
-            qnValueList[i] = accept_quality.optInt(i);
-        }
-        Logu.d("qn_str", Arrays.toString(qnStrList));
-        Logu.d("qn_val", Arrays.toString(qnValueList));
-        playerData.qnStrList = qnStrList;
-        playerData.qnValueList = qnValueList;
+        fillQualityLists(playerData, data);
 
     }
 
@@ -329,6 +418,18 @@ public class PlayerApi {
 
         //番剧取流接口(pgc/player/web/playurl)的 result 不返回 last_play_*，续播进度必须单独查询，
         //否则 playerData.progress 一直是 0 —— 这正是"番剧每次进去都从头播"的原因
+        applyBangumiProgress(playerData, data);
+
+        fillQualityLists(playerData, data);
+    }
+
+    /**
+     * 番剧续播进度：pgc 取流（合一 MP4 与 DASH 两条路）共用。
+     *
+     * <p>抽成方法是因为 {@link #getBangumiDash} 也必须调它：DASH 那条路如果漏了，用户把默认清晰度
+     * 设成 1080P 后番剧就永远从头播（合一 MP4 那条路有、DASH 没有，属于最容易被忽略的分支差异）。
+     */
+    private static void applyBangumiProgress(PlayerData playerData, JSONObject data) {
         playerData.cidHistory = playerData.cid;
         long lastProgress = getLastPlayProgress(playerData.aid, playerData.cid);
         if (lastProgress <= 0) {
@@ -348,17 +449,6 @@ public class PlayerApi {
         } else {
             playerData.progress = 0;
         }
-
-        JSONArray accept_description = data.getJSONArray("accept_description");
-        JSONArray accept_quality = data.getJSONArray("accept_quality");
-        String[] qnStrList = new String[accept_description.length()];
-        int[] qnValueList = new int[accept_description.length()];
-        for (int i = 0; i < qnStrList.length; i++) {
-            qnStrList[i] = accept_description.optString(i);
-            qnValueList[i] = accept_quality.optInt(i);
-        }
-        playerData.qnStrList = qnStrList;
-        playerData.qnValueList = qnValueList;
     }
 
     /**
@@ -456,6 +546,12 @@ public class PlayerApi {
                 intent.putExtra("mid", playerData.mid);
                 intent.putExtra("progress", playerData.progress);
                 intent.putExtra("live_mode", playerData.isLive());
+                // DASH（1080P 及以上）是「纯视频 + 纯音频」两条流：videoUrl 是无声的视频，
+                // 音轨地址必须单独传进去，播放器会用它起第二路音频；不传就是有画面没声音。
+                // 本地缓存的双文件视频也走这个 extra，所以这里不判在线/本地，由播放器按 URL 形态区分。
+                if (playerData.audioUrl != null && !playerData.audioUrl.isEmpty()) {
+                    intent.putExtra("audio_track_url", playerData.audioUrl);
+                }
                 // 直播的候选地址表随 Intent 一起进播放器：弱网/线路故障时播放器要能在不改请求的前提下换线路。
                 if (playerData.liveUrlCandidates != null && !playerData.liveUrlCandidates.isEmpty()) {
                     intent.putStringArrayListExtra("live_url_candidates", playerData.liveUrlCandidates);

@@ -111,6 +111,7 @@
     - **对代码的含义**：`DownloadService` 里「`qn<=64` → `getVideo`（`fnval=1`）取单文件、`useDash=false`」以及「MP4 分支下载完要删掉同目录残留的 `audio.m4a`」都是**正确**的；**反过来把这条流当成"纯视频"再挂一路外部音轨，就会两轨同时出声**（即 §3.13 修的音频重复）。
     - **26.10.25 起下载侧把 DASH 双文件 remux 成单文件**：`util/MediaMerger.kt` 用 `MediaExtractor`（支持分片 MP4 的 `moof`）+ `MediaMuxer` 重封装，产物就是和 `fnval=1` 同形态的双轨 MP4；这不是「把 `fnval=16` 的纯视频当合一文件」，而是容器层真正写入了音频轨。播放侧的外部音轨路径保留给老缓存。
     - **未覆盖**：`platform=html5`（播放侧 mtvPlayer 分支）实测同样是 `trak=2`，与 `pc` 一致；但只测了 1 个稿件、未登录，大会员内容与其它稿件未复验。
+    - **播放侧的含义（26.10.30 修「播放器内切不到 1080P」时确认）**：直播之外的播放链路必须按 `qn` 选接口——`qn > 64` 走 DASH（`getVideoDash` / `getBangumiDash`，播放器另起一路外部音频），`qn <= 64` 继续走 `fnval=1` 的合一 MP4。**不能只靠"列表里有 1080P 就以为能拿 1080P"**：`accept_quality` 与 `fnval` 无关，`fnval=1` 时它照样列 1080P，只是 `quality` 被降到 64。判据与取流入口见 `player/PlayerStreamPolicy.kt` 与 `PlayerApi.getPlaybackVideo/getPlaybackBangumi`（`docs/architecture-map.md` §7.57）。
 13. **搜索排序只长在「分类搜索」上，聚合搜索没有**（26.10.24 加搜索排序时核实）：`wbi/search/all/v2` 只接受 `keyword`（`bilibili-API/docs/search/search_request.md:21-27`），`order` 是 `wbi/search/type` 的参数——视频/专栏 `totalrank`（默认）/ `click` / `pubdate` / `dm` / `stow` / `scores`（专栏另有 `attention`），直播间 `online` / `live_time`，用户 `0` / `fans` / `level`（`:598`）。
     - **没有「最多点赞」**：视频搜索不支持按点赞数排序，别照用户口吻去拼一个不存在的值。
     - **要排序就得换接口**：本项目视频分类选「综合」时仍走 `all/v2`（它会把番剧结果混进第一页），选其余档位改走 `search/type?search_type=video&order=…`（不混番剧；条目字段与聚合结果同构，解析共用 `SearchApi.parseVideoEntry`）。

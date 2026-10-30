@@ -118,8 +118,14 @@ class JumpToPlayerActivity : BaseActivity() {
     private fun requestVideo() {
         CenterThreadPool.run {
             try {
-                if (playerData!!.isBangumi) PlayerApi.getBangumi(playerData!!)
-                else PlayerApi.getVideo(playerData!!, download != 0)
+                if (playerData!!.isBangumi) {
+                    // 番剧 1080P 及以上同样只有 DASH 拿得到（不走 DASH 会被降级成 720P）
+                    if (download == 0) PlayerApi.getPlaybackBangumi(playerData!!)
+                    else PlayerApi.getBangumi(playerData!!)
+                } else {
+                    if (download == 0) PlayerApi.getPlaybackVideo(playerData!!)
+                    else PlayerApi.getVideo(playerData!!, true)
+                }
 
                 Logu.d("history", playerData!!.progress.toString())
                 jump()
