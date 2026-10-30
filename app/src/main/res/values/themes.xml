@@ -788,9 +788,9 @@
 
     <style name="ButtonStyleTerminal" parent="Widget.MaterialComponents.Button">
         <item name="backgroundTint">@color/terminal_card_bg</item>
-        <!-- 亮色下浅色按钮压在浅色纸底上不够分明，补一道细描边；暗色下宽度是 0dp（观感不变） -->
-        <item name="strokeColor">@color/terminal_divider</item>
-        <item name="strokeWidth">@dimen/terminal_btn_stroke_width</item>
+        <!-- 不描边：按钮底 = 卡片色（半透明），亮暗两版都靠底色差与页底区分。
+             26.10.26 曾给亮色补过 1dp @color/terminal_divider 描边，实测在旧纸底上是一圈显眼的深灰框，
+             与暗色版「无边框」的观感对不上，26.10.30 撤销。 -->
         <item name="cornerRadius">@dimen/card_round</item>
         <item name="android:textColor">@color/terminal_textwhite</item>
         <item name="android:insetTop">2dp</item>

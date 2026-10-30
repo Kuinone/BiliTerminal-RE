@@ -728,6 +728,17 @@
 - **调试踩坑（对后续播放器设备测试有用）**：① `adb shell input motionevent DOWN/MOVE/UP/CANCEL x y` 能跨进程拼出一条真实触摸序列，`input swipe` 做不到「按住不动再横移」这种时序；② `screenrecord` 录静止画面只产出 3~4 秒、几 KB 的短片，播放器立刻 `FFP_MSG_COMPLETED`、`isPlaying` 不成立就没法测长按，录的时候要同时在设备上制造画面变化（这次录出 44 秒 / 15MB），录完还要 `chmod 660`（属主是 shell，app 读不到）；③ CANCEL 之后前台偶尔被 Wear 系统 UI 抢走，dump 取不到播放器控件是**假阴性**，先用 `dumpsys window | Select-String mCurrentFocus` 确认焦点在 `PlayerActivity` 再判读。
 - **遗留**：① 只实测了「开启视频可缩放」的触摸分支（默认设置）；未缩放分支的 UP/CANCEL 收尾代码同构，没单独跑；② 圆屏 AVD 的命中区与真手表手感不同，系统 long press 阈值在真机上的误触率仍待真机观察；③ 长按加速期间**双指缩放/拖动**仍被吞（既有行为，本次未扩大范围）。
 
+### 3.82 亮色模式下按钮的深色描边（26.10.30，用户报告）
+
+- **缘起**：用户贴两张截图——亮色（经典终端 / 纸质终端）视频详情页的「播放」按钮四周有一圈显眼的深灰框，暗色同一页面则是干净的无边框色块，要求把亮色这个描边修掉。
+- **根因**：这不是 MaterialButton 的默认样式，是 26.10.26 给亮色单独补的一道描边：`themes.xml` 的 `ButtonStyleTerminal` 写了 `strokeColor=@color/terminal_divider` + `strokeWidth=@dimen/terminal_btn_stroke_width`，而 `terminal_btn_stroke_width` 在 `values/dimens.xml` 是 `0dp`（暗色）、被 `values-notnight/dimens.xml` 覆盖成 `1dp`（亮色），`terminal_divider` 的亮色值又是 `#26000000`（15% 黑）——所以只有亮色长出这圈深灰框，暗色天然没有。当时的动机是「亮色下浅色按钮压在浅色纸底上不够分明」，但实际观感与暗色版的「无边框」对不上。
+- **修法**：`ButtonStyleTerminal` 删掉 `strokeColor` / `strokeWidth` 两项，连同只为它存在的两处 dimen 一起清掉（`values/dimens.xml` 的 `terminal_btn_stroke_width=0dp` 与注释、整份 `values-notnight/dimens.xml`）。亮暗两版回到同一套语义：无描边、按钮底 = 卡片色 `@color/terminal_card_bg`，靠「底色 vs 页底」的差区分——亮色 `#CCFDF6EC` 压在 `#EBDFCF` 纸底上实测 `#F9F2E6`，与暗色 `#2A2A2A` 压在 `#000` 上的层级关系一致。
+- **未动的**：`@color/terminal_divider` 两个值保留（改完已无引用，删色值要连带动 `tools/appearance/gen_light_mode.py` 的亮色色表，本次不扩大范围）；玻璃质感的 `ButtonStyleTerminal.Glass` 自带 overlay 描边（那是玻璃主题的设计），不受影响；其余六套主题的按钮走 `gradient_button_bg_*` 背景、本来就没写 stroke，也不受影响。卡片上的粉色 `actionCardStroke` 描边与本条无关。
+- **验证**：`./gradlew.bat :app:assembleDebug` 通过（两 flavor，34s）；`:app:testStandardDebugUnitTest` + `:app:testCoexistDebugUnitTest` 通过。
+  - 设备侧（emulator-5554 / SDK AVD `24031PN0DC` / Android 12，装 `coexistDebug` universal 包，经典终端主题）：亮色视频详情页（`--es bvid BV1jBpE6zEGD --el aid 0`，不加 `--el aid 0` 会走 aid=114514 报 `video object is null`）「播放」按钮的 1dp 深灰框已消失，沿垂直方向扫按钮上边缘是 `(235,223,207)` 纸底 → `(239,232,222)` 抗锯齿 → `(249,242,230)` 按钮底，**中间没有暗像素**；暗色同一页面与改动前逐像素一致（`#2A2A2A` 色块、无描边）；亮色 `SetupUIActivity` 的「恢复默认 / 查看预览」两个按钮同样干净。
+  - 测完把模拟器状态还原：`coexist` 的 `shared_prefs/default.xml` 用测前备份覆盖回去（6102 字节、md5 与备份一致、属主仍是 `u0_a52`），`standard` 里临时插进去的 `ui_color_mode=light` 键删掉。
+- **遗留**：无。附带记一条复现方法：亮/暗切换改 `shared_prefs/default.xml` 的 `ui_color_mode`（写回要用 `cat` 覆写保持属主，`sed -i` 会留下 root 属主的文件）。
+
 ## 4. 历史章节索引
 
 > 完整正文在 `docs/archive/review/fix-progress-history.md`；§3.0~§3.51 的状态快照（26.10.09~26.10.21）在 `docs/archive/review/fix-progress-snapshots-261009-261021.md`。**编号在历史上有重复**（`## 二十二` / `## 二十九` 各出现两次、`## 30.` 是阿拉伯数字写法，原为不打断既有交叉引用而保持不动），下表**以归档文件的物理行序为准**。
