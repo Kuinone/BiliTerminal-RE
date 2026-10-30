@@ -86,3 +86,9 @@ docs/superpowers/specs/2026-10-14-console-v2-design.md
 # 那是 IDE 的编译产物，不是源码，也不该进版本库。
 # 只匹配模块根下的 bin/（`/**/bin/` 会误伤其它路径）。
 bin/
+
+# 宣传图制作工作区（promo/）：截图画布合成用的 HTML（index.html）、MuMu 抓图脚本
+# （cap.sh / ui.py）、成品截图（shots/、out/、out2/）与打包好的 promo.zip，合计约 18 MB。
+# 这是对外宣传素材的本地产物，不是客户端代码；zip 一入库就永久膨胀。
+# 与 outputs/ 同理，用护栏忽略，防止一次 `git add -A` 就带进去。
+/promo/
