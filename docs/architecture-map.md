@@ -1546,6 +1546,7 @@ setOnLoadMoreListener { page -> load(page) } // 4. page 已由基类自增，别
 - **模块**（`CornerStyle`/`FontStyle`）只放：候选值常量、显示名、纯函数（规整、档位→数值）、读取。
   **不放写入**——写入一律走门面，这样「递增版本号」不会漏。
 - **门面**只做「汇总快照 + 唯一写入 + 版本号」，**绝不做几何计算**（手表性能优先）。
+- **半透明底的组件一律 `elevation=0`**：底色不透明时阴影只是外面的暗晕，底色半透明时阴影会从底**下面**透出来——暗色底下看不出来，亮色纸底上就是沿轮廓一圈「比底色亮的脏边」。玻璃主题（`ButtonStyleTerminal.Glass` 等）从一开始就这么写；主主题的 `ButtonStyleTerminal` 26.10.30 也补上了（见 `docs/review/fix-progress.md` §3.82）。
 
 **版本号机制**：`AppearanceManager.version()` 是一个存在 SharedPreferences 的 Int，
 任何外观写入都 +1。Activity 只需记住自己创建时的版本号、`onResume` 比一次，

@@ -732,14 +732,21 @@
 
 ### 3.82 亮色模式下按钮的深色描边（26.10.30，用户报告）
 
-- **缘起**：用户贴两张截图——亮色（经典终端 / 纸质终端）视频详情页的「播放」按钮四周有一圈显眼的深灰框，暗色同一页面则是干净的无边框色块，要求把亮色这个描边修掉。
-- **根因**：这不是 MaterialButton 的默认样式，是 26.10.26 给亮色单独补的一道描边：`themes.xml` 的 `ButtonStyleTerminal` 写了 `strokeColor=@color/terminal_divider` + `strokeWidth=@dimen/terminal_btn_stroke_width`，而 `terminal_btn_stroke_width` 在 `values/dimens.xml` 是 `0dp`（暗色）、被 `values-notnight/dimens.xml` 覆盖成 `1dp`（亮色），`terminal_divider` 的亮色值又是 `#26000000`（15% 黑）——所以只有亮色长出这圈深灰框，暗色天然没有。当时的动机是「亮色下浅色按钮压在浅色纸底上不够分明」，但实际观感与暗色版的「无边框」对不上。
-- **修法**：`ButtonStyleTerminal` 删掉 `strokeColor` / `strokeWidth` 两项，连同只为它存在的两处 dimen 一起清掉（`values/dimens.xml` 的 `terminal_btn_stroke_width=0dp` 与注释、整份 `values-notnight/dimens.xml`）。亮暗两版回到同一套语义：无描边、按钮底 = 卡片色 `@color/terminal_card_bg`，靠「底色 vs 页底」的差区分——亮色 `#CCFDF6EC` 压在 `#EBDFCF` 纸底上实测 `#F9F2E6`，与暗色 `#2A2A2A` 压在 `#000` 上的层级关系一致。
-- **未动的**：`@color/terminal_divider` 两个值保留（改完已无引用，删色值要连带动 `tools/appearance/gen_light_mode.py` 的亮色色表，本次不扩大范围）；玻璃质感的 `ButtonStyleTerminal.Glass` 自带 overlay 描边（那是玻璃主题的设计），不受影响；其余六套主题的按钮走 `gradient_button_bg_*` 背景、本来就没写 stroke，也不受影响。卡片上的粉色 `actionCardStroke` 描边与本条无关。
-- **验证**：`./gradlew.bat :app:assembleDebug` 通过（两 flavor，34s）；`:app:testStandardDebugUnitTest` + `:app:testCoexistDebugUnitTest` 通过。
-  - 设备侧（emulator-5554 / SDK AVD `24031PN0DC` / Android 12，装 `coexistDebug` universal 包，经典终端主题）：亮色视频详情页（`--es bvid BV1jBpE6zEGD --el aid 0`，不加 `--el aid 0` 会走 aid=114514 报 `video object is null`）「播放」按钮的 1dp 深灰框已消失，沿垂直方向扫按钮上边缘是 `(235,223,207)` 纸底 → `(239,232,222)` 抗锯齿 → `(249,242,230)` 按钮底，**中间没有暗像素**；暗色同一页面与改动前逐像素一致（`#2A2A2A` 色块、无描边）；亮色 `SetupUIActivity` 的「恢复默认 / 查看预览」两个按钮同样干净。
+- **缘起**：用户贴两张截图——亮色（经典终端 / 纸质终端）视频详情页的「播放」按钮四周有一圈显眼的深灰框，暗色同一页面则是干净的无边框色块，要求把亮色这个描边修掉。第一轮删掉描边后用户又圈出「红线两边的差异依旧明显」，即描边没了、按钮四周仍有一圈比纸底亮的「光边」。
+- **根因（两层，都得拆）**：
+  - **描边**：不是 MaterialButton 默认样式，是 26.10.26 给亮色单独补的：`themes.xml` 的 `ButtonStyleTerminal` 写了 `strokeColor=@color/terminal_divider` + `strokeWidth=@dimen/terminal_btn_stroke_width`，而 `terminal_btn_stroke_width` 在 `values/dimens.xml` 是 `0dp`（暗色）、被 `values-notnight/dimens.xml` 覆盖成 `1dp`（亮色），`terminal_divider` 的亮色值又是 `#26000000`（15% 黑）——所以只有亮色长出深灰框。
+  - **光边**：`ButtonStyleTerminal` 没压掉父样式的 `elevation`（MDC 按钮默认带阴影 + `stateListAnimator` 按下会抬升），而按钮底是 **80% 半透明** 的 `@color/terminal_card_bg`（`#CCFDF6EC`）——阴影从半透明底下面透出来，就在亮色纸底上沿按钮轮廓留了一圈「外深环 + 内侧渐亮」的脏边。暗色看不出，是因为黑底上的阴影本身就是黑的。**同一条坑玻璃主题早就踩过**（`themes_glass.xml:4` 的注释：「卡片 / 按钮 elevation 必须为 0：半透明底下面的阴影会透出来，形成脏边」）。
+- **修法**（`app/src/main/res/values/themes.xml` 的 `ButtonStyleTerminal`）：
+  - 删掉 `strokeColor` / `strokeWidth` 两项，连同只为它存在的两处 dimen（`values/dimens.xml` 的 `terminal_btn_stroke_width=0dp` 与注释、整份 `values-notnight/dimens.xml`）。
+  - 补 `elevation=0dp` + `android:elevation=0dp` + `android:stateListAnimator=@null`（与 `ButtonStyleTerminal.Glass` 同款写法，保留 clickable / ripple，只去掉抬升与阴影）。
+  - 亮暗两版回到同一套语义：无描边、无阴影、按钮底 = 卡片色 `@color/terminal_card_bg`，靠「底色 vs 页底」的差区分——亮色 `#CCFDF6EC` 压在 `#EBDFCF` 纸底上实测 `#F9F2E6`，与暗色 `#2A2A2A` 压在 `#000` 上的层级关系一致。
+- **未动的**：`@color/terminal_divider` 两个值保留（改完已无引用，删色值要连带动 `tools/appearance/gen_light_mode.py` 的亮色色表，本次不扩大范围）；玻璃质感的 `ButtonStyleTerminal.Glass` 自带 overlay 描边（那是玻璃主题的设计），不受影响；其余六套主题的按钮走 `gradient_button_bg_*` 背景、本来就没写 stroke，也不受影响；卡片上的粉色 `actionCardStroke` 描边与本条无关（`CardStyleTerminal` 的 `cardElevation` 也没动）。
+- **验证**：`./gradlew.bat :app:assembleDebug` 通过（两 flavor）；`:app:testStandardDebugUnitTest` + `:app:testCoexistDebugUnitTest` 通过。
+  - 设备侧（emulator-5554 / SDK AVD `24031PN0DC` / Android 12，装 `coexistDebug` universal 包，经典终端主题）：亮色视频详情页（`--es bvid BV1jBpE6zEGD --el aid 0`，不加 `--el aid 0` 会走 aid=114514 报 `video object is null`）。
+  - **只删描边那一版**：深灰框消失，但沿按钮上边缘扫出来是 `(235,223,207)` 纸底 → `(239,232,222)` 光边 → `(249,242,230)` 按钮底，正是用户圈出的「红线两边」；放大 3x 能看到边缘一圈渐变带。
+  - **加 elevation=0 之后**：同一条扫描变成 `(235,223,207)` → `(249,242,230)` 直接跳变，中间那圈 10~14px 的光边带消失，放大后按钮就是一个干净的圆角色块；暗色同页仍是 `#2A2A2A` 色块、无描边无阴影（黑底上本来也看不见阴影）。
   - 测完把模拟器状态还原：`coexist` 的 `shared_prefs/default.xml` 用测前备份覆盖回去（6102 字节、md5 与备份一致、属主仍是 `u0_a52`），`standard` 里临时插进去的 `ui_color_mode=light` 键删掉。
-- **遗留**：无。附带记一条复现方法：亮/暗切换改 `shared_prefs/default.xml` 的 `ui_color_mode`（写回要用 `cat` 覆写保持属主，`sed -i` 会留下 root 属主的文件）。
+- **遗留**：无。附带记两条：① 复现亮/暗要改 `shared_prefs/default.xml` 的 `ui_color_mode`（写回用 `cat` 覆写保持属主，`sed -i` 会留下 root 属主文件）；② 以后给**半透明底**的组件加 elevation/阴影一律按本条处理——亮色下会变成可见的脏边。
 
 ### 3.83 新增「举报评论」（26.10.27，用户要求）
 

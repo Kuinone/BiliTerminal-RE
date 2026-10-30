@@ -790,7 +790,12 @@
         <item name="backgroundTint">@color/terminal_card_bg</item>
         <!-- 不描边：按钮底 = 卡片色（半透明），亮暗两版都靠底色差与页底区分。
              26.10.26 曾给亮色补过 1dp @color/terminal_divider 描边，实测在旧纸底上是一圈显眼的深灰框，
-             与暗色版「无边框」的观感对不上，26.10.30 撤销。 -->
+             与暗色版「无边框」的观感对不上，26.10.30 撤销。
+             也不能有 elevation：0dp 以外的阴影会从 80% 半透明的底下面透出来，在亮色纸底上沿按钮边缘
+             留一圈比纸底亮的「光边」（暗色底下阴影是黑的，看不出来）。与玻璃主题同一条教训。 -->
+        <item name="elevation">0dp</item>
+        <item name="android:elevation" tools:ignore="NewApi">0dp</item>
+        <item name="android:stateListAnimator" tools:ignore="NewApi">@null</item>
         <item name="cornerRadius">@dimen/card_round</item>
         <item name="android:textColor">@color/terminal_textwhite</item>
         <item name="android:insetTop">2dp</item>
