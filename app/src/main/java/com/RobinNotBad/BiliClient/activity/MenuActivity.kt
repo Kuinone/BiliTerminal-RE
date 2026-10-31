@@ -33,6 +33,7 @@ import com.RobinNotBad.BiliClient.activity.video.TimelineActivity
 import com.RobinNotBad.BiliClient.activity.video.local.LocalListActivity
 import com.RobinNotBad.BiliClient.util.PerformanceManager
 import com.RobinNotBad.BiliClient.util.OptionalFeatures
+import com.RobinNotBad.BiliClient.util.MenuConfig
 import com.RobinNotBad.BiliClient.util.SharedPreferencesUtil
 import com.bumptech.glide.Glide
 import com.google.android.material.button.MaterialButton
@@ -181,9 +182,16 @@ class MenuActivity : BaseActivity() {
 
     private fun killAndJump(name: String) {
         if (btnNames.containsKey(name) && name != from) {
-            val instance = BiliTerminal.getInstanceActivityOnTop()
-            if (instance != null && instance.lifecycle.currentState != Lifecycle.State.DESTROYED)
-                instance.finish()
+            // 可选菜单项（目前只有私有功能「扫一扫」这类工具页）跳转前不杀下层页面。
+            // 这类页是用完就退的工具，用户从它（或它扫出来的页面）返回时应该回到原来在看的
+            // 那一页；一旦把下层 finish 掉，工具页就成了任务栈里唯一的一页，它一退出整个任务
+            // 就结束，用户看到的是「按返回直接退出应用」。
+            // 其余菜单项仍按既有语义当成主页切换：旧主页不再保留。
+            if (name !in MenuConfig.OPTIONAL_ITEMS) {
+                val instance = BiliTerminal.getInstanceActivityOnTop()
+                if (instance != null && instance.lifecycle.currentState != Lifecycle.State.DESTROYED)
+                    instance.finish()
+            }
 
             val intent = Intent()
             intent.setClass(this@MenuActivity, btnNames[name]!!.second)
