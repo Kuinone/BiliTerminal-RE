@@ -285,6 +285,15 @@ class SMSLoginFragment : BaseFragment() {
                     refreshToken = loginData.optString("refresh_token", "")
                 }
                 SharedPreferencesUtil.putString(SharedPreferencesUtil.refresh_token, refreshToken)
+
+                // 短信登录同样走 App 接口，响应里带 access_token；以前只存 refresh_token，
+                // 把 App 令牌丢了（详见 PasswordLoginFragment 同处注释）。
+                var accessKey = if (tokenInfo != null) tokenInfo.optString("access_token", "") else ""
+                if (accessKey.isEmpty() && loginData != null) {
+                    accessKey = loginData.optString("access_token", "")
+                }
+                SharedPreferencesUtil.putString(SharedPreferencesUtil.access_key, accessKey)
+
                 SharedPreferencesUtil.putBoolean(SharedPreferencesUtil.cookie_refresh, true)
                 SharedPreferencesUtil.putBoolean(SharedPreferencesUtil.setup, true)
 

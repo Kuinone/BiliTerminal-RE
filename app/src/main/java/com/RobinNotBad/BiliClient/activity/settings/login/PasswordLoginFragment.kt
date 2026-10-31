@@ -242,6 +242,16 @@ class PasswordLoginFragment : BaseFragment() {
                     refreshToken = loginData.optString("refresh_token", "")
                 }
                 SharedPreferencesUtil.putString(SharedPreferencesUtil.refresh_token, refreshToken)
+
+                // 账号密码登录走的是 App 接口，响应 data/token_info 里本来就带 access_token（App 令牌）。
+                // 以前只取了 refresh_token 就丢掉它，导致「没走网页登录就一直没有 access_key」，
+                // 依赖 App 令牌的接口只能再让用户去网页登录一次。
+                var accessKey = if (tokenInfo != null) tokenInfo.optString("access_token", "") else ""
+                if (accessKey.isEmpty() && loginData != null) {
+                    accessKey = loginData.optString("access_token", "")
+                }
+                SharedPreferencesUtil.putString(SharedPreferencesUtil.access_key, accessKey)
+
                 SharedPreferencesUtil.putBoolean(SharedPreferencesUtil.cookie_refresh, true)
                 SharedPreferencesUtil.putBoolean(SharedPreferencesUtil.setup, true)
 

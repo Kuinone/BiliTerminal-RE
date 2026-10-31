@@ -845,6 +845,14 @@
   - 另一个观察（本轮未改）：停轮询后 `err_qr_no_info` 会把异常原文拼进 UI，截图里是「…取二维码信息，点击上…\nUnable to resolve host …」——`%1$s` 拿到的是 `e.message`，本轮只兜了 null 的情况。
 - **遗留**：①P2 的 3 次上限在「快速失败」网络下约 7s 就停，10 秒级的电梯/地铁断网仍要用户手点重试（这是拍板口径的必然结果，想更宽容只需调大 `MAX_POLL_FAIL`）；②未知状态码分支服务端造不出来，只有代码复核；③TV 模式只跑了轮询（`86039` 正常），**TV 成功落地（access_token/refresh_token 写盘）未实测**；④90 次上限（≈180s＋C 端耗时）没有跑满，按代码复核；⑤`err_qr_no_info` 会外露英文异常原文（见上），建议后续换成不带 `%1$s` 的专用文案；⑥`refreshQrCode()` 里 `CookiesApi.checkCookies()` 仍可能耗时数秒，取码阶段最坏仍会卡在「正在获取二维码」（`NetWorkUtil` 重试策略未动，属已知边界）。
 
+### 3.87 账密 / 短信登录补存 App access_token（26.10.31，发版前补）
+
+- **缘起 / 根因**：`activity/settings/login/PasswordLoginFragment.kt` 的 `handleLoginSuccess` 与 `SMSLoginFragment.kt` 的同类收尾，从登录响应 `data/token_info` 里只取了 `refresh_token` 写盘，把同一响应中的 `access_token` 丢掉了 → 走账密 / 短信登录后 `SharedPreferencesUtil.access_key` 一直是空串。而 `activity/SplashActivity.kt:396` 按「有 access_key = TV/APP 登录」分流去 `api/AppTokenRefreshApi.refreshAppToken()`（该接口同时续 access_token 与 cookies），为空就只能走 `checkCookieRefresh()`；`NetWorkUtil` 的 `autoAddAccessKey`、`ShortVideoFeedApi` 等依赖 App 令牌的接口也一直拿不到凭证。
+- **改法（两处，各自的 `handleLoginSuccess` 内）**：写 `refresh_token` 之后补写 `access_key`——先取 `data.token_info.access_token`，为空再回落 `data.access_token`。取值口径与紧邻的 `refresh_token` 一致，**无条件写**：响应里真没有 access_token 时写入空串 = 显式清掉上一次登录（可能是另一个账号、另一套 appkey）残留的令牌，避免它和本次的 mid / cookies 错配；空 access_key 是个明确定义的状态（`SplashActivity.kt:396` 会走 web cookie 刷新分支，与 §3.86 的 web 登录清空口径一致）。cookie 刷新路径不动。
+- **为什么不是兼容性风险**：账密 / 短信登录本身就是 App 接口，返回的 access_token 与 refresh_token 同源；`AccountManager.saveCurrentAccount()` 在这两行之后执行，所以多账号快照也会带上 access_key，切号不丢凭证。
+- **验证**：`./gradlew.bat :app:assembleDebug` 通过（含私有功能源码注入）；`testStandardDebugUnitTest` + `testCoexistDebugUnitTest` 各 **1112 例 / 0 失败 / 0 错误**（12:25 实测）。**登录端到端未实测**（需真账号）：待验「账密 / 短信登录 → 重启后按 access_key 分流到 `AppTokenRefreshApi`、access_token 与 cookies 都能续期」。
+- **台账口径**：本条只记公共侧改动；配套的私有功能改动按规矩只记在私有仓库，不写本文件。
+
 ## 4. 历史章节索引
 
 > 完整正文在 `docs/archive/review/fix-progress-history.md`；§3.0~§3.51 的状态快照（26.10.09~26.10.21）在 `docs/archive/review/fix-progress-snapshots-261009-261021.md`。**编号在历史上有重复**（`## 二十二` / `## 二十九` 各出现两次、`## 30.` 是阿拉伯数字写法，原为不打断既有交叉引用而保持不动），下表**以归档文件的物理行序为准**。
