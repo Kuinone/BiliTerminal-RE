@@ -69,7 +69,6 @@ import com.RobinNotBad.BiliClient.player.PlayerDefaults
 import com.RobinNotBad.BiliClient.player.LocalAudioTrackPolicy
 import com.RobinNotBad.BiliClient.player.PlayerSurfaceBinder
 import com.RobinNotBad.BiliClient.player.PlayerStreamPolicy
-import com.RobinNotBad.BiliClient.player.PlayerSpeedStreamPolicy
 import com.RobinNotBad.BiliClient.player.QualityAccessPolicy
 import com.RobinNotBad.BiliClient.player.PlayerVolumePolicy
 import com.RobinNotBad.BiliClient.player.SkipCancelPolicy
@@ -299,28 +298,11 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
     private var audioResyncSuppressMs: Long = 0L
 
     /**
-     * 用户选中的清晰度（DASH 档位），与「实际在播的档位」[currentQuality] 分开记。
-     *
-     * 倍速播放时 ijk 只能靠「自带音轨的合一流」变速（见 [syncStreamForSpeed]），高清档位会被
-     * 临时压到 720P；把用户真正想要的档位单独存着，回到 1x 才能自动换回去。
-     * 0 表示还没记录过（首次取流前），此时按 [currentQuality] 兜底。
-     */
-    private var userQuality = 0
-
-    /**
-     * 因倍速而发起的「换流」是否正在进行。
-     *
-     * [applyQuality] 要后台取流 + 回主线程重建，期间 [onPrepared]／倍速滑条还会再触发一次
-     * [syncStreamForSpeed]，不去重就会连着切两轮清晰度。
-     */
-    private var streamSyncPending = false
-
-    /**
      * 是否正处在「长按三倍速」期间。
      *
-     * 长按加速不改滑条档位，但它是**真的在变速**：DASH 纯视频流同样变不了，所以也要走
-     * [syncStreamForSpeed] 换成合一 MP4（见 [effectiveSpeedValue]）。松手回到滑条档位，
-     * 若那时是 1x，还会顺手把高清 DASH 换回来。
+     * 长按加速不改滑条档位，但它是**真的在变速**：倍速值统一由 [effectiveSpeedValue] 提供，
+     * 各路（滑条、长按、重建后的 [onPrepared]）都走 [applySpeedFromSeekbar] 下发，
+     * 避免"滑条显示 1x、实际还在 3x"这种隐性不一致。松手回到滑条档位。
      */
     private var longPressBoostActive = false
 
@@ -785,8 +767,6 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
         if (isOnlineVideo) {
             currentQuality = AccountStateStore.clampQuality(currentQuality)
         }
-        // 「用户选的档位」起播时与实际档位一致；倍速临时降档后它保持不变（见 syncStreamForSpeed）
-        userQuality = currentQuality
 
         isShortVideoMode = intent.getBooleanExtra("isShortVideoMode", false)
 
@@ -1194,8 +1174,7 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
                     hidecon.run()
                     longPressBoostActive = true
                     onLongClick = true
-                    // 不直接 setSpeed(3f)：先交给倍速下发，DASH 高清片源在这里换成合一 MP4，
-                    // 否则画面在 1080P DASH 上仍按 1x 走（见 [syncStreamForSpeed]）
+                    // 不直接 setSpeed(3f)：统一走倍速下发，长按/滑条/重建后的 onPrepared 都用同一套口径
                     applySpeedFromSeekbar()
                     Logu.v("gesture", "longclick_down")
                     return@setOnLongClickListener true
@@ -1778,7 +1757,6 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
         ijkPlayer?.setSpeed(speed)
         danmakuManager?.setSpeed(speed)
         applyAudioSpeed(speed)
-        syncStreamForSpeed()
     }
 
     /** 倍速滑条当前档位对应的倍速值（越界时夹到合法档，避免崩溃）。 */
@@ -1788,65 +1766,13 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
     /**
      * 当前**实际生效**的倍速值：长按加速期间是 3x，否则就是滑条档位。
      *
-     * 换流判定（[syncStreamForSpeed]）与播放器下发都要用它——只看滑条的话，长按加速在
-     * DASH 高清片源上会"看起来生效、其实画面照旧 1x"。
+     * 下发倍速必须用它——只看滑条的话，长按加速在 DASH 高清片源上会"看起来生效、其实画面照旧 1x"。
      */
     private fun effectiveSpeedValue(): Float =
         if (longPressBoostActive) LONG_PRESS_BOOST_SPEED else currentSpeedValue()
 
     /** 长按加速时显示在倍速文案上的字符串（`x 3.0`）。 */
     private fun boostLabel(): String = "x ${LONG_PRESS_BOOST_SPEED}"
-
-
-    /**
-     * 让「在播的流」适配当前倍速：非 1x 时换成音视频合一的单文件，回到 1x 再换回高清 DASH。
-     *
-     * 为什么必须这么做：ijk 的变速是「音频时钟带动视频」实现的（soundtouch 处理音频、视频按
-     * 音频时钟出帧），DASH 的纯视频流**没有音轨**，`setSpeed` 下去视频照旧 1x —— 实测模拟器上
-     * 2x/3x 的播放速率都是 1.000x。而外挂音轨那一路是 MediaPlayer，`PlaybackParams` 立刻生效，
-     * 于是音频越跑越前，[progressChange] 的 800ms 校正每 ~1.3 秒把它 seek 回去一次（实测
-     * 47 次/69 秒、每次回拉 700~1000ms），听感就是「两路声音重叠、有一路跟不上」。
-     *
-     * B 站的高清档（1080P 及以上）只有 DASH 提供，而 DASH 的视频流不带音轨，所以倍速时
-     * 必须换回 `fnval=1` 的合一 MP4（自带音轨，ijk 才能同时变速两路）。合一 MP4 能拿到多高
-     * 由服务端按账号权限决定：仍按**用户选的档位**请求，真实档位由响应回填（见
-     * `PlayerApi#applyActualQuality`），真降档了才提示一句。[userQuality] 记着用户原本选的
-     * 档位，回到 1x 自动恢复高清 DASH。
-     * 本地文件、直播不走这里：本地单文件本来就自带音轨，本地老缓存的双文件由
-     * [applyAudioSpeed] 保证音轨不单独变速（宁可倍速不生效，也不要一路叠声）。
-     */
-    private fun syncStreamForSpeed() {
-        if (destroyed || isFinishing) return
-        if (!isOnlineVideo || isLiveMode) return
-        if (!isPrepared || streamSyncPending) return
-
-        val speed = effectiveSpeedValue()
-        val wantedQuality = if (userQuality > 0) userQuality else currentQuality
-        val hasExternalAudio = audioTrackUrl != null
-
-        if (PlayerSpeedStreamPolicy.shouldRestoreDash(wantedQuality, hasExternalAudio, speed)) {
-            // 倍速期间被临时压成合一 MP4：换回用户选的高清 DASH。
-            // 720P 及以下不折腾（合一 MP4 一样能播，少一次重建）。
-            Logu.d("speed", "回到 1x，恢复清晰度 $wantedQuality")
-            streamSyncPending = true
-            applyQuality(wantedQuality, true, fromSpeedSync = true)
-            return
-        }
-
-        if (!PlayerSpeedStreamPolicy.requiresCombinedStream(speed)) return
-        // 已经挂在合一流上（没有外挂音轨）就只是 ijk 自己的倍速，不需要换流
-        if (!hasExternalAudio) return
-
-        val targetQuality = PlayerSpeedStreamPolicy.requestedQuality(wantedQuality)
-        Logu.d(
-            "speed",
-            "非 1x 倍速（$speed x）：DASH 纯视频流无法变速，按用户档位 $targetQuality 换合一 MP4"
-        )
-        // 长按加速是"按住就加速"的即时操作，换流会黑一下；先说一句免得像卡住
-        if (longPressBoostActive) MsgUtil.showMsg(getString(R.string.msg_player_speed_boost_switching))
-        streamSyncPending = true
-        applyQuality(targetQuality, false, fromSpeedSync = true)
-    }
 
     private fun changeVideoSize() {
         if (!isPrepared || ijkPlayer == null) return
@@ -1925,6 +1851,11 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
                                     ap.seekTo(video_now)
                                     // 重新采样：seek 落地后偏差要重新算基线
                                     audioDriftSampled = false
+                                    // 并进冷却期：MediaPlayer.seekTo 是异步的，seek 未完成时
+                                    // currentPosition 还报旧值，下一拍再判就会把「seek 没生效」
+                                    // 当成新的漂移，连着 seek 三下（模拟器实测 1x 下就冒出 3 连 seek，
+                                    // 听感是音频连跳三下）。冷却期沿用拖动 seek 的同一套常量。
+                                    audioResyncSuppressMs = nowElapsed + AUDIO_RESYNC_COOLDOWN_MS
                                     Logu.d("AudioTrack", "音频轨道重新同步: $audioPos -> $video_now")
                                 }
                             } catch (_: Exception) {}
@@ -3402,8 +3333,6 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
             }
 
             override fun onStopTrackingTouch(seekBar: SeekBar) {
-                // 换流（DASH ⇄ 合一 MP4）放到松手后做：拖动过程中每变一档就重建播放器既卡又没必要
-                syncStreamForSpeed()
                 speedTimer = Timer()
                 val timerTask = object : TimerTask() {
                     override fun run() {
@@ -3699,8 +3628,8 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
      * 的 longPressBoost 门闸），若触摸被父容器/失焦 CANCEL 后 `onLongClick` 卡在 true，
      * 滑动调进度会被永久拦掉、播放速度也停在 3 倍。
      *
-     * 走 [applySpeedFromSeekbar] 而不是直接下发：加速期间若为此换成了合一 MP4，滑条档位是 1x
-     * 时这里会顺手把高清 DASH 换回来（见 [syncStreamForSpeed]）。
+     * 走 [applySpeedFromSeekbar] 而不是直接下发：长按/滑条/重建后的 onPrepared 都用同一套
+     * 「有效倍速」口径（见 [effectiveSpeedValue]），松手就回到滑条档位。
      */
     private fun endLongPressBoost() {
         if (!onLongClick) return
@@ -3920,20 +3849,16 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
      * 会不停 seek 音轨，听感是"每个 800ms 顿一下"。`PlaybackParams` 是 API 23 才有的接口，
      * 更低版本只能靠上面的偏差校正，不做额外处理。
      *
-     * **但外部音轨在场时主播放器一定是一路「不带音轨的视频流」，它根本变不了速**（见
-     * [syncStreamForSpeed]），此时给音轨单独变速只会让两路时钟分叉、被偏差校正反复 seek 回来，
-     * 听感就是「两路声音重叠、有一路跟不上」。所以这里强制音轨留在 1x：宁可倍速不生效，
-     * 也不让两路各自按不同速度跑。真正要变速时 [syncStreamForSpeed] 会先换成合一 MP4（那时
-     * 外部音轨已释放，`audioPlayer` 为 null，变速由 ijk 自己完成）。
+     * 主播放器那一路是 DASH 的纯视频流，它能跟着变速是因为随包的 ijkplayer 打了
+     * `ijkpatch/0001-ffplay-video-playback-rate.patch`（无音轨时让 ffplay 按
+     * `pf_playback_rate` 缩放帧间隔）。两路各自按倍速跑之后，残余的时钟漂移由
+     * [progressChange] 的 800ms 基线校正兜底（正常只会在开头对齐时纠一两次）。
      */
     private fun applyAudioSpeed(speed: Float) {
         val player = audioPlayer ?: return
         if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.M) return
-        if (!PlayerSpeedStreamPolicy.isNormalSpeed(speed)) {
-            Logu.d("AudioTrack", "外挂音轨不支持单独变速（请求 $speed x），保持 1x 以免与视频分叉")
-        }
         try {
-            player.playbackParams = android.media.PlaybackParams().setSpeed(1F)
+            player.playbackParams = android.media.PlaybackParams().setSpeed(speed)
         } catch (e: Exception) {
             Logu.e("AudioTrack", "设置音轨倍速失败：${e.message}")
         }
@@ -4633,27 +4558,11 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
 
     private fun switchQuality(newQuality: Int) {
         if (!isOnlineVideo || newQuality == currentQuality) return
-        // 长按加速期间也算"非 1x"：这时换流只能走合一 MP4（见 [effectiveSpeedValue]）
-        val normalSpeed = PlayerSpeedStreamPolicy.isNormalSpeed(effectiveSpeedValue())
-        userQuality = newQuality
         // 一切档位都优先走 DASH：并不是因为低档位只能 DASH 拿，而是清晰度面板要靠 DASH 的
         // 完整档位清单（fnval=1 会按请求档位裁剪，720P 请求只回 720P/360P，1080P60/4K 直接消失）。
         // 只有 DASH 取流失败时才在 getPlaybackVideo 内回退合一 MP4。
-        // 倍速下则相反：必须故意走合一 MP4（见 [syncStreamForSpeed]），能不能给到这一档由服务端定。
-        applyQuality(newQuality, normalSpeed)
-    }
-
-    /**
-     * 把 qn 值翻成面板上的清晰度名字，用于「降档了」的提示文案。
-     *
-     * 列表来自服务端 `accept_description`/`accept_quality`；查不到就退回「XXXP」，不抛异常。
-     */
-    private fun qualityNameOf(names: Array<String>?, values: IntArray?, quality: Int): String {
-        if (names != null && values != null) {
-            val index = values.indexOf(quality)
-            if (index >= 0 && index < names.size) return names[index]
-        }
-        return "${quality}P"
+        // 倍速下也一样：随包的 ijkplayer 已打补丁，纯视频流能跟着变速，不用再换成合一 MP4。
+        applyQuality(newQuality, true)
     }
 
     /**
@@ -4663,12 +4572,9 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
      * 走同一条路回退 720P（见 [onHighQualityAudioFailed]），那时唯一的差别就是 `allowDash=false`。
      *
      * @param allowDash 是否允许用 DASH 双流（无声视频 + 独立音轨）；false 时强制走合一 MP4
-     * @param fromSpeedSync 这次切换是不是 [syncStreamForSpeed] 为了适配倍速自动发起的：是则不给
-     *   用户弹「正在切换清晰度」之类的提示（倍速那条自己会提示），也不覆盖 [userQuality]
-     *   （用户要的还是原来那个高清档，回到 1x 要换回去）
      */
-    private fun applyQuality(newQuality: Int, allowDash: Boolean, fromSpeedSync: Boolean = false) {
-        if (!fromSpeedSync) MsgUtil.showMsg(UiText.of("正在切换清晰度..."))
+    private fun applyQuality(newQuality: Int, allowDash: Boolean) {
+        MsgUtil.showMsg(UiText.of("正在切换清晰度..."))
 
         CenterThreadPool.run {
             try {
@@ -4707,10 +4613,8 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
                     !allowDash && playerData.qn > 0 -> playerData.qn
                     else -> requestedQuality
                 }
-                val appliedQualityName = qualityNameOf(playerData.qnStrList, playerData.qnValueList, appliedQuality)
 
                 runOnUiThread {
-                    streamSyncPending = false
                     if (destroyed) return@runOnUiThread
 
                     // 重建前的续播位置同样用 video_now（见 toggleAudioOnlyMode / retryAfterPlayerError），
@@ -4727,8 +4631,6 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
 
                     video_url = newVideoUrl
                     currentQuality = appliedQuality
-                    // 倍速为了换流而做的临时降档不改变「用户选的档位」，否则回到 1x 就恢复不了
-                    if (!fromSpeedSync) userQuality = appliedQuality
 
                     val newValues = playerData.qnValueList
                     if (playerData.qnStrList != null && newValues != null) {
@@ -4754,29 +4656,15 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
                     setDisplay()
 
                     dashAudioFallbackInFlight = false
-                    if (allowDash && !dashUsable && !fromSpeedSync) {
+                    if (allowDash && !dashUsable) {
                         MsgUtil.showMsg(UiText.of("这条视频暂时只能提供 720P"))
-                    }
-                    // 倍速换流后真降了档才说一句；能拿到原档位（例如登录态 1080P 合一 MP4）就不打扰
-                    if (fromSpeedSync && appliedQuality < requestedQuality) {
-                        MsgUtil.showMsg(
-                            getString(R.string.msg_player_speed_quality_reduced, appliedQualityName)
-                        )
                     }
                 }
             } catch (e: Exception) {
                 runOnUiThread {
-                    streamSyncPending = false
                     dashAudioFallbackInFlight = false
-                    if (fromSpeedSync) {
-                        // 倍速换流失败：留在原流上（音轨已被 applyAudioSpeed 钉在 1x，不会叠声），
-                        // 但不该让用户以为倍速生效了
-                        Logu.e("speed", "为倍速切换合一 MP4 失败：${e.message}")
-                        MsgUtil.showMsg(getString(R.string.msg_player_speed_switch_failed))
-                    } else {
-                        MsgUtil.err(e)
-                        MsgUtil.showMsg(UiText.of("清晰度切换失败"))
-                    }
+                    MsgUtil.err(e)
+                    MsgUtil.showMsg(UiText.of("清晰度切换失败"))
                 }
             }
         }
@@ -5171,7 +5059,6 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
                         qnStrList = playerData.qnStrList
                         qnValueList = playerData.qnValueList
                         currentQuality = interactionQuality
-                        userQuality = interactionQuality
                     }
 
                     loading_info.visibility = View.VISIBLE
