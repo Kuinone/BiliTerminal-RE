@@ -850,6 +850,8 @@
     <string name="text_download_total_progress">总进度 %1$d%% · %2$s</string>
     <string name="text_download_service_exit">下载服务已退出</string>
     <string name="channel_download">哔哩终端下载服务</string>
+    <string name="channel_media_control">音乐播放</string>
+    <string name="channel_media_control_desc">播放时的系统媒体控件通知</string>
     <!-- ===== 下载完成提示与通用「加载失败」（12.4 文案迁移：四批） ===== -->
     <string name="text_downloading_file">下载文件中</string>
     <string name="text_download_failed">下载失败</string>
