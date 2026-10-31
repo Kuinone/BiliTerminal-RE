@@ -10,3 +10,4 @@ server/*.service   text eol=lf
 server/requirements.txt text eol=lf
 server/nginx/*.conf     text eol=lf
 *.sh               text eol=lf
+*.patch            text eol=lf
