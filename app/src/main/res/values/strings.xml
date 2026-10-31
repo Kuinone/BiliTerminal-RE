@@ -2352,6 +2352,9 @@
     <string name="msg_player_entered_collection">进入合集：%1$s</string>
     <string name="msg_player_entered_multi_page">进入分P：%1$s</string>
     <string name="msg_player_lock_hint">已锁定：点画面显示锁定按钮，再点按钮解锁</string>
+    <string name="msg_player_speed_combined_switch">倍速播放暂不支持高清片源\n已临时切到 720P，回到 1.0x 自动恢复</string>
+    <string name="msg_player_speed_high_quality_blocked">倍速播放暂不支持高清片源\n回到 1.0x 后可切 1080P</string>
+    <string name="msg_player_speed_switch_failed">倍速播放暂不可用，已留在原片源</string>
     <string name="uitext_dynamicholder_019">已经删除过了哦~</string>
     <string name="uitext_dynamicholder_020">不是自己的动态！</string>
     <string name="uitext_dynamicholder_021">%1$s人参与</string>

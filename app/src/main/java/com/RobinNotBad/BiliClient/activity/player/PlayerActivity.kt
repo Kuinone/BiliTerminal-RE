@@ -1812,7 +1812,7 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
             "speed",
             "非 1x 倍速（$speed x）：DASH 纯视频流无法变速，切到合一 MP4（原清晰度 $wantedQuality → $targetQuality）"
         )
-        MsgUtil.showMsg(UiText.of("倍速播放暂不支持高清片源\n已临时切到 720P，回到 1.0x 自动恢复"))
+        MsgUtil.showMsg(getString(R.string.msg_player_speed_combined_switch))
         streamSyncPending = true
         applyQuality(targetQuality, false, fromSpeedSync = true)
     }
@@ -4606,7 +4606,7 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
         // 非 1x 时主播放流只能是「带音轨的合一 MP4」（见 [syncStreamForSpeed]），高清档位拿不到。
         // 与其切过去再被自动压回来（连切两轮、还要重建两次播放器），不如直接拦下并说清原因。
         if (!normalSpeed && PlayerStreamPolicy.requiresDash(newQuality)) {
-            MsgUtil.showMsg(UiText.of("倍速播放暂不支持高清片源\n回到 1.0x 后可切 1080P"))
+            MsgUtil.showMsg(getString(R.string.msg_player_speed_high_quality_blocked))
             return
         }
         userQuality = newQuality
@@ -4721,7 +4721,7 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
                         // 倍速换流失败：留在原流上（音轨已被 applyAudioSpeed 钉在 1x，不会叠声），
                         // 但不该让用户以为倍速生效了
                         Logu.e("speed", "为倍速切换合一 MP4 失败：${e.message}")
-                        MsgUtil.showMsg(UiText.of("倍速播放暂不可用，已留在原片源"))
+                        MsgUtil.showMsg(getString(R.string.msg_player_speed_switch_failed))
                     } else {
                         MsgUtil.err(e)
                         MsgUtil.showMsg(UiText.of("清晰度切换失败"))
