@@ -1317,6 +1317,8 @@
     <string name="text_qr_retrying">网络异常，正在重试……</string>
     <string name="err_qr_unknown_code">登录接口返回未知状态（%1$d），点击上方重新获取</string>
     <string name="err_qr_no_mid">登录凭证不完整（缺少用户ID），点击上方重新获取</string>
+    <string name="err_qr_web_network">二维码登录失败：网络异常，点击上方重试</string>
+    <string name="err_qr_web_api">二维码登录失败：接口返回异常，点击上方重试</string>
     <string name="err_sms_api">验证码接口异常: %1$s</string>
     <string name="err_sms_send_failed">发送失败: %1$s</string>
     <string name="err_sms_login_failed">登录失败: %1$s</string>

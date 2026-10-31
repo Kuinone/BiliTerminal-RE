@@ -377,7 +377,10 @@ class QRLoginFragment : BaseFragment() {
             scanStat.text = when {
                 isTVMode && e is IOException -> getAppContext().getString(R.string.err_qr_tv_network, e.message ?: "")
                 isTVMode -> getAppContext().getString(R.string.err_qr_tv_api, e.message ?: "")
-                else -> getAppContext().getString(R.string.err_qr_no_info, e.message ?: "")
+                // web 侧不再把 e.message 拼进界面：那里是英文异常原文（如
+                // "Unable to resolve host …"），对用户毫无意义；详情走 MsgUtil.err 的日志。
+                e is IOException -> getAppContext().getString(R.string.err_qr_web_network)
+                else -> getAppContext().getString(R.string.err_qr_web_api)
             }
             MsgUtil.err(e)
         }
