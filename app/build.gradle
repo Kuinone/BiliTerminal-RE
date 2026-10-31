@@ -29,6 +29,13 @@ android {
                 res.srcDirs += new File(privateFeatureRoot, 'res')
             }
         }
+        // 私有功能的纯 JVM 单测跟私有源码一起注入；没有 private/ 时这个目录不存在，
+        // 源集为空，公开构建不受影响（对应私有仓库的 private/src/test/java）。
+        test {
+            if (hasPrivateFeature) {
+                java.srcDirs += new File(privateFeatureRoot, 'src/test/java')
+            }
+        }
     }
 
     defaultConfig {
