@@ -12,10 +12,12 @@ import kotlin.math.abs
  * - 而 1080P 及以上只有 DASH 拿得到，音频是另一路 `MediaPlayer`，它的 `PlaybackParams`
  *   立刻生效 → 两路时钟分叉，`progressChange` 的 800ms 校正只好每 ~1.3 秒把音频 seek 回去
  *   一次（实测 47 次/69 秒、每次回拉 700~1000ms），听感就是「两路声音重叠、有一路跟不上」。
- * - B 站只有 `qn <= 720P` 提供音视频合一的 MP4，所以**非 1x 时只能临时降到 720P 合一**，
- *   由 ijk 自己同时变速音频与视频；回到 1x 再换回用户选的高清档。
+ * - 所以**非 1x 时必须换成「自带音轨的单文件」**（`fnval=1` 的合一 MP4），由 ijk 自己同时
+ *   变速音频与视频。这种流拿得到多高由服务端按账号权限决定（未登录实测被降到 720P），
+ *   所以请求档位仍然用用户选的那一档，真实档位由响应里的 `quality` 回填（见
+ *   `PlayerApi#applyActualQuality`）。回到 1x 再换回 DASH 高清档。
  *
- * 抽成纯函数是为了能单测：这里判反了不会崩，只会把用户锁在 720P 或者把叠声 bug 带回来。
+ * 抽成纯函数是为了能单测：这里判反了不会崩，只会把叠声 bug 带回来、或者把用户锁在低档。
  */
 object PlayerSpeedStreamPolicy {
 
@@ -26,21 +28,21 @@ object PlayerSpeedStreamPolicy {
     fun isNormalSpeed(speed: Float): Boolean = abs(speed - 1F) <= SPEED_EPSILON
 
     /**
-     * 当前倍速下主播放流应该请求的清晰度。
-     *
-     * 1x 时就是用户选的档位；非 1x 时必须走合一 MP4，而合一 MP4 的天花板是 720P，
-     * 所以夹到 [PlayerStreamPolicy.QN_720P]（用户本来选得更低就依用户）。
-     */
-    fun targetQuality(userQuality: Int, speed: Float): Int =
-        if (isNormalSpeed(speed)) userQuality else minOf(userQuality, PlayerStreamPolicy.QN_720P)
-
-    /**
      * 非 1x 时是否必须换成「音视频合一、不挂外部音轨」的流。
      *
      * 注意它只看倍速：真正需不需要重建播放器由调用方再判断「当前是否已经挂着外部音轨」，
      * 已经是合一 MP4 时就不用再切一次。
      */
     fun requiresCombinedStream(speed: Float): Boolean = !isNormalSpeed(speed)
+
+    /**
+     * 倍速下换流应该请求的清晰度。
+     *
+     * 就是用户选的那一档：不夹到 720P，是因为「合一 MP4 只有 720P」只是**未登录**下的实测天花板，
+     * 登录态/大会员能拿到哪一档由服务端决定，请求时压低档位只会白白丢清晰度。真实档位
+     * 拿到响应后按 `quality` 回填（`PlayerApi#applyActualQuality`）。
+     */
+    fun requestedQuality(userQuality: Int): Int = userQuality
 
     /**
      * 回到 1x 之后是否需要把流换回高清 DASH。

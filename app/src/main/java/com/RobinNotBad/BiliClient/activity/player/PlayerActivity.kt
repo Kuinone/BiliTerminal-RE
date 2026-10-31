@@ -1780,8 +1780,11 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
      * 于是音频越跑越前，[progressChange] 的 800ms 校正每 ~1.3 秒把它 seek 回去一次（实测
      * 47 次/69 秒、每次回拉 700~1000ms），听感就是「两路声音重叠、有一路跟不上」。
      *
-     * B 站只有 qn<=720P 提供音视频合一的 MP4（DASH 高清档的视频流本身不带音轨），所以倍速时
-     * 只能临时降到 720P 合一；[userQuality] 记着用户原本选的档位，回到 1x 自动恢复。
+     * B 站的高清档（1080P 及以上）只有 DASH 提供，而 DASH 的视频流不带音轨，所以倍速时
+     * 必须换回 `fnval=1` 的合一 MP4（自带音轨，ijk 才能同时变速两路）。合一 MP4 能拿到多高
+     * 由服务端按账号权限决定：仍按**用户选的档位**请求，真实档位由响应回填（见
+     * `PlayerApi#applyActualQuality`），真降档了才提示一句。[userQuality] 记着用户原本选的
+     * 档位，回到 1x 自动恢复高清 DASH。
      * 本地文件、直播不走这里：本地单文件本来就自带音轨，本地老缓存的双文件由
      * [applyAudioSpeed] 保证音轨不单独变速（宁可倍速不生效，也不要一路叠声）。
      */
@@ -1807,12 +1810,11 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
         // 已经挂在合一流上（没有外挂音轨）就只是 ijk 自己的倍速，不需要换流
         if (!hasExternalAudio) return
 
-        val targetQuality = PlayerSpeedStreamPolicy.targetQuality(wantedQuality, speed)
+        val targetQuality = PlayerSpeedStreamPolicy.requestedQuality(wantedQuality)
         Logu.d(
             "speed",
-            "非 1x 倍速（$speed x）：DASH 纯视频流无法变速，切到合一 MP4（原清晰度 $wantedQuality → $targetQuality）"
+            "非 1x 倍速（$speed x）：DASH 纯视频流无法变速，按用户档位 $targetQuality 换合一 MP4"
         )
-        MsgUtil.showMsg(getString(R.string.msg_player_speed_combined_switch))
         streamSyncPending = true
         applyQuality(targetQuality, false, fromSpeedSync = true)
     }
@@ -4603,18 +4605,25 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
     private fun switchQuality(newQuality: Int) {
         if (!isOnlineVideo || newQuality == currentQuality) return
         val normalSpeed = PlayerSpeedStreamPolicy.isNormalSpeed(currentSpeedValue())
-        // 非 1x 时主播放流只能是「带音轨的合一 MP4」（见 [syncStreamForSpeed]），高清档位拿不到。
-        // 与其切过去再被自动压回来（连切两轮、还要重建两次播放器），不如直接拦下并说清原因。
-        if (!normalSpeed && PlayerStreamPolicy.requiresDash(newQuality)) {
-            MsgUtil.showMsg(getString(R.string.msg_player_speed_high_quality_blocked))
-            return
-        }
         userQuality = newQuality
         // 一切档位都优先走 DASH：并不是因为低档位只能 DASH 拿，而是清晰度面板要靠 DASH 的
         // 完整档位清单（fnval=1 会按请求档位裁剪，720P 请求只回 720P/360P，1080P60/4K 直接消失）。
         // 只有 DASH 取流失败时才在 getPlaybackVideo 内回退合一 MP4。
-        // 倍速下则相反：必须故意走合一 MP4，见 [syncStreamForSpeed]。
+        // 倍速下则相反：必须故意走合一 MP4（见 [syncStreamForSpeed]），能不能给到这一档由服务端定。
         applyQuality(newQuality, normalSpeed)
+    }
+
+    /**
+     * 把 qn 值翻成面板上的清晰度名字，用于「降档了」的提示文案。
+     *
+     * 列表来自服务端 `accept_description`/`accept_quality`；查不到就退回「XXXP」，不抛异常。
+     */
+    private fun qualityNameOf(names: Array<String>?, values: IntArray?, quality: Int): String {
+        if (names != null && values != null) {
+            val index = values.indexOf(quality)
+            if (index >= 0 && index < names.size) return names[index]
+        }
+        return "${quality}P"
     }
 
     /**
@@ -4660,9 +4669,15 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
 
                 val newVideoUrl = playerData.videoUrl
                 if (newVideoUrl.isNullOrBlank()) throw IllegalStateException("取流结果为空")
-                // DASH 回退成合一 MP4 时服务端只给到 720P：如实记录，不能让界面继续显示 1080P
+                // 合一 MP4（fnval=1）会按账号权限降级发流，真实档位由响应 quality 回填进
+                // playerData.qn（见 PlayerApi#applyActualQuality）；DASH 成功时就是请求档位。
                 val dashUsable = allowDash && !playerData.audioUrl.isNullOrBlank()
-                val appliedQuality = if (allowDash && !dashUsable) PlayerStreamPolicy.QN_720P else requestedQuality
+                val appliedQuality = when {
+                    allowDash && !dashUsable -> PlayerStreamPolicy.QN_720P
+                    !allowDash && playerData.qn > 0 -> playerData.qn
+                    else -> requestedQuality
+                }
+                val appliedQualityName = qualityNameOf(playerData.qnStrList, playerData.qnValueList, appliedQuality)
 
                 runOnUiThread {
                     streamSyncPending = false
@@ -4711,6 +4726,12 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
                     dashAudioFallbackInFlight = false
                     if (allowDash && !dashUsable && !fromSpeedSync) {
                         MsgUtil.showMsg(UiText.of("这条视频暂时只能提供 720P"))
+                    }
+                    // 倍速换流后真降了档才说一句；能拿到原档位（例如登录态 1080P 合一 MP4）就不打扰
+                    if (fromSpeedSync && appliedQuality < requestedQuality) {
+                        MsgUtil.showMsg(
+                            getString(R.string.msg_player_speed_quality_reduced, appliedQualityName)
+                        )
                     }
                 }
             } catch (e: Exception) {

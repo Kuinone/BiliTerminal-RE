@@ -276,6 +276,23 @@ public class PlayerApi {
      * <p>这张列表**与 fnval 无关**：fnval=1 的响应同样会列出 1080P/1080P+（见仓库里的接口快照），
      * 只是返回的 quality 被降级成 64。播放器里能看到 1080P 却切不过去，根源就在这里。
      */
+    /**
+     * 把「服务端真正下发的档位」回填进 {@code playerData.qn}。
+     *
+     * <p>合一 MP4（`fnval=1`）会按账号权限与可用格式降级发流：请求 1080P 可能只回 720P。
+     * 响应里的 {@code quality} 才是这一条流的真实档位，不回填的话播放器会一直以为自己在播
+     * 请求档位——倍速换流后界面上那个「1080P」就是假的（见 `docs/review/fix-progress.md` §3.88）。
+     *
+     * <p>只对合一 MP4 的两条路径调用；DASH 那条路由 {@code DashData.getVideoStream(qn)} 自己定档。
+     */
+    private static void applyActualQuality(PlayerData playerData, JSONObject data) {
+        int actualQuality = data.optInt("quality", 0);
+        if (actualQuality > 0 && actualQuality != playerData.qn) {
+            Logu.d("quality", "合一 MP4 档位回填：" + playerData.qn + " -> " + actualQuality);
+            playerData.qn = actualQuality;
+        }
+    }
+
     private static void fillQualityLists(PlayerData playerData, JSONObject data) {
         JSONArray accept_description = data.optJSONArray("accept_description");
         JSONArray accept_quality = data.optJSONArray("accept_quality");
@@ -390,6 +407,7 @@ public class PlayerApi {
         JSONArray durl = data.getJSONArray("durl");
         JSONObject video_url = durl.getJSONObject(0);
         playerData.videoUrl = video_url.getString("url");
+        applyActualQuality(playerData, data);
         //last_play_cid/last_play_time 是 aid 级"上次播放"数据：进度只属于 last_play_cid 那一P。
         //请求的 cid 与上次播放的 cid 不一致时（多P视频换P续播）不能把别的P的进度套在本P上，应从 0 开始
         playerData.cidHistory = data.optLong("last_play_cid", 0);
@@ -433,6 +451,7 @@ public class PlayerApi {
         JSONArray durl = data.getJSONArray("durl");
         JSONObject video_url = durl.getJSONObject(0);
         playerData.videoUrl = video_url.getString("url");
+        applyActualQuality(playerData, data);
 
         playerData.danmakuUrl = "https://comment.bilibili.com/" + playerData.cid + ".xml";
 

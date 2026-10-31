@@ -25,7 +25,7 @@
 - **依赖仓库**：`settings.gradle` 已把 aliyun 的 `google` / `public` / `gradle-plugin` 三个镜像前置，`google()`/`mavenCentral()`/jitpack 仅作兜底。
 - **改了 `res/` 文件集合时**：`:app:clean` 与后续命令**必须分两次 Gradle 调用**，且带 `--no-build-cache --no-configuration-cache`，否则会回放陈旧资源（症状是 `Unresolved reference 'R.layout.xxx'`）。
 - **版本一致性**：`:app:verifyVersionConsistency` 以 `strings.xml` 的 `update_log_current` 为锚点校验版本一致性；发版说明也由 CI 从它抽取（抽不到直接拒绝发版）。
-- **单测（26.10.31 倍速音频修复后实测，`testStandardDebugUnitTest`）**：**105 suites / 1121 tests**，两个 flavor 完全相同（同源码），0 失败 0 错误 0 跳过（新增 `player/PlayerSpeedStreamPolicyTest` 9 例）。计数方式：`app/src/test/` 下 `*Test.kt|java` 计源文件（另有共享假实现 `util/FakeSharedPreferences.kt`，合并后计得 104 个），`app/build/test-results/testStandardDebugUnitTest/TEST-*.xml` 的 `tests=` 求和。用例数一律以机器产出为准，队友口述数字不进入文档。
+- **单测（26.10.31 倍速音频修复·二版后实测，`testStandardDebugUnitTest`）**：**105 suites / 1119 tests**，两个 flavor 完全相同（同源码），0 失败 0 错误 0 跳过（`player/PlayerSpeedStreamPolicyTest` 7 例）。计数方式：`app/src/test/` 下 `*Test.kt|java` 计源文件（另有共享假实现 `util/FakeSharedPreferences.kt`，合并后计得 104 个），`app/build/test-results/testStandardDebugUnitTest/TEST-*.xml` 的 `tests=` 求和。用例数一律以机器产出为准，队友口述数字不进入文档。
 - **26.10.10 那一轮的构建记录（历史，留作「改 minSdk / 重跑 release 链路」时的验证口径）**：`minSdk 24 → 19` 全部改动（含 jsoup 1.16.1、7 个 `res/drawable-v21` 资源）落盘后，按「`clean` → `assembleRelease` → `lintRelease` → 单测」四步跑完（均带 `--no-configuration-cache`，`clean` 与 `assemble` 分两次调用），四步全 `BUILD SUCCESSFUL`（37s / 2m13s / 1m25s / 39s）。当时单测汇总 **49 suites / 460 tests / 0 failures**（任务名当时还是 `testDebugUnitTest`，现已带 flavor 前缀），最新 XML 时间 `2026-10-09T22:59:04`（晚于当轮 APK 出包时间 22:56:58，覆盖了当轮全部源码改动）。`:app:lintRelease` 的 **`NewApi` 从 22 条降到 2 条**，且这 2 条就是 `PlayerActivity.kt:1981` 的已知假阳性。发版前仍建议再跑一次确认。
 - **「自动跳过片头片尾」已恢复上线（26.10.22）**：26.10.10 的紧急撤回**已解除**，`SkipOpEdPrefs.FEATURE_ENABLED` 回到 `true`，设置入口与搜索索引均已恢复；口径按用户拍板改为**默认关闭**（`DEFAULT_ENABLED = false`，老用户存档里显式写的值仍然优先）。恢复细节见 §3.3「恢复记录」，乱跳的三个根因修复见 §3.55。
 - **本轮基建改动（26.10.10）**：**`minSdk 24 → 21 → 19（Android 4.4）`**，唯一落点是 `app/build.gradle:21`。两级下调的成本不同，分开记：
@@ -59,7 +59,7 @@
 
 - [ ] **本地音轨防重（§3.13）**：含内嵌音轨 MP4 + 残留 M4A 只播主音轨；纯视频 DASH + M4A 有声；纯音频不重复；反复切听视频/重试不叠声；暂停/恢复/拖进度正常；退出后静音；错误音频不崩。需用 Debug 包观察 `AudioTrack` 日志确认 IJK 轨道列表，UNKNOWN 应提示。下载双文件替换与音频专用模式残留问题仍待修，不能当本次已闭环。
 
-- [ ] **倍速「回到 1x 自动恢复高清」未在登录态验证（§3.88）**：`syncStreamForSpeed()` 的 `shouldRestoreDash` 分支要求用户档位 > 720P，而模拟器测试期间 App 数据被重置成未登录（`clampQuality` 把档位夹到 64），该分支只跑了单测。真机用例：登录（1080P 及以上）→ 选 1080P 起播 → 切 2x（应提示「倍速播放暂不支持高清片源 / 已临时切到 720P，回到 1.0x 自动恢复」并换成合一 MP4）→ 拖回 1x（应看到日志「回到 1x，恢复清晰度 80/120」且清晰度面板回到原档）；期间不得出现两路声音或 `音频轨道重新同步`。
+- [ ] **倍速相关两条未在登录态验证（§3.88）**：①`shouldRestoreDash` 分支要求用户档位 > 720P，而模拟器测试期间 App 数据被重置成未登录（`clampQuality` 把档位夹到 64），该分支只跑了单测；②登录态下 `fnval=1&qn=80` 能否拿到真 1080P 合一 MP4 也没有实测（§3.12 的 720P 天花板出自匿名实测）。真机用例：登录（1080P 及以上）→ 选 1080P 起播 → 切 2x（日志应出现「按用户档位 80 换合一 MP4」；若服务端降级则提示「清晰度暂降到 …」）→ 记下 `quality>` 档位回填日志与实际画面 → 拖回 1x（应看到「回到 1x，恢复清晰度 80/120」且清晰度面板回到原档）；期间不得出现两路声音或 `音频轨道重新同步`。
 
 - [ ] **详情页中央加载遮罩收起时机（§3.11）待真机弱网复测**：用弱网（限速/弱信号）打开视频详情页并立即切到评论栏，评论出现后遮罩必须已消失且不挡触摸；再验番剧详情页的"敬请期待"番（无可用季/集）不再永久停在加载图。纯 UI 时序，JVM 单测覆盖不到。
 
@@ -859,14 +859,16 @@
 
 - **现象 / 缘起**：用户在 26.10.31 正式版上反馈「倍速播放时音频流会变成两个（重叠），还有一个跟不上」；1.0x 正常。26.10.30 的 §4 五十九引入了 DASH 双流 + 外部音轨，倍速正是那时被顺手「同步」到音轨的。
 - **根因（模拟器实测钉死，不是猜的）**：DASH 播放是「ijk 播纯视频流 + `android.media.MediaPlayer` 播纯音频流」。`IjkMediaPlayer.setSpeed(2.0)` 在**没有音轨的纯视频流**上实际不生效——实测 10.6s 墙钟视频位置只前进 10.6s（恒 1.0000x），而 `MediaPlayer.setPlaybackParams(2.0)` 生效 → 音频一路领先视频，`progressChange()` 的「800ms 基线偏差校正」每 ~1.3 秒就把音轨 seek 回去一次（在线 2x 实测 69.4s 内 **47 次**、每次回拉 700~1000ms）。用户听到的「两个重叠 + 一个跟不上」就是同一段音频被反复回拉/跳过。ijk 的变速靠音轨时钟 + `soundtouch` 驱动，纯视频流没有可缩放的音频时钟，**这类片源上倍速必然无效**。
-- **改法（4 处 + 1 个新策略类）**：
-  - 新增 `player/PlayerSpeedStreamPolicy.kt`：`isNormalSpeed(speed)`（±0.001）、`targetQuality(userQuality, speed)`（非 1x 压到 `PlayerStreamPolicy.QN_720P`）、`requiresCombinedStream(speed)`、`shouldRestoreDash(userQuality, hasExternalAudio, speed)`；`PlayerSpeedStreamPolicyTest` 9 例。
-  - `PlayerActivity.syncStreamForSpeed()`：非 1x 且当前挂着外部音轨 → `applyQuality(QN_720P, allowDash = false, fromSpeedSync = true)`，即**复用切清晰度的完整重建链**换成合一带音轨 MP4，并提示「倍速播放暂不支持高清片源 / 已临时切到 720P，回到 1.0x 自动恢复」；回到 1x 且 `shouldRestoreDash` → `applyQuality(userQuality, allowDash = true, fromSpeedSync = true)`。入口是 `applySpeedFromSeekbar()` 末尾与 `seekbar_speed.onStopTrackingTouch()`（拖动中不重建，松手才换）；`streamSyncPending` 防重入。
+- **改法（5 处 + 1 个新策略类）**：
+  - 新增 `player/PlayerSpeedStreamPolicy.kt`：`isNormalSpeed(speed)`（±0.001）、`requiresCombinedStream(speed)`、`requestedQuality(userQuality)`、`shouldRestoreDash(userQuality, hasExternalAudio, speed)`；`PlayerSpeedStreamPolicyTest` 7 例。
+  - `PlayerActivity.syncStreamForSpeed()`：非 1x 且当前挂着外部音轨 → `applyQuality(requestedQuality, allowDash = false, fromSpeedSync = true)`，即**复用切清晰度的完整重建链**换成合一带音轨 MP4；回到 1x 且 `shouldRestoreDash` → `applyQuality(userQuality, allowDash = true, fromSpeedSync = true)`。入口是 `applySpeedFromSeekbar()` 末尾与 `seekbar_speed.onStopTrackingTouch()`（拖动中不重建，松手才换）；`streamSyncPending` 防重入。
   - `applyAudioSpeed()` 改为对外挂音轨**恒设 1x**（`PlaybackParams().setSpeed(1F)` + 非 1x 时记一条日志）：职责从「跟随倍速」变成「别让两路速度分叉」。
-  - `applyQuality` 增加 `fromSpeedSync` 参数（静默、不写 `userQuality`、失败只提示「倍速播放暂不可用，已留在原片源」）；新增 `userQuality` 单独记用户选档（`currentQuality` 会被权限夹紧与回退覆盖）。`switchQuality` 在非 1x 时拒绝切 `>720P` 档位。
-- **验证**：① `:app:assembleDebug` 通过；② `testStandardDebugUnitTest` **105 suites / 1121 tests / 0 失败**；③ 模拟器 `emulator-5554`（AVD `wear5` / Android 14 / 未登录 / DASH 夹具由宿主机 `python -m http.server` 提供，aid 80433022 / cid 137649199）：2x 起播即自动换合一 MP4（日志「非 1x 倍速…切到合一 MP4」+ toast），换流后 `音频轨道重新同步` **0 次**、`dumpsys media.audio_flinger` 全程只 1 条活跃 AudioTrack、**107.5s 播完 213s 内容 = 1.98x**；1x↔2x 反复切不重复重建。
-- **遗留**：①「回到 1x 恢复高清」分支只在单测覆盖（模拟器未登录，`clampQuality` 夹到 64，见 §2.1 新待办）；②本地老缓存「纯视频 + 独立 m4a」双文件在非 1x 下**不会变速**（`applyAudioSpeed` 钉 1x，因此也不叠声），要真正支持得先 `util/MediaMerger.mergeAv()` 合成单文件；③长按三倍速在 DASH 双流上也不再变速（`syncStreamForSpeed` 只在滑条路径调用，长按未接入——若接入，松手回 1x 时同样会自动恢复）。
-- 文档同步：`docs/architecture-map.md` §7.57「倍速」两条已改写为 26.10.31 口径。
+  - `applyQuality` 增加 `fromSpeedSync` 参数（静默、不写 `userQuality`、失败只提示「倍速播放暂不可用，已留在原片源」）；新增 `userQuality` 单独记用户选档（`currentQuality` 会被权限夹紧与回退覆盖）。
+  - `switchQuality` 不再拦「倍速时切 >720P」——用户档位照常切换，倍速下同样走合一 MP4。
+- **第二版：不再硬压到 720P（用户指出旧版本来就 1080P + 倍速）**。旧播放链路（a8dfe06 之前）是 `getVideo(qn=用户档位, fnval=1)`，合一 MP4 能拿到多高由服务端按账号权限决定，请求阶段自己压到 720P 只会白白丢清晰度。因此：新增 `PlayerApi.applyActualQuality()`，`getVideo`/`getBangumi` 拿到响应后把 `data.quality` **回填进 `playerData.qn`**；`syncStreamForSpeed()` 改按**用户档位**请求；`applyQuality` 用回填后的档位算 `appliedQuality`，**只有真降档时才提示**「倍速播放只能走单文件流，清晰度暂降到 X，回到 1.0x 自动恢复」（`strings.xml` 的 `msg_player_speed_quality_reduced`；旧的两条 `msg_player_speed_combined_switch`/`_high_quality_blocked` 已删）。
+- **验证**：① `:app:assembleDebug` 通过；② `testStandardDebugUnitTest` **105 suites / 1119 tests / 0 失败**；③ 模拟器 `emulator-5554`（AVD `wear5` / Android 14 / 未登录 / DASH 夹具由宿主机 `python -m http.server` 提供，aid 80433022 / cid 137649199）：2x 起播即按用户档位换合一 MP4（日志「非 1x 倍速（2.0 x）…按用户档位 64 换合一 MP4」，匿名服务端照旧给 720P、无压档提示），换流后 `音频轨道重新同步` **0 次**、`dumpsys media.audio_flinger` 全程只 1 条活跃 AudioTrack、**106.7s 播完 213s 内容 ≈ 2.0x**；1x↔2x 反复切不重复重建。
+- **遗留**：①「回到 1x 恢复高清」分支只在单测覆盖（模拟器未登录，`clampQuality` 夹到 64，见 §2.1 新待办）；②**登录态下 `fnval=1&qn=80` 能否拿到真 1080P 合一 MP4 仍无实测**（`bilibili-api-notes.md` §3.12 的 720P 天花板来自匿名实测）——逻辑上服务端给就播、降了就回填并提示；③本地老缓存「纯视频 + 独立 m4a」双文件在非 1x 下**不会变速**（`applyAudioSpeed` 钉 1x，因此也不叠声），要真正支持得先 `util/MediaMerger.mergeAv()` 合成单文件；④长按三倍速在 DASH 双流上也不再变速（`syncStreamForSpeed` 只在滑条路径调用，长按未接入——若接入，松手回 1x 时同样会自动恢复）。
+- 文档同步：`docs/architecture-map.md` §7.57「倍速」几条已改写为 26.10.31 二版口径；`docs/bilibili-api-notes.md` §3.12 未改（匿名实测结论仍成立，登录态待验）。
 
 ## 4. 历史章节索引
 

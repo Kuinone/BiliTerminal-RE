@@ -9,7 +9,7 @@ import org.junit.Test
  * 「倍速 ↔ 取流」判据的单测。
  *
  * 这些判据决定「倍速时要不要把 DASH 双流换成合一 MP4」以及「回到 1x 后要不要换回高清」：
- * 判反了不会崩，只会把用户锁在 720P，或者把「两路重叠、一路跟不上」的叠声 bug 带回来。
+ * 判反了不会崩，只会把用户锁在低档，或者把「两路重叠、一路跟不上」的叠声 bug 带回来。
  * 真机/模拟器上的速率实测结论见 `docs/architecture-map.md` §7.57。
  */
 class PlayerSpeedStreamPolicyTest {
@@ -37,23 +37,12 @@ class PlayerSpeedStreamPolicyTest {
     }
 
     @Test
-    fun `变速时高清档位被压到720P`() {
-        assertEquals(64, PlayerSpeedStreamPolicy.targetQuality(80, 2F))    // 1080P → 720P
-        assertEquals(64, PlayerSpeedStreamPolicy.targetQuality(120, 3F))   // 4K → 720P
-        assertEquals(64, PlayerSpeedStreamPolicy.targetQuality(112, 1.5F)) // 1080P+ → 720P
-    }
-
-    @Test
-    fun `变速时原本就更低的档位保持不动`() {
-        assertEquals(32, PlayerSpeedStreamPolicy.targetQuality(32, 2F))   // 480P
-        assertEquals(16, PlayerSpeedStreamPolicy.targetQuality(16, 0.5F)) // 360P
-        assertEquals(64, PlayerSpeedStreamPolicy.targetQuality(64, 2F))   // 720P 本身就是合一上限
-    }
-
-    @Test
-    fun `1倍速时请求用户选的档位`() {
-        assertEquals(80, PlayerSpeedStreamPolicy.targetQuality(80, 1F))
-        assertEquals(64, PlayerSpeedStreamPolicy.targetQuality(64, 1F))
+    fun `变速时仍按用户档位请求合一流`() {
+        // 合一 MP4 能给到多高由服务端按账号权限决定，请求阶段不自己压档：
+        // 登录态/大会员可能拿得到 1080P 合一 MP4，压低到 720P 只会白白丢清晰度。
+        assertEquals(80, PlayerSpeedStreamPolicy.requestedQuality(80))
+        assertEquals(120, PlayerSpeedStreamPolicy.requestedQuality(120))
+        assertEquals(32, PlayerSpeedStreamPolicy.requestedQuality(32))
     }
 
     @Test

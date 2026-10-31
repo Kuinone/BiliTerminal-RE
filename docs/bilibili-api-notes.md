@@ -109,6 +109,7 @@
     - **实测**：`qn=64&fnval=1&platform=pc` → `durl[0].url` 下回来是 `format=hdmp4`，容器内 **`trak=2`**（`hdlr` 里同时有 `vide` 与 `soun`，且 `mp4a`+`esds` 存在）→ **视频轨 + 音频轨两条**。
     - **对照**：`fnval=16` 的 `dash.video[].baseUrl` 是 `trak=1` 的**纯视频**；`dash.audio[].baseUrl` 是 `trak=1` 的**纯音频**。
     - **降级行为**：用 `fnval=1` 请求 `qn=80` 会被**降级返回 `quality=64`**——1080P 及以上只有 DASH 拿得到。这正是"720P 及以下走非 DASH 老接口"这个分界的来源。
+    - **这条实测是匿名口径（26.10.31 §3.88 补记）**：登录态/大会员下 `fnval=1&qn=80` 是否仍被降级**没有实测过**。倍速换流现在按用户档位如实请求（不再自己压到 720P），并用新增的 `PlayerApi.applyActualQuality()` 把响应里的 `quality` 回填成真实档位——服务端给到哪档就播哪档，真降级了播放器会提示「清晰度暂降到 X」。`quality` 在登录态下是否真回 80 待登录设备复核。
     - **对代码的含义**：`DownloadService` 里「`qn<=64` → `getVideo`（`fnval=1`）取单文件、`useDash=false`」以及「MP4 分支下载完要删掉同目录残留的 `audio.m4a`」都是**正确**的；**反过来把这条流当成"纯视频"再挂一路外部音轨，就会两轨同时出声**（即 §3.13 修的音频重复）。
     - **26.10.25 起下载侧把 DASH 双文件 remux 成单文件**：`util/MediaMerger.kt` 用 `MediaExtractor`（支持分片 MP4 的 `moof`）+ `MediaMuxer` 重封装，产物就是和 `fnval=1` 同形态的双轨 MP4；这不是「把 `fnval=16` 的纯视频当合一文件」，而是容器层真正写入了音频轨。播放侧的外部音轨路径保留给老缓存。
     - **未覆盖**：`platform=html5`（播放侧 mtvPlayer 分支）实测同样是 `trak=2`，与 `pc` 一致；但只测了 1 个稿件、未登录，大会员内容与其它稿件未复验。
