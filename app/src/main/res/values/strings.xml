@@ -2355,6 +2355,7 @@
     <string name="msg_player_entered_multi_page">进入分P：%1$s</string>
     <string name="msg_player_lock_hint">已锁定：点画面显示锁定按钮，再点按钮解锁</string>
     <string name="msg_player_speed_quality_reduced">倍速播放只能走单文件流，清晰度暂降到 %1$s，回到 1.0x 自动恢复</string>
+    <string name="msg_player_speed_boost_switching">三倍速需要单文件流，正在切换…</string>
     <string name="msg_player_speed_switch_failed">倍速播放暂不可用，已留在原片源</string>
     <string name="uitext_dynamicholder_019">已经删除过了哦~</string>
     <string name="uitext_dynamicholder_020">不是自己的动态！</string>

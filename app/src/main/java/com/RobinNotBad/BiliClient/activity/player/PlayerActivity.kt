@@ -315,7 +315,19 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
      */
     private var streamSyncPending = false
 
+    /**
+     * 是否正处在「长按三倍速」期间。
+     *
+     * 长按加速不改滑条档位，但它是**真的在变速**：DASH 纯视频流同样变不了，所以也要走
+     * [syncStreamForSpeed] 换成合一 MP4（见 [effectiveSpeedValue]）。松手回到滑条档位，
+     * 若那时是 1x，还会顺手把高清 DASH 换回来。
+     */
+    private var longPressBoostActive = false
+
     companion object {
+        /** 长按加速的倍速值（与滑条档位无关，松手即恢复） */
+        private const val LONG_PRESS_BOOST_SPEED = 3.0F
+
         /** `onSaveInstanceState` 保存的播放位置（毫秒），用于系统重建本页后回到原位 */
         private const val STATE_POSITION = "player_state_position"
 
@@ -1180,11 +1192,11 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
             if (SharedPreferencesUtil.getBoolean("player_longclick", true) && ijkPlayer != null && isPlaying && !isLiveMode) {
                 if (!onLongClick && !gesture_click_disabled) {
                     hidecon.run()
-                    ijkPlayer?.setSpeed(3.0F)
-                    danmakuManager?.setSpeed(3.0f)
-                    applyAudioSpeed(3.0f)
-                    text_speed.text = "x 3.0"
+                    longPressBoostActive = true
                     onLongClick = true
+                    // 不直接 setSpeed(3f)：先交给倍速下发，DASH 高清片源在这里换成合一 MP4，
+                    // 否则画面在 1080P DASH 上仍按 1x 走（见 [syncStreamForSpeed]）
+                    applySpeedFromSeekbar()
                     Logu.v("gesture", "longclick_down")
                     return@setOnLongClickListener true
                 }
@@ -1759,17 +1771,32 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
      */
     private fun applySpeedFromSeekbar() {
         val index = seekbar_speed.progress.coerceIn(0, speed_values.size - 1)
-        text_speed.text = speed_strs[index]
+        val speed = effectiveSpeedValue()
+        // 长按加速期间控件已隐藏，文案直接显示 3x；松手后再回到滑条档位
+        text_speed.text = if (longPressBoostActive) boostLabel() else speed_strs[index]
         text_newspeed.text = speed_strs[index]
-        ijkPlayer?.setSpeed(speed_values[index])
-        danmakuManager?.setSpeed(speed_values[index])
-        applyAudioSpeed(speed_values[index])
+        ijkPlayer?.setSpeed(speed)
+        danmakuManager?.setSpeed(speed)
+        applyAudioSpeed(speed)
         syncStreamForSpeed()
     }
 
     /** 倍速滑条当前档位对应的倍速值（越界时夹到合法档，避免崩溃）。 */
     private fun currentSpeedValue(): Float =
         speed_values[seekbar_speed.progress.coerceIn(0, speed_values.size - 1)]
+
+    /**
+     * 当前**实际生效**的倍速值：长按加速期间是 3x，否则就是滑条档位。
+     *
+     * 换流判定（[syncStreamForSpeed]）与播放器下发都要用它——只看滑条的话，长按加速在
+     * DASH 高清片源上会"看起来生效、其实画面照旧 1x"。
+     */
+    private fun effectiveSpeedValue(): Float =
+        if (longPressBoostActive) LONG_PRESS_BOOST_SPEED else currentSpeedValue()
+
+    /** 长按加速时显示在倍速文案上的字符串（`x 3.0`）。 */
+    private fun boostLabel(): String = "x ${LONG_PRESS_BOOST_SPEED}"
+
 
     /**
      * 让「在播的流」适配当前倍速：非 1x 时换成音视频合一的单文件，回到 1x 再换回高清 DASH。
@@ -1793,7 +1820,7 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
         if (!isOnlineVideo || isLiveMode) return
         if (!isPrepared || streamSyncPending) return
 
-        val speed = currentSpeedValue()
+        val speed = effectiveSpeedValue()
         val wantedQuality = if (userQuality > 0) userQuality else currentQuality
         val hasExternalAudio = audioTrackUrl != null
 
@@ -1815,6 +1842,8 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
             "speed",
             "非 1x 倍速（$speed x）：DASH 纯视频流无法变速，按用户档位 $targetQuality 换合一 MP4"
         )
+        // 长按加速是"按住就加速"的即时操作，换流会黑一下；先说一句免得像卡住
+        if (longPressBoostActive) MsgUtil.showMsg(getString(R.string.msg_player_speed_boost_switching))
         streamSyncPending = true
         applyQuality(targetQuality, false, fromSpeedSync = true)
     }
@@ -3669,15 +3698,15 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
      * **ACTION_UP 与 ACTION_CANCEL 都要调用**：长按加速期间横滑不再消费（见 [PlayerSwipeSeekPolicy]
      * 的 longPressBoost 门闸），若触摸被父容器/失焦 CANCEL 后 `onLongClick` 卡在 true，
      * 滑动调进度会被永久拦掉、播放速度也停在 3 倍。
+     *
+     * 走 [applySpeedFromSeekbar] 而不是直接下发：加速期间若为此换成了合一 MP4，滑条档位是 1x
+     * 时这里会顺手把高清 DASH 换回来（见 [syncStreamForSpeed]）。
      */
     private fun endLongPressBoost() {
         if (!onLongClick) return
         onLongClick = false
-        val normalSpeed = speed_values[seekbar_speed.progress]
-        ijkPlayer?.setSpeed(normalSpeed)
-        danmakuManager?.setSpeed(normalSpeed)
-        applyAudioSpeed(normalSpeed)
-        text_speed.text = speed_strs[seekbar_speed.progress]
+        longPressBoostActive = false
+        applySpeedFromSeekbar()
     }
 
     /** 收掉可能残留的滑动进度浮层；浮层与标志都不存在时不动 UI。 */
@@ -4604,7 +4633,8 @@ class PlayerActivity : Activity(), IMediaPlayer.OnPreparedListener {
 
     private fun switchQuality(newQuality: Int) {
         if (!isOnlineVideo || newQuality == currentQuality) return
-        val normalSpeed = PlayerSpeedStreamPolicy.isNormalSpeed(currentSpeedValue())
+        // 长按加速期间也算"非 1x"：这时换流只能走合一 MP4（见 [effectiveSpeedValue]）
+        val normalSpeed = PlayerSpeedStreamPolicy.isNormalSpeed(effectiveSpeedValue())
         userQuality = newQuality
         // 一切档位都优先走 DASH：并不是因为低档位只能 DASH 拿，而是清晰度面板要靠 DASH 的
         // 完整档位清单（fnval=1 会按请求档位裁剪，720P 请求只回 720P/360P，1080P60/4K 直接消失）。
